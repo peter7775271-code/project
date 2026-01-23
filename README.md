@@ -1,4 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# User Authentication Web App
+
+A beginner-friendly full-stack web application built with Next.js, TypeScript, Tailwind CSS, and SQLite. Users can create accounts, log in, and view their dashboard.
+
+## Features
+
+- ✅ User sign-up with validation
+- ✅ Secure login with JWT authentication
+- ✅ Password hashing with bcrypt
+- ✅ SQLite database for user storage
+- ✅ Protected dashboard page
+- ✅ Beautiful UI with Tailwind CSS
+- ✅ Fully responsive design
+
+## Tech Stack
+
+- **Frontend**: Next.js 15+ with React 19+
+- **Backend**: Next.js API Routes
+- **Database**: SQLite with better-sqlite3
+- **Authentication**: JWT + bcryptjs
+- **Styling**: Tailwind CSS
+- **Language**: TypeScript
 
 ## Getting Started
 
