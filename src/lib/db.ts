@@ -10,14 +10,27 @@ if (supabaseUrl && supabaseServiceKey) {
   supabaseAdminInstance = createClient(supabaseUrl, supabaseServiceKey);
 }
 
-// Export with fallback for build time
-export const supabaseAdmin = supabaseAdminInstance || {
+// Create a safe mock for build time or when credentials are missing
+const mockClient = {
   from: () => ({
-    select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Not initialized') }) }),
-    insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Not initialized') }) }) }),
-    update: () => ({ eq: () => Promise.resolve({ data: null, error: new Error('Not initialized') }) }),
+    select: () => ({ 
+      eq: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Supabase not initialized - check environment variables') }) }),
+      single: () => Promise.resolve({ data: null, error: new Error('Supabase not initialized - check environment variables') }),
+      limit: () => Promise.resolve({ data: [], error: new Error('Supabase not initialized - check environment variables') }),
+    }),
+    insert: () => ({ 
+      select: () => ({ 
+        single: () => Promise.resolve({ data: null, error: new Error('Supabase not initialized - check environment variables') }) 
+      }),
+    }),
+    update: () => ({ 
+      eq: () => Promise.resolve({ data: null, error: new Error('Supabase not initialized - check environment variables') }),
+    }),
   }),
 };
+
+// Export with fallback for build time
+export const supabaseAdmin = supabaseAdminInstance || mockClient;
 
 // Initialize database schema (Supabase tables)
 export async function initializeDb() {
