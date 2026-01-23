@@ -1,4 +1,4 @@
-import db from "@/lib/db";
+import { supabaseAdmin } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { updateUserPassword } from "@/lib/auth";
 
@@ -20,9 +20,13 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const user = db.prepare(`SELECT email, reset_token_expiry FROM users WHERE reset_token = ?`).get(token) as any;
+    const { data: user, error: findError } = await supabaseAdmin
+      .from('users')
+      .select('email, reset_token_expiry')
+      .eq('reset_token', token)
+      .single();
     
-    if (!user) {
+    if (findError || !user) {
       return NextResponse.json(
         { error: "Invalid or expired token" },
         { status: 400 }
@@ -39,7 +43,13 @@ export async function POST(request: NextRequest) {
 
     // Update password and clear reset token
     await updateUserPassword(user.email, password);
-    db.prepare(`UPDATE users SET reset_token = NULL, reset_token_expiry = NULL WHERE email = ?`).run(user.email);
+    await supabaseAdmin
+      .from('users')
+      .update({
+        reset_token: null,
+        reset_token_expiry: null
+      })
+      .eq('email', user.email);
 
     return NextResponse.json(
       { message: "Password reset successfully" },

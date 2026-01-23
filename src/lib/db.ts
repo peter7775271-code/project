@@ -1,36 +1,54 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { createClient } from '@supabase/supabase-js';
 
-const dbPath = process.env.DATABASE_PATH || './data/users.db';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Ensure data directory exists
-const dataDir = path.dirname(dbPath);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+// Initialize database connection only if credentials are available
+let supabaseAdminInstance: any = null;
+
+if (supabaseUrl && supabaseServiceKey) {
+  supabaseAdminInstance = createClient(supabaseUrl, supabaseServiceKey);
 }
 
-const db = new Database(dbPath);
+// Export with fallback for build time
+export const supabaseAdmin = supabaseAdminInstance || {
+  from: () => ({
+    select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Not initialized') }) }),
+    insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Not initialized') }) }) }),
+    update: () => ({ eq: () => Promise.resolve({ data: null, error: new Error('Not initialized') }) }),
+  }),
+};
 
-// Initialize database schema
-export function initializeDb() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      name TEXT NOT NULL,
-      verified INTEGER DEFAULT 0,
-      verification_token TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      reset_token TEXT,
-      reset_token_expiry DATETIME
-    )
-  `);
+// Initialize database schema (Supabase tables)
+export async function initializeDb() {
+  // Verify that the users table exists by trying a simple query
+  if (supabaseAdminInstance) {
+    try {
+      const { error } = await supabaseAdminInstance
+        .from('users')
+        .select('id')
+        .limit(1);
+
+      if (error?.code === 'PGRST116') {
+        // Table doesn't exist
+        console.error(
+          '❌ SETUP REQUIRED: The "users" table does not exist in your Supabase project.\n' +
+          'Please create the table using the SQL query from SUPABASE_SETUP.md\n' +
+          'Or run the SQL in your Supabase dashboard → SQL Editor'
+        );
+      } else if (error) {
+        console.warn('⚠️  Supabase connection warning:', error.message);
+      } else {
+        console.log('✅ Supabase users table verified');
+      }
+    } catch (err) {
+      console.log('ℹ️  Supabase connection initialized');
+    }
+  }
 }
-
 
 // Initialize on import
-initializeDb();
-
-export default db;
+if (typeof window === 'undefined') {
+  // Only run on server
+  initializeDb();
+}

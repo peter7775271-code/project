@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getUserByEmail, createToken } from '@/lib/auth';
 import { v4 as uuidv4 } from 'uuid';
-import db from '@/lib/db';
+import { supabaseAdmin } from '@/lib/db';
 
 const nodemailer = require('nodemailer');
 
@@ -39,9 +39,10 @@ export async function POST(request: NextRequest) {
 
     // Generate verification token
     const verificationToken = uuidv4();
-    db.prepare(
-      `UPDATE users SET verification_token = ? WHERE id = ?`
-    ).run(verificationToken, user.id);
+    await supabaseAdmin
+      .from('users')
+      .update({ verification_token: verificationToken })
+      .eq('id', user.id);
 
     // Send verification email
     try {
@@ -80,10 +81,20 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (error) {
-    console.error('Sign up error:', error);
+  } catch (error: any) {
+    const errorMessage = error?.message || 'Internal server error';
+    console.error('Sign up error:', { message: errorMessage, error });
+    
+    // Check if it's a setup issue
+    if (errorMessage.includes('relation') || errorMessage.includes('does not exist')) {
+      return NextResponse.json(
+        { error: 'Database not configured. Please run the SQL setup from SUPABASE_SETUP.md in your Supabase dashboard.' },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

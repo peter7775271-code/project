@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db"; // adjust to your DB import
+import { supabaseAdmin } from "@/lib/db";
 
 // Verifies a user's email using token
 export async function GET(request: NextRequest) {
@@ -11,22 +11,24 @@ export async function GET(request: NextRequest) {
 
   try {
     // find user by token
-    const user = db
-      .prepare<[string], { id: number }>(
-        `SELECT id FROM users WHERE verification_token = ?`
-      ).get(token);
+    const { data: user, error: findError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('verification_token', token)
+      .single();
 
-    if (!user) {
+    if (findError || !user) {
       return NextResponse.json({ error: "Invalid token" }, { status: 400 });
     }
 
-      // mark verified
-    db.prepare(`
-      UPDATE users
-      SET verified = 1,
-          verification_token = NULL
-      WHERE id = ?
-    `).run(user.id);
+    // mark verified
+    await supabaseAdmin
+      .from('users')
+      .update({
+        verified: true,
+        verification_token: null
+      })
+      .eq('id', user.id);
 
     // redirect to dashboard after success
     return NextResponse.redirect(new URL("/login", request.url));

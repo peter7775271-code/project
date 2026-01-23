@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 const nodemailer = require("nodemailer");
 import { v4 as uuidv4 } from 'uuid';
-import db from '@/lib/db';
+import { supabaseAdmin } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,8 +15,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user exists
-    const user = db.prepare('SELECT id, verified FROM users WHERE email = ?').get(email) as any;
-    if (!user) {
+    const { data: user, error: findError } = await supabaseAdmin
+      .from('users')
+      .select('id, verified')
+      .eq('email', email)
+      .single();
+    
+    if (findError || !user) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
@@ -40,9 +45,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Set the verification token in the database
-    db.prepare(
-      `UPDATE users SET verification_token = ? WHERE email = ?`
-    ).run(token, email);
+    await supabaseAdmin
+      .from('users')
+      .update({ verification_token: token })
+      .eq('email', email);
 
     const verificationLink = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/verify?token=${token}`;
 

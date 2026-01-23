@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateUser, createToken } from '@/lib/auth';
-import db from '@/lib/db';
+import { supabaseAdmin } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if email is verified
-    const dbUser = db.prepare('SELECT verified FROM users WHERE id = ?').get(user.id) as any;
+    const { data: dbUser } = await supabaseAdmin
+      .from('users')
+      .select('verified')
+      .eq('id', user.id)
+      .single();
     if (!dbUser?.verified) {
       return NextResponse.json(
         { error: 'Please verify your email first. Check your inbox for the verification link.' },

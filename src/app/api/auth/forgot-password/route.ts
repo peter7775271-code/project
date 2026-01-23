@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import db from '@/lib/db';
+import { supabaseAdmin } from '@/lib/db';
 
 const nodemailer = require('nodemailer');
 
@@ -16,7 +16,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user exists
-    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as any;
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+    
     if (!user) {
       // Return success anyway to prevent email enumeration attacks
       return NextResponse.json(
@@ -29,9 +34,13 @@ export async function POST(request: NextRequest) {
     const resetToken = uuidv4();
     const expiryTime = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
-    db.prepare(
-      `UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?`
-    ).run(resetToken, expiryTime.toISOString(), email);
+    await supabaseAdmin
+      .from('users')
+      .update({
+        reset_token: resetToken,
+        reset_token_expiry: expiryTime.toISOString()
+      })
+      .eq('email', email);
 
     // Send reset email
     try {

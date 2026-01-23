@@ -1,13 +1,13 @@
 import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import db from './db';
+import { supabaseAdmin } from './db';
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
   name: string;
   created_at: string;
-  verified?: number;
+  verified?: boolean;
   verification_token?: string;
 }
 
@@ -19,28 +19,46 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcryptjs.compare(password, hash);
 }
 
-export function createToken(userId: number): string {
+export function createToken(userId: string): string {
   return jwt.sign({ userId }, process.env.JWT_SECRET || 'secret', {
     expiresIn: '7d',
   });
 }
 
-export function verifyToken(token: string): { userId: number } | null {
+export function verifyToken(token: string): { userId: string } | null {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET || 'secret') as { userId: number };
+    return jwt.verify(token, process.env.JWT_SECRET || 'secret') as { userId: string };
   } catch {
     return null;
   }
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const query = db.prepare('SELECT id, email, name, created_at, verified, verification_token FROM users WHERE email = ?');
-  return (query.get(email) as User | undefined) || null;
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('id, email, name, created_at, verified, verification_token')
+    .eq('email', email)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as User;
 }
 
-export async function getUserById(id: number): Promise<User | null> {
-  const query = db.prepare('SELECT id, email, name, created_at, verified, verification_token FROM users WHERE id = ?');
-  return (query.get(id) as User | undefined) || null;
+export async function getUserById(id: string): Promise<User | null> {
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('id, email, name, created_at, verified, verification_token')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as User;
 }
 
 export async function createUser(
@@ -49,29 +67,48 @@ export async function createUser(
   name: string
 ): Promise<User> {
   const hashedPassword = await hashPassword(password);
-  const insert = db.prepare(
-    'INSERT INTO users (email, password, name) VALUES (?, ?, ?)'
-  );
-  
-  const result = insert.run(email, hashedPassword, name);
-  const user = await getUserById(result.lastInsertRowid as number);
-  
-  if (!user) throw new Error('Failed to create user');
-  return user;
+
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .insert([
+      {
+        email,
+        password: hashedPassword,
+        name,
+        verified: false,
+      },
+    ])
+    .select('id, email, name, created_at, verified, verification_token')
+    .single();
+
+  if (error || !data) {
+    const errorMessage = error?.message || 'Failed to create user';
+    console.error('Create user error:', { error, email, message: errorMessage });
+    throw new Error(errorMessage);
+  }
+
+  return data as User;
 }
 
 export async function authenticateUser(
   email: string,
   password: string
 ): Promise<User | null> {
-  const query = db.prepare('SELECT * FROM users WHERE email = ?');
-  const user = query.get(email) as any;
-  
-  if (!user) return null;
-  
+  const { data: user, error } = await supabaseAdmin
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .single();
+
+  if (error || !user) {
+    return null;
+  }
+
   const passwordMatch = await verifyPassword(password, user.password);
-  if (!passwordMatch) return null;
-  
+  if (!passwordMatch) {
+    return null;
+  }
+
   return {
     id: user.id,
     email: user.email,
@@ -86,8 +123,15 @@ export async function updateUserPassword(email: string, newPassword: string): Pr
   if (!email || !newPassword) {
     throw new Error('Email and new password are required');
   }
-  const hashedPassword = await hashPassword(newPassword);
-  const update = db.prepare('UPDATE users SET password = ? WHERE email = ?');
-  update.run(hashedPassword, email);
 
+  const hashedPassword = await hashPassword(newPassword);
+
+  const { error } = await supabaseAdmin
+    .from('users')
+    .update({ password: hashedPassword })
+    .eq('email', email);
+
+  if (error) {
+    throw new Error(error.message || 'Failed to update password');
+  }
 }
