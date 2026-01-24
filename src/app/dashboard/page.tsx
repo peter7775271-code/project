@@ -19,7 +19,24 @@ interface Message {
   fileName?: string;
 }
 
-type ViewState = 'home' | 'chat' | 'profile';
+interface NutritionEntry {
+  id: string;
+  product_name: string;
+  health_score: number;
+  image_data?: string;
+  nutrition_info?: {
+    macronutrients: Record<string, string>;
+    summary: string;
+  };
+  ingredients_breakdown?: Array<{
+    name: string;
+    healthRating: 'excellent' | 'good' | 'moderate' | 'poor' | 'avoid';
+    reason: string;
+  }>;
+  created_at: string;
+}
+
+type ViewState = 'home' | 'chat' | 'profile' | 'nutrition';
 
 // --- Separate ChatView Component (Memoized) ---
 interface ChatViewProps {
@@ -196,6 +213,15 @@ export default function DashboardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
 
+  // --- Nutrition State ---
+  const [nutritionHistory, setNutritionHistory] = useState<NutritionEntry[]>([]);
+  const [nutritionLoading, setNutritionLoading] = useState(false);
+  const [currentAnalysis, setCurrentAnalysis] = useState<any>(null);
+  const [nutritionFile, setNutritionFile] = useState<File | null>(null);
+  const [nutritionProductName, setNutritionProductName] = useState('');
+  const [nutritionAnalyzing, setNutritionAnalyzing] = useState(false);
+  const nutritionFileInputRef = useRef<HTMLInputElement>(null);
+
   // --- Auth Check ---
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -259,6 +285,32 @@ export default function DashboardPage() {
       };
       
       loadMessages();
+    }
+  }, [activeView]);
+
+  // --- Load nutrition history when opening nutrition view ---
+  useEffect(() => {
+    if (activeView === 'nutrition') {
+      const loadNutrition = async () => {
+        setNutritionLoading(true);
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch('/api/nutrition/load', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await response.json();
+          
+          if (response.ok && data.entries) {
+            setNutritionHistory(data.entries);
+          }
+        } catch (error) {
+          console.error('Failed to load nutrition history:', error);
+        } finally {
+          setNutritionLoading(false);
+        }
+      };
+      
+      loadNutrition();
     }
   }, [activeView]);
 
@@ -456,6 +508,93 @@ export default function DashboardPage() {
     }
   };
 
+  // --- Nutrition Handlers ---
+  const handleNutritionFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      const maxSizeMB = 10;
+      const maxSizeBytes = maxSizeMB * 1024 * 1024;
+      
+      if (file.size > maxSizeBytes) {
+        alert(`File too large. Maximum size is ${maxSizeMB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+        return;
+      }
+      
+      if (!file.type.startsWith('image/')) {
+        alert('Please upload an image file');
+        return;
+      }
+      
+      setNutritionFile(file);
+    }
+  };
+
+  const convertNutritionFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleAnalyzeProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nutritionFile && !nutritionProductName.trim()) {
+      alert('Please upload a product image or enter a product name');
+      return;
+    }
+
+    setNutritionAnalyzing(true);
+    setCurrentAnalysis(null);
+
+    try {
+      let imageData = null;
+      if (nutritionFile) {
+        imageData = await convertNutritionFileToBase64(nutritionFile);
+      }
+
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/nutrition/analyze', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          productImage: imageData,
+          productName: nutritionProductName || null
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      setCurrentAnalysis(data.analysis);
+      
+      // Refresh nutrition history
+      const historyResponse = await fetch('/api/nutrition/load', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const historyData = await historyResponse.json();
+      if (historyData.entries) {
+        setNutritionHistory(historyData.entries);
+      }
+
+      // Clear form
+      setNutritionFile(null);
+      setNutritionProductName('');
+      if (nutritionFileInputRef.current) {
+        nutritionFileInputRef.current.value = '';
+      }
+    } catch (error) {
+      console.error('Nutrition analysis error:', error);
+      alert(error instanceof Error ? error.message : 'Error analyzing product');
+    } finally {
+      setNutritionAnalyzing(false);
+    }
+  };
+
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -511,6 +650,23 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-500 dark:text-gray-400">Manage your account details and verification status.</p>
           </div>
         </button>
+
+        {/* Nutrition Button Card */}
+        <button
+          onClick={() => setActiveView('nutrition')}
+          className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 text-left shadow-xl backdrop-blur-xl border border-white/20 hover:border-green-500/50 hover:bg-white/60 dark:hover:bg-white/10 transition-all duration-300 hover:-translate-y-1"
+        >
+          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+            <svg className="w-32 h-32 text-green-600 dark:text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+          </div>
+          <div className="relative z-10">
+            <div className="w-12 h-12 rounded-2xl bg-green-600 flex items-center justify-center mb-4 shadow-lg shadow-green-500/30">
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Nutrition Analysis</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Analyze products and get a health rating out of 100.</p>
+          </div>
+        </button>
       </div>
     </div>
   );
@@ -547,6 +703,195 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+
+  const NutritionView = () => (
+    <div className="max-w-4xl mx-auto w-full animate-fade-in-up space-y-6">
+      {/* Analysis Form */}
+      <div className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 shadow-2xl backdrop-blur-xl border border-white/20">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Product Nutrition Analysis</h2>
+        
+        <form onSubmit={handleAnalyzeProduct} className="space-y-4">
+          {/* Product Name Input */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product Name or Image</label>
+            <div className="flex gap-2">
+              <input 
+                type="text"
+                value={nutritionProductName}
+                onChange={(e) => setNutritionProductName(e.target.value)}
+                placeholder="Enter product name (e.g., Coca Cola, Organic Apple)"
+                className="flex-1 px-4 py-2 rounded-xl bg-white/50 dark:bg-black/20 border border-white/10 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
+              />
+            </div>
+          </div>
+
+          {/* OR Divider */}
+          <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex-1 h-px bg-white/20" />
+            <span>OR</span>
+            <div className="flex-1 h-px bg-white/20" />
+          </div>
+
+          {/* Image Upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upload Product Image</label>
+            <input 
+              ref={nutritionFileInputRef}
+              type="file" 
+              accept="image/*" 
+              onChange={handleNutritionFileSelect} 
+              className="hidden" 
+            />
+            <button 
+              type="button"
+              onClick={() => nutritionFileInputRef.current?.click()}
+              className="w-full px-4 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium transition"
+            >
+              {nutritionFile ? `📷 ${nutritionFile.name}` : '📷 Choose Image'}
+            </button>
+          </div>
+
+          {/* Submit Button */}
+          <button 
+            type="submit"
+            disabled={nutritionAnalyzing || (!nutritionProductName.trim() && !nutritionFile)}
+            className="w-full px-4 py-3 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold transition"
+          >
+            {nutritionAnalyzing ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Analyzing...
+              </span>
+            ) : (
+              'Analyze Product'
+            )}
+          </button>
+        </form>
+      </div>
+
+      {/* Current Analysis Results */}
+      {currentAnalysis && (
+        <div className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 shadow-2xl backdrop-blur-xl border border-white/20">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">{currentAnalysis.productName}</h3>
+          
+          {/* Health Score Gauge */}
+          <div className="mb-6 p-6 rounded-xl bg-white/50 dark:bg-black/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Health Score</span>
+              <span className="text-3xl font-bold" style={{
+                color: currentAnalysis.healthScore >= 70 ? '#22c55e' : currentAnalysis.healthScore >= 50 ? '#eab308' : '#ef4444'
+              }}>
+                {currentAnalysis.healthScore}/100
+              </span>
+            </div>
+            <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-2">
+              <div 
+                className="h-2 rounded-full transition-all" 
+                style={{
+                  width: `${currentAnalysis.healthScore}%`,
+                  backgroundColor: currentAnalysis.healthScore >= 70 ? '#22c55e' : currentAnalysis.healthScore >= 50 ? '#eab308' : '#ef4444'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="mb-6">
+            <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Summary</h4>
+            <p className="text-sm text-gray-700 dark:text-gray-300">{currentAnalysis.summary}</p>
+          </div>
+
+          {/* Macronutrients */}
+          {currentAnalysis.macronutrients && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Nutritional Info</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {Object.entries(currentAnalysis.macronutrients).map(([key, value]: [string, any]) => (
+                  <div key={key} className="p-3 rounded-lg bg-white/50 dark:bg-black/20">
+                    <p className="text-xs font-medium text-gray-600 dark:text-gray-400 capitalize">{key}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{value || 'Unknown'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Ingredients */}
+          {currentAnalysis.ingredients && currentAnalysis.ingredients.length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Ingredients Analysis</h4>
+              <div className="space-y-2">
+                {currentAnalysis.ingredients.map((ing: any, idx: number) => (
+                  <div key={idx} className="p-3 rounded-lg bg-white/50 dark:bg-black/20">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{ing.name}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">{ing.reason}</p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-1 rounded whitespace-nowrap ml-2 ${
+                        ing.healthRating === 'excellent' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                        ing.healthRating === 'good' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                        ing.healthRating === 'moderate' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                        ing.healthRating === 'poor' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
+                        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                      }`}>
+                        {ing.healthRating}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recommendations */}
+          {currentAnalysis.recommendations && currentAnalysis.recommendations.length > 0 && (
+            <div>
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Recommendations</h4>
+              <ul className="space-y-2">
+                {currentAnalysis.recommendations.map((rec: string, idx: number) => (
+                  <li key={idx} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <span className="text-green-600 dark:text-green-400 font-bold">✓</span>
+                    <span>{rec}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* History */}
+      {nutritionHistory.length > 0 && (
+        <div className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 shadow-2xl backdrop-blur-xl border border-white/20">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Analysis History</h3>
+          {nutritionLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {nutritionHistory.map((entry) => (
+                <div key={entry.id} className="p-4 rounded-lg bg-white/50 dark:bg-black/20 border border-white/10">
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-medium text-gray-900 dark:text-white">{entry.product_name}</h4>
+                    <span className="text-lg font-bold" style={{
+                      color: entry.health_score >= 70 ? '#22c55e' : entry.health_score >= 50 ? '#eab308' : '#ef4444'
+                    }}>
+                      {entry.health_score}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {new Date(entry.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -590,6 +935,7 @@ export default function DashboardPage() {
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center p-6">
         {activeView === 'home' && <HomeView />}
         {activeView === 'profile' && <ProfileView />}
+        {activeView === 'nutrition' && <NutritionView />}
         {activeView === 'chat' && (
           <ChatView
             messages={messages}
