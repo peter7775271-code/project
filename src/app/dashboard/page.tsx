@@ -167,13 +167,21 @@ export default function DashboardPage() {
           });
           const data = await response.json();
           
+          console.log('Loaded chat data:', data);
+          
           if (response.ok && data.messages && data.messages.length > 0) {
-            setMessages(data.messages.map((msg: any) => ({
-              role: msg.role,
-              content: msg.message,
-              attachment: msg.attachment || undefined,
-              fileName: msg.file_name || undefined,
-            })));
+            const mappedMessages = data.messages.map((msg: any) => {
+              const mapped = {
+                role: msg.role,
+                content: msg.message,
+                attachment: msg.attachment || undefined,
+                fileName: msg.file_name || undefined,
+              };
+              console.log('Mapped message:', { hasAttachment: !!mapped.attachment, fileName: mapped.fileName });
+              return mapped;
+            });
+            console.log('Setting messages, count:', mappedMessages.length);
+            setMessages(mappedMessages);
           }
         } catch (error) {
           console.error('Failed to load messages:', error);
@@ -232,17 +240,40 @@ export default function DashboardPage() {
     }
   };
 
-  // --- Chat Helpers ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) setSelectedFile(e.target.files[0]);
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      const maxSizeMB = 10;
+      const maxSizeBytes = maxSizeMB * 1024 * 1024;
+      
+      if (file.size > maxSizeBytes) {
+        alert(`File too large. Maximum size is ${maxSizeMB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+        return;
+      }
+      
+      setSelectedFile(file);
+      console.log('[FILE SELECT]:', { name: file.name, size: file.size, type: file.type });
+    }
   };
 
   const convertToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = error => reject(error);
+      reader.onload = () => {
+        const result = reader.result as string;
+        console.log('[convertToBase64] Success:', {
+          fileName: file.name,
+          fileSize: file.size,
+          base64Length: result.length,
+          prefix: result.substring(0, 50),
+        });
+        resolve(result);
+      };
+      reader.onerror = error => {
+        console.error('[convertToBase64] Error:', error);
+        reject(error);
+      };
     });
   };
 
@@ -258,8 +289,9 @@ export default function DashboardPage() {
       try {
         fileData = await convertToBase64(selectedFile);
         fileName = selectedFile.name;
+        console.log('File converted to base64, size:', fileData.length, 'File:', fileName);
       } catch (err) {
-        console.error(err);
+        console.error('Error converting file:', err);
         return;
       }
     }
@@ -271,7 +303,7 @@ export default function DashboardPage() {
 
     const newUserMessage = { 
       role: 'user' as const,
-      content: userMessage,
+      content: userMessage || '(Image/File attachment)',
       attachment: fileData || undefined,
       fileName: fileName || undefined
     };
@@ -281,21 +313,44 @@ export default function DashboardPage() {
     // Save user message to database
     const token = localStorage.getItem('token');
     try {
-      await fetch('/api/chat/save', {
+      const savePayload = {
+        message: userMessage || '(Image/File attachment)', 
+        role: 'user',
+        attachment: fileData || null,
+        fileName: fileName || null
+      };
+      console.log('[SAVE PAYLOAD] Sending:', { 
+        hasAttachment: !!fileData, 
+        fileName, 
+        messageLength: userMessage.length,
+        attachmentSize: fileData?.length,
+        payloadSize: JSON.stringify(savePayload).length
+      });
+      
+      const saveResponse = await fetch('/api/chat/save', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ 
-          message: userMessage, 
-          role: 'user',
-          attachment: fileData || null,
-          fileName: fileName || null
-        }),
+        body: JSON.stringify(savePayload),
       });
+      
+      console.log('[SAVE RESPONSE] Status:', saveResponse.status);
+      
+      if (!saveResponse.ok) {
+        const errorText = await saveResponse.text();
+        console.error('[SAVE ERROR] Failed with status', saveResponse.status, ':', errorText);
+      } else {
+        const savedData = await saveResponse.json();
+        console.log('[SAVE SUCCESS] Message saved:', {
+          hasAttachmentInResponse: !!savedData.data?.[0]?.attachment,
+          attachmentSizeInResponse: savedData.data?.[0]?.attachment?.length,
+          fileName: savedData.data?.[0]?.file_name,
+        });
+      }
     } catch (error) {
-      console.error('Failed to save user message:', error);
+      console.error('[SAVE EXCEPTION] Failed to save user message:', error);
     }
 
     try {
