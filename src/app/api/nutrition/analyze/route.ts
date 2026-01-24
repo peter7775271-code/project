@@ -48,7 +48,7 @@ interface NutritionAnalysis {
 
 export async function POST(request: NextRequest) {
   try {
-    const { productImage, productName } = await request.json();
+    let { productImage, productName, productUrl } = await request.json();
     const token = request.headers.get('authorization')?.replace('Bearer ', '');
 
     // Verify user is authenticated
@@ -67,10 +67,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // If URL provided, scrape it first
+    if (productUrl) {
+      try {
+        console.log('[ANALYZE API] Scraping URL:', productUrl);
+        const scrapeResponse = await fetch(
+          new URL('/api/nutrition/scrape', request.url.split('/api')[0] + '/api').href,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: productUrl }),
+          }
+        );
+
+        if (!scrapeResponse.ok) {
+          const error = await scrapeResponse.json();
+          return NextResponse.json(
+            { error: error.error || 'Failed to scrape URL' },
+            { status: 400 }
+          );
+        }
+
+        const scrapedData = await scrapeResponse.json();
+        productImage = scrapedData.productImage;
+        productName = scrapedData.productName;
+        console.log('[ANALYZE API] Successfully scraped:', productName);
+      } catch (error: any) {
+        console.error('[ANALYZE API] Scraping error:', error);
+        return NextResponse.json(
+          { error: 'Failed to process URL: ' + (error.message || 'Unknown error') },
+          { status: 400 }
+        );
+      }
+    }
+
     // Validate input
     if (!productImage && !productName) {
       return NextResponse.json(
-        { error: 'Either productImage or productName is required' },
+        { error: 'Either productImage, productName, or productUrl is required' },
         { status: 400 }
       );
     }

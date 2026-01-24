@@ -231,6 +231,7 @@ export default function DashboardPage() {
   const [currentAnalysis, setCurrentAnalysis] = useState<any>(null);
   const [nutritionFile, setNutritionFile] = useState<File | null>(null);
   const [nutritionProductName, setNutritionProductName] = useState('');
+  const [nutritionProductUrl, setNutritionProductUrl] = useState('');
   const [nutritionAnalyzing, setNutritionAnalyzing] = useState(false);
   const [selectedHistoryEntry, setSelectedHistoryEntry] = useState<NutritionEntry | null>(null);
   const [historySearchQuery, setHistorySearchQuery] = useState('');
@@ -554,8 +555,8 @@ export default function DashboardPage() {
 
   const handleAnalyzeProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nutritionFile && !nutritionProductName.trim()) {
-      alert('Please upload a product image or enter a product name');
+    if (!nutritionFile && !nutritionProductName.trim() && !nutritionProductUrl.trim()) {
+      alert('Please upload a product image, enter a product name, or paste a product URL');
       return;
     }
 
@@ -577,7 +578,8 @@ export default function DashboardPage() {
         },
         body: JSON.stringify({
           productImage: imageData,
-          productName: nutritionProductName || null
+          productName: nutritionProductName || null,
+          productUrl: nutritionProductUrl || null
         }),
       });
 
@@ -598,6 +600,7 @@ export default function DashboardPage() {
       // Clear form
       setNutritionFile(null);
       setNutritionProductName('');
+      setNutritionProductUrl('');
       if (nutritionFileInputRef.current) {
         nutritionFileInputRef.current.value = '';
       }
@@ -932,16 +935,33 @@ export default function DashboardPage() {
         <form onSubmit={handleAnalyzeProduct} className="space-y-4">
           {/* Product Name Input */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product Name or Image</label>
-            <div className="flex gap-2">
-              <input 
-                type="text"
-                value={nutritionProductName}
-                onChange={(e) => setNutritionProductName(e.target.value)}
-                placeholder="Enter product name (e.g., Coca Cola, Organic Apple)"
-                className="flex-1 px-4 py-2 rounded-xl bg-white/50 dark:bg-black/20 border border-white/10 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              />
-            </div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product Name</label>
+            <input 
+              type="text"
+              value={nutritionProductName}
+              onChange={(e) => setNutritionProductName(e.target.value)}
+              placeholder="Enter product name (e.g., Coca Cola, Organic Apple)"
+              className="w-full px-4 py-2 rounded-xl bg-white/50 dark:bg-black/20 border border-white/10 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
+            />
+          </div>
+
+          {/* OR Divider */}
+          <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex-1 h-px bg-white/20" />
+            <span>OR</span>
+            <div className="flex-1 h-px bg-white/20" />
+          </div>
+
+          {/* Product URL Input */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Product URL</label>
+            <input 
+              type="url"
+              value={nutritionProductUrl}
+              onChange={(e) => setNutritionProductUrl(e.target.value)}
+              placeholder="https://example.com/product/... (Amazon, Walmart, etc.)"
+              className="w-full px-4 py-2 rounded-xl bg-white/50 dark:bg-black/20 border border-white/10 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
+            />
           </div>
 
           {/* OR Divider */}
@@ -973,7 +993,7 @@ export default function DashboardPage() {
           {/* Submit Button */}
           <button 
             type="submit"
-            disabled={nutritionAnalyzing || (!nutritionProductName.trim() && !nutritionFile)}
+            disabled={nutritionAnalyzing || (!nutritionProductName.trim() && !nutritionFile && !nutritionProductUrl.trim())}
             className="w-full px-4 py-3 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold transition"
           >
             {nutritionAnalyzing ? (
