@@ -635,7 +635,7 @@ export default function DashboardPage() {
   // --- Components for each View ---
 
   const HomeView = () => (
-    <div className="max-w-4xl mx-auto w-full animate-fade-in-up">
+    <div className="max-w-4xl mx-auto w-full">
       <div className="text-center mb-12">
         <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
           Welcome, {user.name}
@@ -701,7 +701,7 @@ export default function DashboardPage() {
   );
 
   const ProfileView = () => (
-    <div className="max-w-2xl mx-auto w-full animate-fade-in-up">
+    <div className="max-w-2xl mx-auto w-full">
       <div className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 shadow-2xl backdrop-blur-xl border border-white/20">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Profile Details</h2>
@@ -939,7 +939,7 @@ export default function DashboardPage() {
   };
 
   const NutritionView = () => (
-    <div className="max-w-4xl mx-auto w-full animate-fade-in-up space-y-6">
+    <div className="max-w-4xl mx-auto w-full space-y-6">
       {/* Analysis Form */}
       <div className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 shadow-2xl backdrop-blur-xl border border-white/20">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Product Nutrition Analysis</h2>

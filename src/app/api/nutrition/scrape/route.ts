@@ -50,9 +50,10 @@ async function scrapeHTML(url: string) {
           },
         });
 
-        // Try to optimize image
+        // Try to optimize image (converts AVIF, HEIC, and other formats to JPEG)
         try {
           const optimized = await sharp(imageResponse.data)
+            .toFormat('jpeg')
             .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
             .jpeg({ quality: 80 })
             .toBuffer();

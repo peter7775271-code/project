@@ -71,18 +71,46 @@ export async function POST(request: NextRequest) {
     if (productUrl) {
       try {
         console.log('[ANALYZE API] Scraping URL:', productUrl);
-        const origin = request.nextUrl.origin;
-        const scrapeUrl = new URL('/api/nutrition/scrape', origin);
-        const scrapeResponse = await fetch(scrapeUrl.toString(), {
+        
+        // Get the origin - in Vercel and local, request.nextUrl.origin should work
+        let origin = request.nextUrl.origin;
+        
+        // Fallback: if origin contains 'localhost', ensure proper format
+        if (!origin || origin === 'http://undefined') {
+          // Try to construct from request headers
+          const host = request.headers.get('host');
+          const proto = request.headers.get('x-forwarded-proto') || 'https';
+          if (host) {
+            origin = `${proto}://${host}`;
+          } else {
+            origin = 'http://localhost:3000'; // Fallback for development
+          }
+        }
+        
+        const scrapeUrl = new URL('/api/nutrition/scrape', origin).toString();
+        console.log('[ANALYZE API] Scrape endpoint URL:', scrapeUrl);
+        console.log('[ANALYZE API] Request origin:', origin);
+        
+        const scrapeResponse = await fetch(scrapeUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: productUrl }),
         });
 
+        console.log('[ANALYZE API] Scrape response status:', scrapeResponse.status);
+
         if (!scrapeResponse.ok) {
-          const error = await scrapeResponse.json();
+          let errorMessage = 'Failed to scrape URL';
+          try {
+            const errorData = await scrapeResponse.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            // If response isn't JSON, use generic error
+            const text = await scrapeResponse.text();
+            console.error('[ANALYZE API] Scrape error response:', text.substring(0, 200));
+          }
           return NextResponse.json(
-            { error: error.error || 'Failed to scrape URL' },
+            { error: errorMessage },
             { status: 400 }
           );
         }
