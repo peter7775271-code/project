@@ -27,6 +27,7 @@ interface ChatViewProps {
   chatInput: string;
   selectedFile: File | null;
   isTyping: boolean;
+  chatLoading: boolean;
   onChatInputChange: (value: string) => void;
   onSendMessage: (e: React.FormEvent) => void;
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -37,11 +38,45 @@ interface ChatViewProps {
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
+// --- Fullscreen Image Modal Component ---
+const ImageModal = ({ src, onClose }: { src: string; onClose: () => void }) => {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div className="relative max-w-4xl max-h-[90vh] w-full h-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+        <img
+          src={src}
+          alt="fullscreen view"
+          className="w-full h-full object-contain rounded-lg"
+        />
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 w-10 h-10 flex items-center justify-center transition"
+          title="Close (or press Esc)"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const ChatView = memo(function ChatViewComponent({
   messages,
   chatInput,
   selectedFile,
   isTyping,
+  chatLoading,
   onChatInputChange,
   onSendMessage,
   onFileSelect,
@@ -51,6 +86,8 @@ const ChatView = memo(function ChatViewComponent({
   fileInputRef,
   messagesEndRef,
 }: ChatViewProps) {
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+
   return (
     <div className="flex flex-col h-[calc(100vh-140px)] w-full max-w-5xl mx-auto">
       <div className="flex-1 overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 shadow-2xl backdrop-blur-xl border border-white/20 ring-1 ring-gray-900/5 flex flex-col">
@@ -68,24 +105,40 @@ const ChatView = memo(function ChatViewComponent({
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                {msg.attachment && (
-                  <div className="p-2 bg-white/10 rounded-lg border border-white/20">
-                    {msg.attachment.startsWith('data:image') ? 
-                      <img src={msg.attachment} className="max-h-40 rounded" alt="upload" /> :
-                      <div className="flex items-center gap-2 text-xs text-gray-200"><span className="p-1 bg-white/20 rounded">FILE</span> {msg.fileName}</div>
-                    }
-                  </div>
-                )}
-                <div className={`px-4 py-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white/70 dark:bg-white/10 text-gray-800 dark:text-gray-100 rounded-bl-none'}`}>
-                  {msg.content}
-                </div>
+          {chatLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Loading chat...</p>
               </div>
             </div>
-          ))}
-          {isTyping && <div className="text-xs text-gray-500 animate-pulse ml-4">AI is thinking...</div>}
+          ) : (
+            <>
+              {messages.map((msg, i) => (
+                <div key={i} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    {msg.attachment && (
+                      <div className="p-2 bg-white/10 rounded-lg border border-white/20">
+                        {msg.attachment.startsWith('data:image') ? 
+                          <img 
+                            src={msg.attachment} 
+                            className="max-h-40 rounded cursor-pointer hover:opacity-80 transition" 
+                            alt="upload"
+                            onClick={() => setFullscreenImage(msg.attachment || null)}
+                          /> :
+                          <div className="flex items-center gap-2 text-xs text-gray-200"><span className="p-1 bg-white/20 rounded">FILE</span> {msg.fileName}</div>
+                        }
+                      </div>
+                    )}
+                    <div className={`px-4 py-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white/70 dark:bg-white/10 text-gray-800 dark:text-gray-100 rounded-bl-none'}`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {isTyping && <div className="text-xs text-gray-500 animate-pulse ml-4">AI is thinking...</div>}
+            </>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -116,6 +169,11 @@ const ChatView = memo(function ChatViewComponent({
           </form>
         </div>
       </div>
+
+      {/* Fullscreen Image Modal */}
+      {fullscreenImage && (
+        <ImageModal src={fullscreenImage} onClose={() => setFullscreenImage(null)} />
+      )}
     </div>
   );
 });
@@ -133,6 +191,7 @@ export default function DashboardPage() {
   const [chatInput, setChatInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -160,6 +219,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (activeView === 'chat') {
       const loadMessages = async () => {
+        setChatLoading(true);
         try {
           const token = localStorage.getItem('token');
           const response = await fetch('/api/chat/load', {
@@ -182,9 +242,19 @@ export default function DashboardPage() {
             });
             console.log('Setting messages, count:', mappedMessages.length);
             setMessages(mappedMessages);
+          } else {
+            // No previous messages, show greeting
+            setMessages([
+              { role: 'assistant', content: 'Hello! I am your AI assistant. Ready to help.' }
+            ]);
           }
         } catch (error) {
           console.error('Failed to load messages:', error);
+          setMessages([
+            { role: 'assistant', content: 'Hello! I am your AI assistant. Ready to help.' }
+          ]);
+        } finally {
+          setChatLoading(false);
         }
       };
       
@@ -526,6 +596,7 @@ export default function DashboardPage() {
             chatInput={chatInput}
             selectedFile={selectedFile}
             isTyping={isTyping}
+            chatLoading={chatLoading}
             onChatInputChange={setChatInput}
             onSendMessage={handleSendMessage}
             onFileSelect={handleFileSelect}
