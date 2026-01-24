@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, memo } from 'react';
+import { useEffect, useState, useRef, memo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 // --- Types ---
@@ -524,7 +524,7 @@ export default function DashboardPage() {
   };
 
   // --- Nutrition Handlers ---
-  const handleNutritionFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNutritionFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
       const maxSizeMB = 10;
@@ -542,7 +542,19 @@ export default function DashboardPage() {
       
       setNutritionFile(file);
     }
-  };
+  }, []);
+
+  const handleNutritionProductNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNutritionProductName(e.target.value);
+  }, []);
+
+  const handleNutritionProductUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNutritionProductUrl(e.target.value);
+  }, []);
+
+  const handleHistorySearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setHistorySearchQuery(e.target.value);
+  }, []);
 
   const convertNutritionFileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -939,7 +951,7 @@ export default function DashboardPage() {
             <input 
               type="text"
               value={nutritionProductName}
-              onChange={(e) => setNutritionProductName(e.target.value)}
+              onChange={handleNutritionProductNameChange}
               placeholder="Enter product name (e.g., Coca Cola, Organic Apple)"
               className="w-full px-4 py-2 rounded-xl bg-white/50 dark:bg-black/20 border border-white/10 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
             />
@@ -958,7 +970,7 @@ export default function DashboardPage() {
             <input 
               type="url"
               value={nutritionProductUrl}
-              onChange={(e) => setNutritionProductUrl(e.target.value)}
+              onChange={handleNutritionProductUrlChange}
               placeholder="https://example.com/product/... (Amazon, Walmart, etc.)"
               className="w-full px-4 py-2 rounded-xl bg-white/50 dark:bg-black/20 border border-white/10 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
             />
@@ -1200,7 +1212,7 @@ export default function DashboardPage() {
               type="text"
               placeholder="Search by product name..."
               value={historySearchQuery}
-              onChange={(e) => setHistorySearchQuery(e.target.value)}
+              onChange={handleHistorySearchChange}
               className="w-full px-4 py-2 rounded-xl bg-white/50 dark:bg-black/20 border border-white/10 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
             />
           </div>
