@@ -4,7 +4,7 @@ import { verifyToken } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, role } = await request.json();
+    const { message, role, attachment, fileName } = await request.json();
     const token = request.headers.get('authorization')?.replace('Bearer ', '');
 
     // Verify user is authenticated
@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
           user_id: decoded.userId,
           message,
           role,
+          attachment: attachment || null,
+          file_name: fileName || null,
           created_at: new Date().toISOString(),
         },
       ])

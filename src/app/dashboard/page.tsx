@@ -171,6 +171,8 @@ export default function DashboardPage() {
             setMessages(data.messages.map((msg: any) => ({
               role: msg.role,
               content: msg.message,
+              attachment: msg.attachment || undefined,
+              fileName: msg.file_name || undefined,
             })));
           }
         } catch (error) {
@@ -285,7 +287,12 @@ export default function DashboardPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ message: userMessage, role: 'user' }),
+        body: JSON.stringify({ 
+          message: userMessage, 
+          role: 'user',
+          attachment: fileData || null,
+          fileName: fileName || null
+        }),
       });
     } catch (error) {
       console.error('Failed to save user message:', error);

@@ -7,12 +7,14 @@ Your chat application now saves all conversations to Supabase! Follow these step
 Go to your Supabase dashboard and run this SQL in the **SQL Editor**:
 
 ```sql
--- Create chat_messages table
+-- Create chat_messages table with file attachment support
 CREATE TABLE chat_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   message TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  attachment TEXT, -- Stores base64-encoded file data or image data
+  file_name TEXT, -- Original filename for non-image files
   created_at TIMESTAMP DEFAULT now()
 );
 
@@ -83,4 +85,6 @@ The table creation and RLS policies are Supabase-specific and don't need any env
 | user_id | UUID | Links to users table, cascade delete |
 | message | TEXT | The actual message content |
 | role | TEXT | Either 'user' or 'assistant' |
+| attachment | TEXT | Base64-encoded file or image data (optional) |
+| file_name | TEXT | Original filename for non-image attachments (optional) |
 | created_at | TIMESTAMP | Auto-generated creation time |
