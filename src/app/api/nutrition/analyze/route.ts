@@ -25,6 +25,25 @@ interface NutritionAnalysis {
   };
   summary: string;
   recommendations: string[];
+  alternativeSuggestion?: {
+    productName: string;
+    reason: string;
+    healthScore: number;
+    ingredients: {
+      name: string;
+      healthRating: 'excellent' | 'good' | 'moderate' | 'poor' | 'avoid';
+      reason: string;
+    }[];
+    macronutrients: {
+      protein?: string;
+      carbs?: string;
+      fat?: string;
+      fiber?: string;
+      sugar?: string;
+      sodium?: string;
+    };
+    summary: string;
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -144,6 +163,60 @@ Ingredients health ratings:
       throw new Error('Invalid response format from AI');
     }
 
+    // If health score is below 50, get an alternative suggestion
+    if (analysis.healthScore < 50) {
+      try {
+        const alternativeCompletion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: `You are a nutritionist AI. Suggest a healthier alternative to a product.
+              
+Respond with ONLY valid JSON (no markdown, no code blocks) in this exact structure:
+{
+  "productName": "<healthier alternative product name>",
+  "reason": "<brief explanation why this is better (1-2 sentences)>",
+  "healthScore": <number 0-100>,
+  "ingredients": [
+    {
+      "name": "<ingredient name>",
+      "healthRating": "<excellent|good|moderate|poor|avoid>",
+      "reason": "<brief explanation>"
+    }
+  ],
+  "macronutrients": {
+    "protein": "<amount or 'unknown'>",
+    "carbs": "<amount or 'unknown'>",
+    "fat": "<amount or 'unknown'>",
+    "fiber": "<amount or 'unknown'>",
+    "sugar": "<amount or 'unknown'>",
+    "sodium": "<amount or 'unknown'>"
+  },
+  "summary": "<2-3 sentence health assessment>"
+}`,
+            },
+            {
+              role: 'user',
+              content: `The product "${analysis.productName}" has a health score of ${analysis.healthScore}/100. Suggest a healthier alternative that serves the same purpose or category.`,
+            },
+          ],
+        });
+
+        const alternativeText = alternativeCompletion.choices[0].message.content;
+        if (alternativeText) {
+          try {
+            analysis.alternativeSuggestion = JSON.parse(alternativeText);
+          } catch (e) {
+            console.error('Failed to parse alternative suggestion:', alternativeText);
+          }
+        }
+      } catch (error) {
+        console.error('Error getting alternative suggestion:', error);
+        // Continue without alternative suggestion if it fails
+      }
+    }
+
     // Save to database
     const { data, error } = await supabaseAdmin
       .from('nutrition_entries')
@@ -155,6 +228,7 @@ Ingredients health ratings:
           nutrition_info: {
             macronutrients: analysis.macronutrients,
             summary: analysis.summary,
+            ...(analysis.alternativeSuggestion && { alternativeSuggestion: analysis.alternativeSuggestion }),
           },
           health_score: analysis.healthScore,
           ingredients_breakdown: analysis.ingredients,

@@ -27,6 +27,18 @@ interface NutritionEntry {
   nutrition_info?: {
     macronutrients: Record<string, string>;
     summary: string;
+    alternativeSuggestion?: {
+      productName: string;
+      reason: string;
+      healthScore: number;
+      ingredients: Array<{
+        name: string;
+        healthRating: 'excellent' | 'good' | 'moderate' | 'poor' | 'avoid';
+        reason: string;
+      }>;
+      macronutrients: Record<string, string>;
+      summary: string;
+    };
   };
   ingredients_breakdown?: Array<{
     name: string;
@@ -220,6 +232,8 @@ export default function DashboardPage() {
   const [nutritionFile, setNutritionFile] = useState<File | null>(null);
   const [nutritionProductName, setNutritionProductName] = useState('');
   const [nutritionAnalyzing, setNutritionAnalyzing] = useState(false);
+  const [selectedHistoryEntry, setSelectedHistoryEntry] = useState<NutritionEntry | null>(null);
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
   const nutritionFileInputRef = useRef<HTMLInputElement>(null);
 
   // --- Auth Check ---
@@ -706,6 +720,209 @@ export default function DashboardPage() {
     </div>
   );
 
+  // --- History Detail Modal ---
+  const HistoryDetailModal = ({ entry, onClose }: { entry: NutritionEntry; onClose: () => void }) => {
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') onClose();
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
+    return (
+      <div
+        className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+        onClick={onClose}
+      >
+        <div className="relative max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white/95 dark:bg-black/95 rounded-2xl p-8" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+          >
+            ✕
+          </button>
+
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">{entry.product_name}</h2>
+          
+          {/* Health Score */}
+          <div className="mb-6 p-4 rounded-lg bg-white/50 dark:bg-black/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Health Score</span>
+              <span className="text-3xl font-bold" style={{
+                color: entry.health_score >= 70 ? '#22c55e' : entry.health_score >= 50 ? '#eab308' : '#ef4444'
+              }}>
+                {entry.health_score}/100
+              </span>
+            </div>
+            <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-2">
+              <div 
+                className="h-2 rounded-full" 
+                style={{
+                  width: `${entry.health_score}%`,
+                  backgroundColor: entry.health_score >= 70 ? '#22c55e' : entry.health_score >= 50 ? '#eab308' : '#ef4444'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Product Image */}
+          {entry.image_data && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Product Image</h4>
+              <img src={entry.image_data} alt={entry.product_name} className="w-full max-h-64 rounded-lg object-contain bg-gray-100 dark:bg-gray-900 p-4" />
+            </div>
+          )}
+
+          {/* Summary */}
+          {entry.nutrition_info?.summary && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Summary</h4>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{entry.nutrition_info.summary}</p>
+            </div>
+          )}
+
+          {/* Macronutrients */}
+          {entry.nutrition_info?.macronutrients && Object.keys(entry.nutrition_info.macronutrients).length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Nutritional Info</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {Object.entries(entry.nutrition_info.macronutrients).map(([key, value]: [string, any]) => (
+                  <div key={key} className="p-3 rounded-lg bg-white/50 dark:bg-black/20">
+                    <p className="text-xs font-medium text-gray-600 dark:text-gray-400 capitalize">{key}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{value || 'Unknown'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Ingredients */}
+          {entry.ingredients_breakdown && entry.ingredients_breakdown.length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Ingredients Analysis</h4>
+              <div className="space-y-2">
+                {entry.ingredients_breakdown.map((ing: any, idx: number) => (
+                  <div key={idx} className="p-3 rounded-lg bg-white/50 dark:bg-black/20">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{ing.name}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">{ing.reason}</p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-1 rounded whitespace-nowrap ml-2 ${
+                        ing.healthRating === 'excellent' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                        ing.healthRating === 'good' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                        ing.healthRating === 'moderate' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                        ing.healthRating === 'poor' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
+                        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                      }`}>
+                        {ing.healthRating}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Alternative Suggestion */}
+          {entry.nutrition_info?.alternativeSuggestion && (
+            <div className="mb-6 pt-6 border-t border-white/20">
+              <div className="p-6 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200/50 dark:border-green-700/50">
+                <h3 className="text-lg font-bold text-green-900 dark:text-green-300 mb-3 flex items-center gap-2">
+                  <span className="text-xl">💡</span> Healthier Alternative
+                </h3>
+                
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">{entry.nutrition_info.alternativeSuggestion.productName}</h4>
+                
+                {/* Why it's better */}
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">{entry.nutrition_info.alternativeSuggestion.reason}</p>
+                
+                {/* Alternative Health Score */}
+                <div className="mb-4 p-4 rounded-lg bg-white/60 dark:bg-black/20">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Health Score</span>
+                    <span className="text-2xl font-bold" style={{
+                      color: entry.nutrition_info.alternativeSuggestion.healthScore >= 70 ? '#22c55e' : entry.nutrition_info.alternativeSuggestion.healthScore >= 50 ? '#eab308' : '#ef4444'
+                    }}>
+                      {entry.nutrition_info.alternativeSuggestion.healthScore}/100
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-2">
+                    <div 
+                      className="h-2 rounded-full transition-all" 
+                      style={{
+                        width: `${entry.nutrition_info.alternativeSuggestion.healthScore}%`,
+                        backgroundColor: entry.nutrition_info.alternativeSuggestion.healthScore >= 70 ? '#22c55e' : entry.nutrition_info.alternativeSuggestion.healthScore >= 50 ? '#eab308' : '#ef4444'
+                      }}
+                    />
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                    +{entry.nutrition_info.alternativeSuggestion.healthScore - entry.health_score} points better
+                  </div>
+                </div>
+
+                {/* Alternative Macronutrients */}
+                {entry.nutrition_info.alternativeSuggestion.macronutrients && Object.keys(entry.nutrition_info.alternativeSuggestion.macronutrients).length > 0 && (
+                  <div className="mb-4">
+                    <h5 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Nutritional Info</h5>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {Object.entries(entry.nutrition_info.alternativeSuggestion.macronutrients).map(([key, value]: [string, any]) => (
+                        <div key={key} className="p-2 rounded bg-white/40 dark:bg-black/20">
+                          <p className="text-xs font-medium text-gray-600 dark:text-gray-400 capitalize">{key}</p>
+                          <p className="text-xs font-semibold text-gray-900 dark:text-white">{value || 'Unknown'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Alternative Ingredients */}
+                {entry.nutrition_info.alternativeSuggestion.ingredients && entry.nutrition_info.alternativeSuggestion.ingredients.length > 0 && (
+                  <div className="mb-4">
+                    <h5 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Key Ingredients</h5>
+                    <div className="space-y-1">
+                      {entry.nutrition_info.alternativeSuggestion.ingredients.slice(0, 5).map((ing: any, idx: number) => (
+                        <div key={idx} className="p-2 rounded bg-white/40 dark:bg-black/20">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-xs font-medium text-gray-900 dark:text-white">{ing.name}</p>
+                            </div>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded whitespace-nowrap ml-1 ${
+                              ing.healthRating === 'excellent' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                              ing.healthRating === 'good' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                              ing.healthRating === 'moderate' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                              ing.healthRating === 'poor' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
+                              'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                            }`}>
+                              {ing.healthRating}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Alternative Summary */}
+                {entry.nutrition_info.alternativeSuggestion.summary && (
+                  <div className="p-3 rounded bg-white/40 dark:bg-black/20">
+                    <p className="text-xs text-gray-700 dark:text-gray-300">{entry.nutrition_info.alternativeSuggestion.summary}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Analyzed Date */}
+          <div className="text-xs text-gray-500 dark:text-gray-400 pt-4 border-t border-white/20">
+            Analyzed on {new Date(entry.created_at).toLocaleString()}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const NutritionView = () => (
     <div className="max-w-4xl mx-auto w-full animate-fade-in-up space-y-6">
       {/* Analysis Form */}
@@ -848,7 +1065,7 @@ export default function DashboardPage() {
 
           {/* Recommendations */}
           {currentAnalysis.recommendations && currentAnalysis.recommendations.length > 0 && (
-            <div>
+            <div className="mb-6">
               <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Recommendations</h4>
               <ul className="space-y-2">
                 {currentAnalysis.recommendations.map((rec: string, idx: number) => (
@@ -860,37 +1077,166 @@ export default function DashboardPage() {
               </ul>
             </div>
           )}
+
+          {/* Alternative Suggestion */}
+          {currentAnalysis.alternativeSuggestion && (
+            <div className="pt-6 border-t border-white/20">
+              <div className="p-6 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200/50 dark:border-green-700/50">
+                <h3 className="text-lg font-bold text-green-900 dark:text-green-300 mb-3 flex items-center gap-2">
+                  <span className="text-xl">💡</span> Healthier Alternative
+                </h3>
+                
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">{currentAnalysis.alternativeSuggestion.productName}</h4>
+                
+                {/* Why it's better */}
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">{currentAnalysis.alternativeSuggestion.reason}</p>
+                
+                {/* Alternative Health Score */}
+                <div className="mb-4 p-4 rounded-lg bg-white/60 dark:bg-black/20">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Health Score</span>
+                    <span className="text-2xl font-bold" style={{
+                      color: currentAnalysis.alternativeSuggestion.healthScore >= 70 ? '#22c55e' : currentAnalysis.alternativeSuggestion.healthScore >= 50 ? '#eab308' : '#ef4444'
+                    }}>
+                      {currentAnalysis.alternativeSuggestion.healthScore}/100
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-2">
+                    <div 
+                      className="h-2 rounded-full transition-all" 
+                      style={{
+                        width: `${currentAnalysis.alternativeSuggestion.healthScore}%`,
+                        backgroundColor: currentAnalysis.alternativeSuggestion.healthScore >= 70 ? '#22c55e' : currentAnalysis.alternativeSuggestion.healthScore >= 50 ? '#eab308' : '#ef4444'
+                      }}
+                    />
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                    +{currentAnalysis.alternativeSuggestion.healthScore - currentAnalysis.healthScore} points better
+                  </div>
+                </div>
+
+                {/* Alternative Macronutrients */}
+                {currentAnalysis.alternativeSuggestion.macronutrients && (
+                  <div className="mb-4">
+                    <h5 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Nutritional Info</h5>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {Object.entries(currentAnalysis.alternativeSuggestion.macronutrients).map(([key, value]: [string, any]) => (
+                        <div key={key} className="p-2 rounded bg-white/40 dark:bg-black/20">
+                          <p className="text-xs font-medium text-gray-600 dark:text-gray-400 capitalize">{key}</p>
+                          <p className="text-xs font-semibold text-gray-900 dark:text-white">{value || 'Unknown'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Alternative Ingredients */}
+                {currentAnalysis.alternativeSuggestion.ingredients && currentAnalysis.alternativeSuggestion.ingredients.length > 0 && (
+                  <div className="mb-4">
+                    <h5 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Key Ingredients</h5>
+                    <div className="space-y-1">
+                      {currentAnalysis.alternativeSuggestion.ingredients.slice(0, 5).map((ing: any, idx: number) => (
+                        <div key={idx} className="p-2 rounded bg-white/40 dark:bg-black/20">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-xs font-medium text-gray-900 dark:text-white">{ing.name}</p>
+                            </div>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded whitespace-nowrap ml-1 ${
+                              ing.healthRating === 'excellent' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                              ing.healthRating === 'good' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                              ing.healthRating === 'moderate' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                              ing.healthRating === 'poor' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
+                              'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                            }`}>
+                              {ing.healthRating}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Alternative Summary */}
+                {currentAnalysis.alternativeSuggestion.summary && (
+                  <div className="p-3 rounded bg-white/40 dark:bg-black/20">
+                    <p className="text-xs text-gray-700 dark:text-gray-300">{currentAnalysis.alternativeSuggestion.summary}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* History */}
       {nutritionHistory.length > 0 && (
         <div className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 shadow-2xl backdrop-blur-xl border border-white/20">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Analysis History</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Analysis History ({nutritionHistory.length})</h3>
+          
+          {/* Search */}
+          <div className="mb-6">
+            <input 
+              type="text"
+              placeholder="Search by product name..."
+              value={historySearchQuery}
+              onChange={(e) => setHistorySearchQuery(e.target.value)}
+              className="w-full px-4 py-2 rounded-xl bg-white/50 dark:bg-black/20 border border-white/10 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
+            />
+          </div>
+
           {nutritionLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {nutritionHistory.map((entry) => (
-                <div key={entry.id} className="p-4 rounded-lg bg-white/50 dark:bg-black/20 border border-white/10">
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-medium text-gray-900 dark:text-white">{entry.product_name}</h4>
-                    <span className="text-lg font-bold" style={{
-                      color: entry.health_score >= 70 ? '#22c55e' : entry.health_score >= 50 ? '#eab308' : '#ef4444'
-                    }}>
-                      {entry.health_score}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {new Date(entry.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              ))}
+            <div className="space-y-3">
+              {nutritionHistory
+                .filter(entry => entry.product_name.toLowerCase().includes(historySearchQuery.toLowerCase()))
+                .length === 0 ? (
+                  <p className="text-center text-gray-500 dark:text-gray-400 py-8">No products found matching "{historySearchQuery}"</p>
+                ) : (
+                  nutritionHistory
+                    .filter(entry => entry.product_name.toLowerCase().includes(historySearchQuery.toLowerCase()))
+                    .map((entry) => (
+                      <button
+                        key={entry.id}
+                        onClick={() => setSelectedHistoryEntry(entry)}
+                        className="w-full p-4 rounded-lg bg-white/50 dark:bg-black/20 border border-white/10 hover:border-green-500/50 hover:bg-white/70 dark:hover:bg-black/40 transition text-left"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-medium text-gray-900 dark:text-white">{entry.product_name}</h4>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-bold" style={{
+                              color: entry.health_score >= 70 ? '#22c55e' : entry.health_score >= 50 ? '#eab308' : '#ef4444'
+                            }}>
+                              {entry.health_score}
+                            </span>
+                            <span className="text-xs text-gray-400">→</span>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {new Date(entry.created_at).toLocaleDateString()} at {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          {entry.image_data && (
+                            <span className="text-xs text-green-600 dark:text-green-400">📷 Image</span>
+                          )}
+                        </div>
+                      </button>
+                    ))
+                )}
             </div>
           )}
         </div>
+      )}
+
+      {/* History Detail Modal */}
+      {selectedHistoryEntry && (
+        <HistoryDetailModal 
+          entry={selectedHistoryEntry} 
+          onClose={() => setSelectedHistoryEntry(null)} 
+        />
       )}
     </div>
   );
