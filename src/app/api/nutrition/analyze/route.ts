@@ -71,14 +71,13 @@ export async function POST(request: NextRequest) {
     if (productUrl) {
       try {
         console.log('[ANALYZE API] Scraping URL:', productUrl);
-        const scrapeResponse = await fetch(
-          new URL('/api/nutrition/scrape', request.url.split('/api')[0] + '/api').href,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: productUrl }),
-          }
-        );
+        const origin = request.nextUrl.origin;
+        const scrapeUrl = new URL('/api/nutrition/scrape', origin);
+        const scrapeResponse = await fetch(scrapeUrl.toString(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: productUrl }),
+        });
 
         if (!scrapeResponse.ok) {
           const error = await scrapeResponse.json();
