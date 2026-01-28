@@ -187,6 +187,18 @@ export default function HSCGeneratorPage() {
     sample_answer: string;
   };
 
+  const fetchWithTimeout = async (url: string, timeoutMs = 10000) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      return response;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
   const [question, setQuestion] = useState<Question | null>(null);
   const [brushSize, setBrushSize] = useState(2);
   const [canRedo, setCanRedo] = useState(false);
@@ -209,6 +221,18 @@ export default function HSCGeneratorPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [userCreatedAt, setUserCreatedAt] = useState<string>('');
+
+  const fallbackQuestion: Question = {
+    id: 'fallback-001',
+    grade: yearLevel,
+    year: new Date().getFullYear(),
+    subject: 'Mathematics',
+    topic: 'General',
+    marks: 4,
+    question_text: HSC_QUESTIONS[0],
+    marking_criteria: 'Sample question (fallback mode).',
+    sample_answer: 'Sample answer (fallback mode).',
+  };
 
   // Dev mode state
   const [isDevMode, setIsDevMode] = useState(false);
@@ -667,16 +691,17 @@ export default function HSCGeneratorPage() {
       if (filterSubject) params.append('subject', filterSubject);
       if (filterTopic) params.append('topic', filterTopic);
 
-      const response = await fetch(`/api/hsc/questions?${params.toString()}`);
+      const response = await fetchWithTimeout(`/api/hsc/questions?${params.toString()}`);
       
       if (!response.ok) {
-        throw new Error('Failed to fetch question');
+        throw new Error(`Failed to fetch question (${response.status})`);
       }
 
       const data = await response.json();
       setQuestion(data.question);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load question');
+      setQuestion(fallbackQuestion);
       console.error('Error fetching question:', err);
     } finally {
       setIsGenerating(false);
@@ -692,7 +717,7 @@ export default function HSCGeneratorPage() {
     const loadInitialQuestion = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`/api/hsc/questions?grade=${yearLevel}`);
+        const response = await fetchWithTimeout(`/api/hsc/questions?grade=${yearLevel}`);
         if (!response.ok) {
           throw new Error(`Failed to load question (${response.status})`);
         }
@@ -701,6 +726,7 @@ export default function HSCGeneratorPage() {
       } catch (err) {
         console.error('Error loading initial question:', err);
         setError(err instanceof Error ? err.message : 'Failed to load question');
+        setQuestion(fallbackQuestion);
       } finally {
         setLoading(false);
       }
