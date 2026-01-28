@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Undo2, Redo2, Trash2, Send, Upload, ArrowLeft,
   BookOpen, Calculator, Atom, Beaker, ChevronRight,
@@ -12,43 +12,32 @@ import TikzGraph from '@/components/TikzGraph';
 
 // LaTeX and TikZ renderer component
 function LatexText({ text }: { text: string }) {
-  const [segments, setSegments] = useState<
-    Array<{
+  const segments = useMemo(() => {
+    const segmentList: Array<{
       type: 'html' | 'tikz';
       content: string;
-    }>
-  >([]);
+    }> = [];
 
-  useEffect(() => {
-    const parseTextIntoSegments = () => {
-      const segmentList: Array<{
-        type: 'html' | 'tikz';
-        content: string;
-      }> = [];
+    const parts = text.split(
+      /(\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\})/
+    );
 
-      const parts = text.split(
-        /(\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\})/
-      );
-      
-      parts.forEach((part) => {
-        if (part.includes('\\begin{tikzpicture}')) {
-          segmentList.push({
-            type: 'tikz',
-            content: part,
-          });
-        } else if (part.trim()) {
-          // HTML/LaTeX part
-          segmentList.push({
-            type: 'html',
-            content: part,
-          });
-        }
-      });
-      
-      setSegments(segmentList);
-    };
+    parts.forEach((part) => {
+      if (part.includes('\\begin{tikzpicture}')) {
+        segmentList.push({
+          type: 'tikz',
+          content: part,
+        });
+      } else if (part.trim()) {
+        // HTML/LaTeX part
+        segmentList.push({
+          type: 'html',
+          content: part,
+        });
+      }
+    });
 
-    parseTextIntoSegments();
+    return segmentList;
   }, [text]);
 
   return (
@@ -252,20 +241,22 @@ export default function HSCGeneratorPage() {
 
   // Check user auth and dev mode on mount
   useEffect(() => {
-    const userJson = localStorage.getItem('user');
-    if (userJson) {
-      try {
-        const user = JSON.parse(userJson);
-        setUserEmail(user.email);
-        setUserCreatedAt(user.created_at);
-        
-        // Check if user is dev
-        if (user.email === 'peter7775271@gmail.com') {
-          setIsDevMode(true);
-        }
-      } catch (e) {
-        console.error('Error parsing user:', e);
+    if (typeof window === 'undefined') return;
+
+    try {
+      const userJson = localStorage.getItem('user');
+      if (!userJson) return;
+
+      const user = JSON.parse(userJson);
+      setUserEmail(user.email);
+      setUserCreatedAt(user.created_at);
+
+      // Check if user is dev
+      if (user.email === 'peter7775271@gmail.com') {
+        setIsDevMode(true);
       }
+    } catch (e) {
+      console.error('Error parsing user:', e);
     }
   }, []);
 
