@@ -27,6 +27,7 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <link rel="stylesheet" href="https://tikzjax.com/v1/fonts.css" />
+        <link rel="preconnect" href="https://tikzjax.com" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -34,7 +35,7 @@ export default function RootLayout({
         {children}
         <Script
           src="https://tikzjax.com/v1/tikzjax.js"
-          strategy="afterInteractive"
+          strategy="beforeInteractive"
         />
       </body>
     </html>
