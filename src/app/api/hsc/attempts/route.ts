@@ -1,0 +1,91 @@
+import { supabaseAdmin } from '@/lib/db';
+import { NextRequest, NextResponse } from 'next/server';
+
+// GET saved attempts for a user
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('user_id');
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'user_id is required' },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('student_saved_attempts')
+      .select(`
+        *,
+        hsc_questions (
+          id,
+          grade,
+          year,
+          subject,
+          topic,
+          marks,
+          question_text,
+          marking_criteria,
+          sample_answer
+        )
+      `)
+      .eq('user_id', userId)
+      .order('submitted_at', { ascending: false });
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to fetch saved attempts', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ attempts: data || [] });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Internal server error', details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+
+// POST new saved attempt
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { user_id, question_id, canvas_image_url, feedback_json } = body;
+
+    if (!user_id || !question_id) {
+      return NextResponse.json(
+        { error: 'user_id and question_id are required' },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('student_saved_attempts')
+      .insert([
+        {
+          user_id,
+          question_id,
+          canvas_image_url,
+          feedback_json: feedback_json || null,
+        }
+      ])
+      .select();
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to save attempt', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ attempt: data?.[0] }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Internal server error', details: String(error) },
+      { status: 500 }
+    );
+  }
+}

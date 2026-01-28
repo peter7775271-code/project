@@ -1,8 +1,56 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Base colors */
+  --clr-dark-a0: #000000;
+  --clr-light-a0: #ffffff;
+
+  /* Theme primary colors */
+  --clr-primary-a0: #dacb7d;
+  --clr-primary-a10: #dfd18b;
+  --clr-primary-a20: #e3d69a;
+  --clr-primary-a30: #e8dca8;
+  --clr-primary-a40: #ece2b6;
+  --clr-primary-a50: #f0e8c5;
+
+  /* Theme surface colors */
+  --clr-surface-a0: #121212;
+  --clr-surface-a10: #282828;
+  --clr-surface-a20: #3f3f3f;
+  --clr-surface-a30: #575757;
+  --clr-surface-a40: #717171;
+  --clr-surface-a50: #8b8b8b;
+
+  /* Theme tonal surface colors */
+  --clr-surface-tonal-a0: #23221c;
+  --clr-surface-tonal-a10: #383731;
+  --clr-surface-tonal-a20: #4d4c47;
+  --clr-surface-tonal-a30: #64635f;
+  --clr-surface-tonal-a40: #7c7b77;
+  --clr-surface-tonal-a50: #959491;
+
+  /* Success colors */
+  --clr-success-a0: #22946e;
+  --clr-success-a10: #47d5a6;
+  --clr-success-a20: #9ae8ce;
+
+  /* Warning colors */
+  --clr-warning-a0: #a87a2a;
+  --clr-warning-a10: #d7ac61;
+  --clr-warning-a20: #ecd7b2;
+
+  /* Danger colors */
+  --clr-danger-a0: #9c2121;
+  --clr-danger-a10: #d94a4a;
+  --clr-danger-a20: #eb9e9e;
+
+  /* Info colors */
+  --clr-info-a0: #21498a;
+  --clr-info-a10: #4077d1;
+  --clr-info-a20: #92b2e5;
+
+  --background: var(--clr-surface-a0);
+  --foreground: var(--clr-primary-a50);
 }
 
 @theme inline {
@@ -10,13 +58,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -52,4 +93,22 @@ body {
 
 .animation-delay-4000 {
   animation-delay: 4s;
+}
+
+.tikz-output {
+  max-width: 640px;
+  margin: 12px auto;
+  padding: 12px;
+  background: var(--clr-surface-a10);
+  border: 1px solid var(--clr-surface-a20);
+  border-radius: 10px;
+}
+
+.tikz-output svg,
+.tikz-output img {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  background: transparent;
 }
