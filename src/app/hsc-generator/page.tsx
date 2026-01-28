@@ -8,7 +8,7 @@ import {
   RefreshCw, Eye, Download, Bookmark, Settings, Menu, X,
   CheckCircle2, AlertTriangle, XCircle, TrendingUp, Edit2
 } from 'lucide-react';
-import TikzGraph from '@/components/TikzGraph';
+import TikzRenderer from '@/components/TikzRenderer';
 
 // LaTeX and TikZ renderer component
 function LatexText({ text }: { text: string }) {
@@ -46,7 +46,7 @@ function LatexText({ text }: { text: string }) {
         if (segment.type === 'tikz') {
           return (
             <div key={`tikz-${i}`} className="tikz-output">
-              <TikzGraph code={segment.content} />
+              <TikzRenderer code={segment.content} />
             </div>
           );
         }
