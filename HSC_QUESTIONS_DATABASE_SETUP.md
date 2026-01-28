@@ -17,8 +17,10 @@ CREATE TABLE hsc_questions (
   subject TEXT NOT NULL,
   topic TEXT NOT NULL,
   marks INTEGER NOT NULL,
+  question_number TEXT,
   question_text TEXT NOT NULL,
   graph_image_data TEXT,
+  graph_image_size TEXT DEFAULT 'medium',
   marking_criteria TEXT NOT NULL,
   sample_answer TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT now()
@@ -95,8 +97,10 @@ Your tables should now be created. You'll see:
 | subject | TEXT | Subject name (e.g., 'Mathematics Advanced') |
 | topic | TEXT | Topic name (e.g., 'Complex Numbers') |
 | marks | INTEGER | Total marks for question |
+| question_number | TEXT | Optional question number (e.g., 11 or 11a)) |
 | question_text | TEXT | Full question in LaTeX format |
 | graph_image_data | TEXT | Optional data URL for pre-rendered graph (e.g., PNG) |
+| graph_image_size | TEXT | Optional size: small, medium, large (default: medium) |
 | marking_criteria | TEXT | Marking criteria in LaTeX format |
 | sample_answer | TEXT | Sample solution in LaTeX format |
 | created_at | TIMESTAMP | When question was added |

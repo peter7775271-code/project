@@ -4,7 +4,7 @@ export async function POST(request: Request) {
   try {
 
     const body = await request.json();
-    const { grade, year, subject, topic, marks, questionText, markingCriteria, sampleAnswer, graphImageData } = body;
+    const { grade, year, subject, topic, marks, questionNumber, questionText, markingCriteria, sampleAnswer, graphImageData, graphImageSize } = body;
 
     // Validate required fields
     if (!grade || !year || !subject || !topic || !marks || !questionText || !markingCriteria || !sampleAnswer) {
@@ -24,10 +24,12 @@ export async function POST(request: Request) {
           subject,
           topic,
           marks: parseInt(marks),
+          question_number: questionNumber || null,
           question_text: questionText,
           marking_criteria: markingCriteria,
           sample_answer: sampleAnswer,
           graph_image_data: graphImageData || null,
+          graph_image_size: graphImageSize || 'medium',
         },
       ])
       .select();

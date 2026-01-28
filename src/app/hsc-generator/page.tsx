@@ -135,73 +135,109 @@ function TikzBlock({ code }: { code: string }) {
 
 // Separate component to handle LaTeX rendering for each HTML segment
 function HtmlSegment({ html }: { html: string }) {
-  const [rendered, setRendered] = useState<string>(html);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const renderLatex = () => {
-      if (!(window as any).katex) {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js';
-        script.async = true;
-        
-        script.onload = () => {
-          processLatex();
-        };
-        
-        const styleLink = document.createElement('link');
-        styleLink.rel = 'stylesheet';
-        styleLink.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css';
-        document.head.appendChild(styleLink);
-        
-        document.head.appendChild(script);
-      } else {
-        processLatex();
-      }
+    const convertTabularToHtml = (input: string) => {
+      let output = input.replace(/\\begin\{center\}|\\end\{center\}/g, '');
+
+      output = output.replace(/\\begin\{tabular\}\{[^}]*\}([\s\S]*?)\\end\{tabular\}/g, (_match, body) => {
+        const rows = body
+          .split('\\\\')
+          .map((row: string) => row.replace(/\\hline/g, '').trim())
+          .filter((row: string) => row.length > 0);
+
+        const tableRows = rows
+          .map((row: string) => {
+            const cells = row.split('&').map((cell) => cell.trim());
+            const tds = cells.map((cell) => `<td>${cell}</td>`).join('');
+            return `<tr>${tds}</tr>`;
+          })
+          .join('');
+
+        return `<div class="latex-table"><table>${tableRows}</table></div>`;
+      });
+
+      return output;
     };
 
-    const processLatex = () => {
-      if (!(window as any).katex) return;
-      
+    const ensureKatex = () => {
+      return new Promise<void>((resolve, reject) => {
+        const loadScript = (id: string, src: string, onLoad: () => void) => {
+          const existing = document.getElementById(id) as HTMLScriptElement | null;
+          if (existing) {
+            if (existing.getAttribute('data-loaded') === 'true') {
+              onLoad();
+            } else {
+              existing.addEventListener('load', onLoad, { once: true });
+              existing.addEventListener('error', () => reject(new Error('Failed to load script')));
+            }
+            return;
+          }
+
+          const script = document.createElement('script');
+          script.id = id;
+          script.src = src;
+          script.async = true;
+          script.onload = () => {
+            script.setAttribute('data-loaded', 'true');
+            onLoad();
+          };
+          script.onerror = () => reject(new Error('Failed to load script'));
+          document.head.appendChild(script);
+        };
+
+        if (!document.getElementById('katex-css')) {
+          const styleLink = document.createElement('link');
+          styleLink.id = 'katex-css';
+          styleLink.rel = 'stylesheet';
+          styleLink.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css';
+          document.head.appendChild(styleLink);
+        }
+
+        if (!(window as any).katex) {
+          loadScript('katex-script', 'https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js', () => {
+            loadScript('katex-auto-render', 'https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js', () => resolve());
+          });
+          return;
+        }
+
+        if (!(window as any).renderMathInElement) {
+          loadScript('katex-auto-render', 'https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js', () => resolve());
+          return;
+        }
+
+        resolve();
+      });
+    };
+
+    const renderLatex = async () => {
+      if (!containerRef.current) return;
+
+      const processed = convertTabularToHtml(html).replace(/\n/g, '<br />');
+      containerRef.current.innerHTML = processed;
+
       try {
-        let result = html;
-        
-        // Process display mode LaTeX ($$...$$)
-        result = result.replace(/\$\$([^\$]+)\$\$/g, (match, latex) => {
-          try {
-            const rendered = (window as any).katex.renderToString(latex, { 
-              throwOnError: false,
-              displayMode: true 
-            });
-            return `<div class="katex-wrapper">${rendered}</div>`;
-          } catch (e) {
-            return match;
-          }
-        });
-        
-        // Process inline LaTeX ($...$)
-        result = result.replace(/\$([^\$]+)\$/g, (match, latex) => {
-          try {
-            const rendered = (window as any).katex.renderToString(latex, { throwOnError: false });
-            return `<span class="katex-wrapper">${rendered}</span>`;
-          } catch (e) {
-            return match;
-          }
-        });
-        
-        // Convert newlines to <br> tags
-        result = result.replace(/\n/g, '<br />');
-        
-        setRendered(result);
+        await ensureKatex();
+        if ((window as any).renderMathInElement) {
+          (window as any).renderMathInElement(containerRef.current, {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '\\[', right: '\\]', display: true },
+              { left: '$', right: '$', display: false },
+            ],
+            throwOnError: false,
+          });
+        }
       } catch (e) {
         console.error('LaTeX error:', e);
-        setRendered(html);
       }
     };
 
     renderLatex();
   }, [html]);
 
-  return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
+  return <div ref={containerRef} style={{ whiteSpace: 'pre-wrap' }} />;
 }
 
 type Subject = {
@@ -259,10 +295,12 @@ export default function HSCGeneratorPage() {
     subject: string;
     topic: string;
     marks: number;
+    question_number?: string | null;
     question_text: string;
     marking_criteria: string;
     sample_answer: string;
     graph_image_data?: string | null;
+    graph_image_size?: 'small' | 'medium' | 'large' | null;
   };
 
   const fetchWithTimeout = async (url: string, timeoutMs = 10000) => {
@@ -296,6 +334,9 @@ export default function HSCGeneratorPage() {
   const [showSavedAttempts, setShowSavedAttempts] = useState(false);
   const [selectedAttempt, setSelectedAttempt] = useState<any>(null);
   const [showLatexModal, setShowLatexModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [isUpdatingQuestion, setIsUpdatingQuestion] = useState(false);
   const [viewMode, setViewMode] = useState<'generator' | 'saved' | 'settings' | 'dev-questions'>('generator');
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
@@ -308,10 +349,12 @@ export default function HSCGeneratorPage() {
     subject: 'Mathematics',
     topic: 'General',
     marks: 4,
+    question_number: null,
     question_text: HSC_QUESTIONS[0],
     marking_criteria: 'Sample question (fallback mode).',
     sample_answer: 'Sample answer (fallback mode).',
     graph_image_data: null,
+    graph_image_size: 'medium',
   };
 
   // Dev mode state
@@ -326,10 +369,25 @@ export default function HSCGeneratorPage() {
     subject: 'Mathematics Advanced',
     topic: 'Complex Numbers',
     marks: 4,
+    questionNumber: '',
     questionText: '',
     markingCriteria: '',
     sampleAnswer: '',
     graphImageData: '',
+    graphImageSize: 'medium',
+  });
+  const [editQuestion, setEditQuestion] = useState({
+    grade: 'Year 12',
+    year: new Date().getFullYear().toString(),
+    subject: 'Mathematics Advanced',
+    topic: 'Complex Numbers',
+    marks: 4,
+    questionNumber: '',
+    questionText: '',
+    markingCriteria: '',
+    sampleAnswer: '',
+    graphImageData: '',
+    graphImageSize: 'medium',
   });
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
 
@@ -550,7 +608,9 @@ export default function HSCGeneratorPage() {
         marks: question.marks,
         subject: question.subject,
         topic: question.topic,
+        questionNumber: question.question_number || null,
         graphImageData: question.graph_image_data || null,
+        graphImageSize: question.graph_image_size || 'medium',
         submittedAnswer: submittedAnswer,
         feedback: feedback,
         sampleAnswer: question.sample_answer,
@@ -599,10 +659,12 @@ export default function HSCGeneratorPage() {
           subject: 'Mathematics Advanced',
           topic: 'Complex Numbers',
           marks: 4,
+          questionNumber: '',
           questionText: '',
           markingCriteria: '',
           sampleAnswer: '',
           graphImageData: '',
+          graphImageSize: 'medium',
         });
         // Reload questions list
         fetchAllQuestions();
@@ -614,6 +676,132 @@ export default function HSCGeneratorPage() {
       alert('Error adding question');
     } finally {
       setIsAddingQuestion(false);
+    }
+  };
+
+  const openEditQuestion = (q: any) => {
+    setEditingQuestionId(q.id);
+    setEditQuestion({
+      grade: q.grade,
+      year: String(q.year),
+      subject: q.subject,
+      topic: q.topic,
+      marks: q.marks,
+      questionNumber: q.question_number || '',
+      questionText: q.question_text,
+      markingCriteria: q.marking_criteria,
+      sampleAnswer: q.sample_answer,
+      graphImageData: q.graph_image_data || '',
+      graphImageSize: q.graph_image_size || 'medium',
+    });
+    setShowEditModal(true);
+  };
+
+  const updateQuestionInDatabase = async () => {
+    if (!editingQuestionId) return;
+
+    try {
+      setIsUpdatingQuestion(true);
+      const response = await fetch('/api/hsc/update-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: editingQuestionId,
+          ...editQuestion,
+        }),
+      });
+
+      if (response.ok) {
+        const { data } = await response.json();
+        const updated = Array.isArray(data) ? data[0] : null;
+        setAllQuestions(
+          allQuestions.map((q) => (q.id === editingQuestionId && updated ? updated : q))
+        );
+        setShowEditModal(false);
+        setEditingQuestionId(null);
+      } else {
+        alert('Failed to update question');
+      }
+    } catch (err) {
+      console.error('Error updating question:', err);
+      alert('Error updating question');
+    } finally {
+      setIsUpdatingQuestion(false);
+    }
+  };
+
+  const extractMarksAwarded = (evaluation: string, maxMarks: number) => {
+    if (!evaluation) return null;
+    const match = evaluation.match(/Marks\s*Awarded:\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)/i);
+    if (!match) return null;
+    const awarded = parseFloat(match[1]);
+    if (Number.isNaN(awarded)) return null;
+    return Math.min(Math.max(awarded, 0), maxMarks);
+  };
+
+  const handleGraphUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setNewQuestion({ ...newQuestion, graphImageData: dataUrl });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleGraphPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        e.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          setNewQuestion({ ...newQuestion, graphImageData: dataUrl });
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+  };
+
+  const handleEditGraphUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setEditQuestion({ ...editQuestion, graphImageData: dataUrl });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleEditGraphPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        e.preventDefault();
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          setEditQuestion({ ...editQuestion, graphImageData: dataUrl });
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
     }
   };
 
@@ -719,8 +907,11 @@ export default function HSCGeneratorPage() {
       }
       
       const data = await response.json();
+
+      const awardedMarks = extractMarksAwarded(data.evaluation, question.marks);
       
       setFeedback({
+        score: awardedMarks,
         maxMarks: question.marks,
         marking_criteria: question.marking_criteria,
         sample_answer: question.sample_answer,
@@ -760,6 +951,7 @@ export default function HSCGeneratorPage() {
     setFeedback(null);
     setUploadedFile(null);
     setSubmittedAnswer(null);
+    setTimeout(() => resetCanvas(400), 0);
     
     // Clear history
     historyRef.current = [];
@@ -791,6 +983,33 @@ export default function HSCGeneratorPage() {
     }
   };
 
+  const resetCanvas = (height?: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const targetHeight = height ?? canvasHeight;
+    canvas.width = canvas.offsetWidth;
+    canvas.height = targetHeight;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = brushSize;
+    ctx.strokeStyle = 'white';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    ctxRef.current = ctx;
+    redrawBackground();
+
+    historyRef.current = [canvas.toDataURL()];
+    redoStackRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+  };
+
   const extendCanvas = () => {
     setCanvasHeight((prev) => prev + 300);
   };
@@ -817,6 +1036,9 @@ export default function HSCGeneratorPage() {
 
     loadInitialQuestion();
   }, []);
+
+  const awardedMarks = typeof feedback?.score === 'number' ? feedback.score : null;
+  const maxMarks = feedback?.maxMarks ?? 0;
 
   return (
     <div 
@@ -1155,7 +1377,7 @@ export default function HSCGeneratorPage() {
                         <span className="text-zinc-400 text-sm block mt-1">{question.topic}</span>
                         </div>
                         <div className="text-right">
-                        <span className="block font-bold text-lg text-zinc-100">Question</span>
+                        <span className="block font-bold text-lg text-zinc-100">Question {question.question_number || ''}</span>
                         <span className="text-zinc-400 font-semibold">{question.marks} Marks</span>
                         </div>
                       </div>
@@ -1177,17 +1399,17 @@ export default function HSCGeneratorPage() {
                       className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap"
                       style={{ color: 'var(--clr-light-a0)' }}
                     >
+                      <LatexText text={question.question_text} />
                       {question.graph_image_data && (
                         <div className="my-4">
                           <img
                             src={question.graph_image_data}
                             alt="Question graph"
-                            className="w-full rounded-lg border"
+                            className={`rounded-lg border graph-image graph-image--${question.graph_image_size || 'medium'}`}
                             style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
                           />
                         </div>
                       )}
-                      <LatexText text={question.question_text} />
                     </div>
                   </>
                 ) : (
@@ -1430,7 +1652,13 @@ export default function HSCGeneratorPage() {
                               className="text-xl font-bold flex items-center gap-2"
                               style={{ color: 'var(--clr-primary-a50)' }}
                             >
-                                <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />
+                                {awardedMarks === 0 ? (
+                                  <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} />
+                                ) : awardedMarks !== null && awardedMarks < maxMarks ? (
+                                  <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} />
+                                ) : (
+                                  <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />
+                                )}
                                 Marking Complete
                             </h3>
                             <p 
@@ -1444,16 +1672,16 @@ export default function HSCGeneratorPage() {
                                 <span 
                                   className="block text-xs font-bold uppercase tracking-widest"
                                   style={{ color: 'var(--clr-surface-a50)' }}
-                                >Max Score</span>
+                                >Score</span>
                                 <div className="flex items-baseline gap-1 justify-end">
                                     <span 
                                       className="text-4xl font-bold"
                                       style={{ color: 'var(--clr-primary-a50)' }}
-                                    >{feedback.maxMarks}</span>
+                                    >{awardedMarks === null ? '--' : awardedMarks}</span>
                                     <span 
                                       className="text-xl font-medium"
                                       style={{ color: 'var(--clr-surface-a50)' }}
-                                    >marks</span>
+                                    >/{maxMarks}</span>
                                 </div>
                             </div>
                         </div>
@@ -1528,12 +1756,18 @@ export default function HSCGeneratorPage() {
                                         const lines = criteriaText.split(/\n/).filter((line: string) => line.trim());
                                         
                                         return lines.map((line: string, idx: number) => {
-                                          // Try to extract marks value (e.g., "1.5 marks" or "2 mark")
-                                          const markMatch = line.match(/([\d.]+)\s*marks?/i);
+                                          // Normalize bullet points like "•" and extract trailing mark values
+                                          const cleaned = line.replace(/^\s*[•\-]\s*/, '').trim();
+                                          // Try to extract marks value (e.g., "1.5 marks", "2 mark", or trailing "2")
+                                          const markMatch = cleaned.match(/([\d.]+)\s*marks?\b/i) || cleaned.match(/\b([\d.]+)\s*$/);
                                           if (markMatch) {
                                             const markValue = markMatch[1];
                                             // Remove the mark portion from the criteria text
-                                            const criteriaOnly = line.replace(/[\d.]+\s*marks?/gi, '').replace(/:\s*$/, '').trim();
+                                            const criteriaOnly = cleaned
+                                              .replace(/[\d.]+\s*marks?/gi, '')
+                                              .replace(/\b[\d.]+\s*$/, '')
+                                              .replace(/:\s*$/, '')
+                                              .trim();
                                             
                                             return (
                                               <tr 
@@ -1729,17 +1963,17 @@ export default function HSCGeneratorPage() {
                           className="font-serif text-lg"
                           style={{ color: 'var(--clr-light-a0)' }}
                         >
+                          <LatexText text={selectedAttempt.questionText} />
                           {selectedAttempt.graphImageData && (
                             <div className="my-4">
                               <img
                                 src={selectedAttempt.graphImageData}
                                 alt="Question graph"
-                                className="w-full rounded-lg border"
+                                className={`rounded-lg border graph-image graph-image--${selectedAttempt.graphImageSize || 'medium'}`}
                                 style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
                               />
                             </div>
                           )}
-                          <LatexText text={selectedAttempt.questionText} />
                         </div>
                         <div 
                           className="text-sm mt-2"
@@ -2131,6 +2365,22 @@ export default function HSCGeneratorPage() {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Question Number</label>
+                    <input 
+                      type="text" 
+                      value={newQuestion.questionNumber}
+                      onChange={(e) => setNewQuestion({...newQuestion, questionNumber: e.target.value})}
+                      placeholder="e.g., 11 or 11a)"
+                      className="w-full px-4 py-2 rounded-lg border"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a0)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                        color: 'var(--clr-primary-a50)',
+                      }}
+                    />
+                  </div>
+
+                  <div>
                     <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Question Text</label>
                     <textarea 
                       value={newQuestion.questionText}
@@ -2183,6 +2433,7 @@ export default function HSCGeneratorPage() {
                     <textarea 
                       value={newQuestion.graphImageData}
                       onChange={(e) => setNewQuestion({...newQuestion, graphImageData: e.target.value})}
+                      onPaste={handleGraphPaste}
                       placeholder="Paste a data:image/png;base64,... URL (optional)"
                       rows={3}
                       className="w-full px-4 py-2 rounded-lg border"
@@ -2192,6 +2443,40 @@ export default function HSCGeneratorPage() {
                         color: 'var(--clr-primary-a50)',
                       }}
                     />
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Graph Size</label>
+                      <select
+                        value={newQuestion.graphImageSize}
+                        onChange={(e) => setNewQuestion({ ...newQuestion, graphImageSize: e.target.value })}
+                        className="w-full px-4 py-2 rounded-lg border"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a0)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                          color: 'var(--clr-primary-a50)',
+                        }}
+                      >
+                        <option value="small">Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="large">Large</option>
+                      </select>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <label
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a20)',
+                          color: 'var(--clr-primary-a50)',
+                        }}
+                      >
+                        Upload PNG
+                        <input type="file" accept="image/png" hidden onChange={handleGraphUpload} />
+                      </label>
+                      {newQuestion.graphImageData && (
+                        <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                          Image loaded
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex gap-3 pt-4">
@@ -2248,6 +2533,9 @@ export default function HSCGeneratorPage() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{q.subject}</span>
+                            {q.question_number && (
+                              <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
+                            )}
                             <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
                             <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
                           </div>
@@ -2265,6 +2553,18 @@ export default function HSCGeneratorPage() {
                         >
                           {deletingQuestionId === q.id ? 'Deleting...' : 'Delete'}
                         </button>
+                        {isDevMode && (
+                          <button
+                            onClick={() => openEditQuestion(q)}
+                            className="ml-2 px-4 py-2 rounded-lg font-medium cursor-pointer"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a20)',
+                              color: 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            Edit
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2279,6 +2579,233 @@ export default function HSCGeneratorPage() {
           </div>
         </main>
       </div>
+
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0"
+            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+            onClick={() => setShowEditModal(false)}
+          />
+          <div
+            className="relative w-full max-w-3xl rounded-2xl border p-6 shadow-2xl overflow-y-auto"
+            style={{
+              backgroundColor: 'var(--clr-surface-a10)',
+              borderColor: 'var(--clr-surface-tonal-a20)',
+              color: 'var(--clr-primary-a50)',
+              maxHeight: '85vh',
+            }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Edit Question</h2>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="p-2 rounded-lg cursor-pointer"
+                style={{ backgroundColor: 'var(--clr-surface-a20)' }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Grade</label>
+                <select
+                  value={editQuestion.grade}
+                  onChange={(e) => setEditQuestion({ ...editQuestion, grade: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                >
+                  <option>Year 11</option>
+                  <option>Year 12</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Year</label>
+                <input
+                  type="number"
+                  value={editQuestion.year}
+                  onChange={(e) => setEditQuestion({ ...editQuestion, year: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Subject</label>
+                <select
+                  value={editQuestion.subject}
+                  onChange={(e) => setEditQuestion({ ...editQuestion, subject: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                >
+                  <option>Mathematics Advanced</option>
+                  <option>Mathematics Extension 1</option>
+                  <option>Mathematics Extension 2</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Topic</label>
+                <input
+                  type="text"
+                  value={editQuestion.topic}
+                  onChange={(e) => setEditQuestion({ ...editQuestion, topic: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Marks</label>
+                <input
+                  type="number"
+                  value={editQuestion.marks}
+                  onChange={(e) => setEditQuestion({ ...editQuestion, marks: parseInt(e.target.value) })}
+                  className="w-full px-4 py-2 rounded-lg border"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium mb-2">Question Text</label>
+              <textarea
+                value={editQuestion.questionText}
+                onChange={(e) => setEditQuestion({ ...editQuestion, questionText: e.target.value })}
+                rows={4}
+                className="w-full px-4 py-2 rounded-lg border"
+                style={{
+                  backgroundColor: 'var(--clr-surface-a0)',
+                  borderColor: 'var(--clr-surface-tonal-a20)',
+                  color: 'var(--clr-primary-a50)',
+                }}
+              />
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium mb-2">Marking Criteria</label>
+              <textarea
+                value={editQuestion.markingCriteria}
+                onChange={(e) => setEditQuestion({ ...editQuestion, markingCriteria: e.target.value })}
+                rows={3}
+                className="w-full px-4 py-2 rounded-lg border"
+                style={{
+                  backgroundColor: 'var(--clr-surface-a0)',
+                  borderColor: 'var(--clr-surface-tonal-a20)',
+                  color: 'var(--clr-primary-a50)',
+                }}
+              />
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium mb-2">Sample Answer</label>
+              <textarea
+                value={editQuestion.sampleAnswer}
+                onChange={(e) => setEditQuestion({ ...editQuestion, sampleAnswer: e.target.value })}
+                rows={4}
+                className="w-full px-4 py-2 rounded-lg border"
+                style={{
+                  backgroundColor: 'var(--clr-surface-a0)',
+                  borderColor: 'var(--clr-surface-tonal-a20)',
+                  color: 'var(--clr-primary-a50)',
+                }}
+              />
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium mb-2">Graph Image (data URL)</label>
+              <textarea
+                value={editQuestion.graphImageData}
+                onChange={(e) => setEditQuestion({ ...editQuestion, graphImageData: e.target.value })}
+                onPaste={handleEditGraphPaste}
+                rows={3}
+                className="w-full px-4 py-2 rounded-lg border"
+                style={{
+                  backgroundColor: 'var(--clr-surface-a0)',
+                  borderColor: 'var(--clr-surface-tonal-a20)',
+                  color: 'var(--clr-primary-a50)',
+                }}
+              />
+              <div className="mt-3">
+                <label className="block text-sm font-medium mb-2">Graph Size</label>
+                <select
+                  value={editQuestion.graphImageSize}
+                  onChange={(e) => setEditQuestion({ ...editQuestion, graphImageSize: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                >
+                  <option value="small">Small</option>
+                  <option value="medium">Medium</option>
+                  <option value="large">Large</option>
+                </select>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <label
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                >
+                  Upload PNG
+                  <input type="file" accept="image/png" hidden onChange={handleEditGraphUpload} />
+                </label>
+                {editQuestion.graphImageData && (
+                  <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                    Image loaded
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 rounded-lg font-medium cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--clr-surface-a20)',
+                  color: 'var(--clr-primary-a50)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={updateQuestionInDatabase}
+                disabled={isUpdatingQuestion}
+                className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                style={{
+                  backgroundColor: 'var(--clr-success-a0)',
+                  color: 'var(--clr-light-a0)',
+                }}
+              >
+                {isUpdatingQuestion ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLatexModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

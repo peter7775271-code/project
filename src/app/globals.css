@@ -112,3 +112,34 @@ body {
   height: auto;
   background: transparent;
 }
+
+.graph-image {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}
+
+.graph-image--small {
+  width: 40%;
+}
+
+.graph-image--medium {
+  width: 70%;
+}
+
+.graph-image--large {
+  width: 100%;
+}
+
+.latex-table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+.latex-table td {
+  border: 1px solid var(--clr-surface-tonal-a20);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
