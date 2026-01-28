@@ -693,12 +693,14 @@ export default function HSCGeneratorPage() {
       try {
         setLoading(true);
         const response = await fetch(`/api/hsc/questions?grade=${yearLevel}`);
-        if (response.ok) {
-          const data = await response.json();
-          setQuestion(data.question);
+        if (!response.ok) {
+          throw new Error(`Failed to load question (${response.status})`);
         }
+        const data = await response.json();
+        setQuestion(data.question);
       } catch (err) {
         console.error('Error loading initial question:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load question');
       } finally {
         setLoading(false);
       }
