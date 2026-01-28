@@ -696,6 +696,23 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-500 dark:text-gray-400">Analyze products and get a health rating out of 100.</p>
           </div>
         </button>
+
+        {/* HSC Question Generator Button Card */}
+        <button
+          onClick={() => router.push('/hsc-generator')}
+          className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 text-left shadow-xl backdrop-blur-xl border border-white/20 hover:border-orange-500/50 hover:bg-white/60 dark:hover:bg-white/10 transition-all duration-300 hover:-translate-y-1"
+        >
+          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+            <svg className="w-32 h-32 text-orange-600 dark:text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 9h4v2h-4v4h-2v-4H8v-2h4V8h2v4z" /></svg>
+          </div>
+          <div className="relative z-10">
+            <div className="w-12 h-12 rounded-2xl bg-orange-600 flex items-center justify-center mb-4 shadow-lg shadow-orange-500/30">
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">HSC Question Generator</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Generate random HSC questions and handwrite your answers.</p>
+          </div>
+        </button>
       </div>
     </div>
   );
