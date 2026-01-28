@@ -217,6 +217,7 @@ export default function HSCGeneratorPage() {
   const [savedAttempts, setSavedAttempts] = useState<any[]>([]);
   const [showSavedAttempts, setShowSavedAttempts] = useState(false);
   const [selectedAttempt, setSelectedAttempt] = useState<any>(null);
+  const [showLatexModal, setShowLatexModal] = useState(false);
   const [viewMode, setViewMode] = useState<'generator' | 'saved' | 'settings' | 'dev-questions'>('generator');
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
@@ -1064,15 +1065,29 @@ export default function HSCGeneratorPage() {
                   </div>
                 ) : question ? (
                   <>
-                    <div className="flex justify-between items-start border-b border-zinc-700 pb-6 mb-8">
-                      <div>
+                    <div className="flex flex-col gap-4 border-b border-zinc-700 pb-6 mb-8">
+                      <div className="flex justify-between items-start">
+                        <div>
                         <span className="text-zinc-500 font-bold uppercase tracking-widest text-sm mb-1 block">{question.year} HSC</span>
                         <span className="text-2xl font-bold text-zinc-100">{question.subject}</span>
                         <span className="text-zinc-400 text-sm block mt-1">{question.topic}</span>
-                      </div>
-                      <div className="text-right">
+                        </div>
+                        <div className="text-right">
                         <span className="block font-bold text-lg text-zinc-100">Question</span>
                         <span className="text-zinc-400 font-semibold">{question.marks} Marks</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => setShowLatexModal(true)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        >
+                          View LaTeX
+                        </button>
                       </div>
                     </div>
 
@@ -2146,6 +2161,45 @@ export default function HSCGeneratorPage() {
           </div>
         </main>
       </div>
+
+      {showLatexModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0"
+            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+            onClick={() => setShowLatexModal(false)}
+          />
+          <div
+            className="relative w-full max-w-3xl rounded-2xl border p-6 shadow-2xl"
+            style={{
+              backgroundColor: 'var(--clr-surface-a10)',
+              borderColor: 'var(--clr-surface-tonal-a20)',
+              color: 'var(--clr-primary-a50)',
+            }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">LaTeX Source</h2>
+              <button
+                onClick={() => setShowLatexModal(false)}
+                className="p-2 rounded-lg cursor-pointer"
+                style={{ backgroundColor: 'var(--clr-surface-a20)' }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <textarea
+              readOnly
+              value={question?.question_text || ''}
+              className="w-full h-64 rounded-lg p-3 text-sm font-mono"
+              style={{
+                backgroundColor: 'var(--clr-surface-a0)',
+                color: 'var(--clr-primary-a50)',
+                border: '1px solid var(--clr-surface-tonal-a20)',
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
