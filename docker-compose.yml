@@ -1,0 +1,7 @@
+services:
+  tikz-renderer:
+    build: ./render-service
+    ports:
+      - "5005:5005"
+    environment:
+      - NODE_ENV=production

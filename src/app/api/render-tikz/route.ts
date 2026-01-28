@@ -25,6 +25,19 @@ export async function POST(request: Request) {
       );
     }
 
+    const externalRenderUrl = process.env.TIKZ_RENDER_URL;
+    if (externalRenderUrl) {
+      const response = await fetch(externalRenderUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tikzCode }),
+      });
+
+      const data = await response.json();
+
+      return Response.json(data, { status: response.status });
+    }
+
     // Wrap in document if not already wrapped
     if (!tikzCode.includes('\\documentclass')) {
       tikzCode = `\\documentclass{article}

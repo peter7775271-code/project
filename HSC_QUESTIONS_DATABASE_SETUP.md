@@ -18,6 +18,7 @@ CREATE TABLE hsc_questions (
   topic TEXT NOT NULL,
   marks INTEGER NOT NULL,
   question_text TEXT NOT NULL,
+  graph_image_data TEXT,
   marking_criteria TEXT NOT NULL,
   sample_answer TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT now()
@@ -78,7 +79,7 @@ CREATE POLICY "Users can delete their own attempts" ON student_saved_attempts
 ### Step 3: Verify Setup
 
 Your tables should now be created. You'll see:
-- ✅ `hsc_questions` table with 10 columns
+-- ✅ `hsc_questions` table with 11 columns
 - ✅ `student_saved_attempts` table with 5 columns
 - ✅ Indexes for fast filtering
 - ✅ RLS policies enabled
@@ -95,6 +96,7 @@ Your tables should now be created. You'll see:
 | topic | TEXT | Topic name (e.g., 'Complex Numbers') |
 | marks | INTEGER | Total marks for question |
 | question_text | TEXT | Full question in LaTeX format |
+| graph_image_data | TEXT | Optional data URL for pre-rendered graph (e.g., PNG) |
 | marking_criteria | TEXT | Marking criteria in LaTeX format |
 | sample_answer | TEXT | Sample solution in LaTeX format |
 | created_at | TIMESTAMP | When question was added |

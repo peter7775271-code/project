@@ -4,7 +4,7 @@ export async function POST(request: Request) {
   try {
 
     const body = await request.json();
-    const { grade, year, subject, topic, marks, questionText, markingCriteria, sampleAnswer } = body;
+    const { grade, year, subject, topic, marks, questionText, markingCriteria, sampleAnswer, graphImageData } = body;
 
     // Validate required fields
     if (!grade || !year || !subject || !topic || !marks || !questionText || !markingCriteria || !sampleAnswer) {
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
           question_text: questionText,
           marking_criteria: markingCriteria,
           sample_answer: sampleAnswer,
+          graph_image_data: graphImageData || null,
         },
       ])
       .select();

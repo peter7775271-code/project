@@ -8,7 +8,7 @@ import {
   RefreshCw, Eye, Download, Bookmark, Settings, Menu, X,
   CheckCircle2, AlertTriangle, XCircle, TrendingUp, Edit2
 } from 'lucide-react';
-import TikzRenderer from '@/components/TikzRenderer';
+// TikzRenderer no longer used in this page
 
 // LaTeX and TikZ renderer component
 function LatexText({ text }: { text: string }) {
@@ -46,7 +46,7 @@ function LatexText({ text }: { text: string }) {
         if (segment.type === 'tikz') {
           return (
             <div key={`tikz-${i}`} className="tikz-output">
-              <TikzRenderer code={segment.content} />
+              <TikzBlock code={segment.content} />
             </div>
           );
         }
@@ -54,6 +54,83 @@ function LatexText({ text }: { text: string }) {
       })}
     </div>
   );
+}
+
+function TikzBlock({ code }: { code: string }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [svg, setSvg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const renderTikz = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await fetch('/api/render-tikz', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tikzCode: code }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || `Render failed (${response.status})`);
+        }
+
+        if (!isActive) return;
+
+        if (data.svg) {
+          setSvg(data.svg);
+          setDataUrl(null);
+        } else if (data.dataUrl) {
+          setDataUrl(data.dataUrl);
+          setSvg(null);
+        } else if (data.url) {
+          setDataUrl(data.url);
+          setSvg(null);
+        } else {
+          throw new Error('Invalid render response');
+        }
+      } catch (err) {
+        if (isActive) {
+          setError(err instanceof Error ? err.message : 'Render failed');
+        }
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    };
+
+    renderTikz();
+
+    return () => {
+      isActive = false;
+    };
+  }, [code]);
+
+  if (loading) {
+    return <div style={{ opacity: 0.7 }}>Rendering graph...</div>;
+  }
+
+  if (error) {
+    return <div style={{ color: 'var(--clr-warning-a10)' }}>{error}</div>;
+  }
+
+  if (svg) {
+    return <div dangerouslySetInnerHTML={{ __html: svg }} />;
+  }
+
+  if (dataUrl) {
+    return <img src={dataUrl} alt="TikZ" className="w-full h-auto" />;
+  }
+
+  return null;
 }
 
 // Separate component to handle LaTeX rendering for each HTML segment
@@ -185,6 +262,7 @@ export default function HSCGeneratorPage() {
     question_text: string;
     marking_criteria: string;
     sample_answer: string;
+    graph_image_data?: string | null;
   };
 
   const fetchWithTimeout = async (url: string, timeoutMs = 10000) => {
@@ -233,6 +311,7 @@ export default function HSCGeneratorPage() {
     question_text: HSC_QUESTIONS[0],
     marking_criteria: 'Sample question (fallback mode).',
     sample_answer: 'Sample answer (fallback mode).',
+    graph_image_data: null,
   };
 
   // Dev mode state
@@ -250,6 +329,7 @@ export default function HSCGeneratorPage() {
     questionText: '',
     markingCriteria: '',
     sampleAnswer: '',
+    graphImageData: '',
   });
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
 
@@ -470,6 +550,7 @@ export default function HSCGeneratorPage() {
         marks: question.marks,
         subject: question.subject,
         topic: question.topic,
+        graphImageData: question.graph_image_data || null,
         submittedAnswer: submittedAnswer,
         feedback: feedback,
         sampleAnswer: question.sample_answer,
@@ -521,6 +602,7 @@ export default function HSCGeneratorPage() {
           questionText: '',
           markingCriteria: '',
           sampleAnswer: '',
+          graphImageData: '',
         });
         // Reload questions list
         fetchAllQuestions();
@@ -1095,6 +1177,16 @@ export default function HSCGeneratorPage() {
                       className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap"
                       style={{ color: 'var(--clr-light-a0)' }}
                     >
+                      {question.graph_image_data && (
+                        <div className="my-4">
+                          <img
+                            src={question.graph_image_data}
+                            alt="Question graph"
+                            className="w-full rounded-lg border"
+                            style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                          />
+                        </div>
+                      )}
                       <LatexText text={question.question_text} />
                     </div>
                   </>
@@ -1637,6 +1729,16 @@ export default function HSCGeneratorPage() {
                           className="font-serif text-lg"
                           style={{ color: 'var(--clr-light-a0)' }}
                         >
+                          {selectedAttempt.graphImageData && (
+                            <div className="my-4">
+                              <img
+                                src={selectedAttempt.graphImageData}
+                                alt="Question graph"
+                                className="w-full rounded-lg border"
+                                style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                              />
+                            </div>
+                          )}
                           <LatexText text={selectedAttempt.questionText} />
                         </div>
                         <div 
@@ -2067,6 +2169,22 @@ export default function HSCGeneratorPage() {
                       onChange={(e) => setNewQuestion({...newQuestion, sampleAnswer: e.target.value})}
                       placeholder="Enter sample answer (use $ for LaTeX)"
                       rows={4}
+                      className="w-full px-4 py-2 rounded-lg border"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a0)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                        color: 'var(--clr-primary-a50)',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Graph Image (data URL)</label>
+                    <textarea 
+                      value={newQuestion.graphImageData}
+                      onChange={(e) => setNewQuestion({...newQuestion, graphImageData: e.target.value})}
+                      placeholder="Paste a data:image/png;base64,... URL (optional)"
+                      rows={3}
                       className="w-full px-4 py-2 rounded-lg border"
                       style={{
                         backgroundColor: 'var(--clr-surface-a0)',
