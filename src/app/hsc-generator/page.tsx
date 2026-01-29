@@ -405,6 +405,7 @@ export default function HSCGeneratorPage() {
   const [appState, setAppState] = useState<'idle' | 'marking' | 'reviewed'>('idle');
   const [canvasHeight, setCanvasHeight] = useState(400);
   const [loading, setLoading] = useState(true);
+  const [isPenDrawing, setIsPenDrawing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<any>(null);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
@@ -723,12 +724,15 @@ export default function HSCGeneratorPage() {
   };
 
   const startDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
     if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
+    e.preventDefault();
     const canvas = canvasRef.current;
     if (canvas) canvas.setPointerCapture(e.pointerId);
     
     drawingRef.current = true;
+    if (e.pointerType === 'pen') {
+      setIsPenDrawing(true);
+    }
     const [x, y] = getPos(e);
     lastPosRef.current = [x, y];
     ctxRef.current?.beginPath();
@@ -752,13 +756,16 @@ export default function HSCGeneratorPage() {
   };
 
   const endDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
     if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
+    e.preventDefault();
     const canvas = canvasRef.current;
     if (canvas) canvas.releasePointerCapture(e.pointerId);
     
     if (!drawingRef.current) return;
     drawingRef.current = false;
+    if (e.pointerType === 'pen') {
+      setIsPenDrawing(false);
+    }
     saveState();
   };
 
@@ -1966,13 +1973,13 @@ export default function HSCGeneratorPage() {
                   style={{ color: 'var(--clr-surface-a40)' }}
                 >Answer Area</label>
                 <div 
-                  className="max-h-[600px] overflow-y-auto rounded-xl"
+                  className="max-h-[420px] md:max-h-[600px] overflow-y-auto rounded-xl"
                   style={{ backgroundColor: 'var(--clr-surface-a0)' }}
                 >
                   <canvas
                     ref={canvasRef}
                     className="w-full cursor-crosshair block"
-                    style={{ touchAction: 'none', height: `${canvasHeight}px` }}
+                    style={{ touchAction: isPenDrawing ? 'none' : 'pan-y', height: `${canvasHeight}px` }}
                     onPointerDown={startDraw}
                     onPointerMove={draw}
                     onPointerUp={endDraw}
