@@ -408,7 +408,6 @@ export default function HSCGeneratorPage() {
   const [canvasHeight, setCanvasHeight] = useState(400);
   const [loading, setLoading] = useState(true);
   const [isPenDrawing, setIsPenDrawing] = useState(false);
-  const [inputMode, setInputMode] = useState<'draw' | 'scroll'>('draw');
   const [isIpad, setIsIpad] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<any>(null);
@@ -736,7 +735,6 @@ export default function HSCGeneratorPage() {
   };
 
   const startDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (inputMode !== 'draw') return;
     const isPen = e.pointerType === 'pen';
     const isMouse = e.pointerType === 'mouse';
     const isStylus = isStylusTouch(e);
@@ -760,7 +758,6 @@ export default function HSCGeneratorPage() {
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
     if (activePointerIdRef.current !== e.pointerId) return;
-    if (inputMode !== 'draw') return;
     e.preventDefault();
     const [x, y] = getPos(e);
     const [lastX, lastY] = lastPosRef.current;
@@ -776,7 +773,6 @@ export default function HSCGeneratorPage() {
 
   const endDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (activePointerIdRef.current !== e.pointerId) return;
-    if (inputMode !== 'draw') return;
     e.preventDefault();
     const canvas = canvasRef.current;
     if (canvas) canvas.releasePointerCapture(e.pointerId);
@@ -2007,26 +2003,6 @@ export default function HSCGeneratorPage() {
                       Use two fingers to scroll.
                     </span>
                   )}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setInputMode('draw')}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
-                      style={{
-                        backgroundColor: inputMode === 'draw' ? 'var(--clr-primary-a0)' : 'var(--clr-surface-a20)',
-                        color: inputMode === 'draw' ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
-                      }}
-                    >Draw mode</button>
-                    <button
-                      type="button"
-                      onClick={() => setInputMode('scroll')}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
-                      style={{
-                        backgroundColor: inputMode === 'scroll' ? 'var(--clr-primary-a0)' : 'var(--clr-surface-a20)',
-                        color: inputMode === 'scroll' ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
-                      }}
-                    >Scroll mode</button>
-                  </div>
                 </div>
                 <div 
                   className="max-h-[420px] md:max-h-[600px] overflow-y-auto rounded-xl"
@@ -2041,21 +2017,14 @@ export default function HSCGeneratorPage() {
                     ref={canvasRef}
                     className="w-full cursor-crosshair block"
                     style={{
-                      touchAction: inputMode === 'draw' || isPenDrawing ? 'none' : 'pan-y',
+                      touchAction: 'none',
                       height: `${canvasHeight}px`,
-                      pointerEvents: inputMode === 'draw' ? 'auto' : 'none',
                     }}
                     onPointerDown={startDraw}
                     onPointerMove={draw}
                     onPointerUp={endDraw}
                     onPointerLeave={endDraw}
                     onPointerCancel={endDraw}
-                    onTouchStart={(e) => {
-                      if (inputMode === 'draw' || isPenDrawing) e.preventDefault();
-                    }}
-                    onTouchMove={(e) => {
-                      if (inputMode === 'draw' || isPenDrawing) e.preventDefault();
-                    }}
                   />
                 </div>
                 <button
