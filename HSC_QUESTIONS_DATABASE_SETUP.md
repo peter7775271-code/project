@@ -21,8 +21,8 @@ CREATE TABLE hsc_questions (
   question_text TEXT NOT NULL,
   graph_image_data TEXT,
   graph_image_size TEXT DEFAULT 'medium',
-  marking_criteria TEXT NOT NULL,
-  sample_answer TEXT NOT NULL,
+  marking_criteria TEXT,
+  sample_answer TEXT,
   created_at TIMESTAMP DEFAULT now()
 );
 
@@ -71,6 +71,13 @@ CREATE POLICY "Users can delete their own attempts" ON student_saved_attempts
   FOR DELETE USING (auth.uid() = user_id);
 ```
 
+If you already created the table, run:
+
+```sql
+ALTER TABLE hsc_questions ALTER COLUMN marking_criteria DROP NOT NULL;
+ALTER TABLE hsc_questions ALTER COLUMN sample_answer DROP NOT NULL;
+```
+
 ### Step 2: Configure Supabase Storage
 
 1. Go to **Storage** in your Supabase dashboard
@@ -101,8 +108,8 @@ Your tables should now be created. You'll see:
 | question_text | TEXT | Full question in LaTeX format |
 | graph_image_data | TEXT | Optional data URL for pre-rendered graph (e.g., PNG) |
 | graph_image_size | TEXT | Optional size: small, medium, large (default: medium) |
-| marking_criteria | TEXT | Marking criteria in LaTeX format |
-| sample_answer | TEXT | Sample solution in LaTeX format |
+| marking_criteria | TEXT | Marking criteria in LaTeX format (optional) |
+| sample_answer | TEXT | Sample solution in LaTeX format (optional) |
 | created_at | TIMESTAMP | When question was added |
 
 ### student_saved_attempts Table

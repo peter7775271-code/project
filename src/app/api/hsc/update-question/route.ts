@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!grade || !year || !subject || !topic || !marks || !questionText || !markingCriteria || !sampleAnswer) {
+    if (!grade || !year || !subject || !topic || !marks || !questionText) {
       return Response.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -42,8 +42,8 @@ export async function POST(request: Request) {
         marks: parseInt(marks),
         question_number: questionNumber || null,
         question_text: questionText,
-        marking_criteria: markingCriteria,
-        sample_answer: sampleAnswer,
+        marking_criteria: markingCriteria || null,
+        sample_answer: sampleAnswer || null,
         graph_image_data: graphImageData || null,
         graph_image_size: graphImageSize || 'medium',
       })

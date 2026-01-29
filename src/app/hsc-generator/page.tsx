@@ -337,6 +337,10 @@ export default function HSCGeneratorPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [isUpdatingQuestion, setIsUpdatingQuestion] = useState(false);
+  const [examPdfFile, setExamPdfFile] = useState<File | null>(null);
+  const [criteriaPdfFile, setCriteriaPdfFile] = useState<File | null>(null);
+  const [pdfStatus, setPdfStatus] = useState<'idle' | 'uploading' | 'ready' | 'error'>('idle');
+  const [pdfMessage, setPdfMessage] = useState<string>('');
   const [viewMode, setViewMode] = useState<'generator' | 'saved' | 'settings' | 'dev-questions'>('generator');
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
@@ -399,8 +403,63 @@ export default function HSCGeneratorPage() {
 
   // Available filter options
   const YEARS = ['2020', '2021', '2022', '2023', '2024'];
-  const SUBJECTS = ['Mathematics Advanced', 'Mathematics Extension 1', 'Mathematics Extension 2'];
-  const TOPICS = ['Complex Numbers', 'Calculus - Differentiation', 'Trigonometric Equations', 'Integration', 'Logarithms and Exponentials', 'Trigonometry', 'Mathematical Induction', 'Surds and Radicals', 'Quadratic Functions'];
+
+  const SUBJECTS_BY_YEAR: Record<'Year 11' | 'Year 12', string[]> = {
+    'Year 11': ['Mathematics Advanced', 'Mathematics Extension 1'],
+    'Year 12': ['Mathematics Advanced', 'Mathematics Extension 1', 'Mathematics Extension 2'],
+  };
+
+  const TOPICS_BY_YEAR_SUBJECT: Record<'Year 11' | 'Year 12', Record<string, string[]>> = {
+    'Year 12': {
+      'Mathematics Advanced': [
+        'Further graph transformations',
+        'Sequences and series',
+        'Differential calculus',
+        'Integral calculus',
+        'Applications of calculus',
+        'Random variables',
+        'Financial mathematics',
+      ],
+      'Mathematics Extension 1': [
+        'Proof by mathematical induction',
+        'Vectors',
+        'Inverse trigonometric functions',
+        'Further calculus skills',
+        'Further applications of calculus',
+        'The binomial distribution and sampling distribution of the mean',
+      ],
+      'Mathematics Extension 2': [
+        'The nature of proof',
+        'Further work with vectors',
+        'Introduction to complex numbers',
+        'Further integration',
+        'Applications of calculus to mechanics',
+      ],
+    },
+    'Year 11': {
+      'Mathematics Advanced': [
+        'Working with functions',
+        'Trigonometry and measure of angles',
+        'Trigonometric identities and equations',
+        'Differentiation',
+        'Exponential and logarithmic functions',
+        'Graph transformations',
+        'Probability and data',
+      ],
+      'Mathematics Extension 1': [
+        'Further work with functions',
+        'Polynomials',
+        'Further trigonometry',
+        'Permutations and combinations',
+        'The binomial theorem',
+      ],
+    },
+  };
+
+  const getTopics = (gradeValue: string, subjectValue: string) => {
+    if (gradeValue !== 'Year 11' && gradeValue !== 'Year 12') return [];
+    return TOPICS_BY_YEAR_SUBJECT[gradeValue]?.[subjectValue] || [];
+  };
 
   // Check user auth and dev mode on mount
   useEffect(() => {
@@ -727,6 +786,40 @@ export default function HSCGeneratorPage() {
       alert('Error updating question');
     } finally {
       setIsUpdatingQuestion(false);
+    }
+  };
+
+  const submitPdfPair = async () => {
+    if (!examPdfFile || !criteriaPdfFile) {
+      setPdfStatus('error');
+      setPdfMessage('Please select both PDFs.');
+      return;
+    }
+
+    try {
+      setPdfStatus('uploading');
+      setPdfMessage('Uploading PDFs...');
+
+      const formData = new FormData();
+      formData.append('exam', examPdfFile);
+      formData.append('criteria', criteriaPdfFile);
+
+      const response = await fetch('/api/hsc/pdf-ingest', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to upload PDFs');
+      }
+
+      setPdfStatus('ready');
+      setPdfMessage(data?.message || 'PDFs received.');
+    } catch (err) {
+      setPdfStatus('error');
+      setPdfMessage(err instanceof Error ? err.message : 'Failed to upload PDFs');
     }
   };
 
@@ -1310,7 +1403,7 @@ export default function HSCGeneratorPage() {
                 }}
               >
                 <option value="">All Subjects</option>
-                {SUBJECTS.map((subject) => (
+                {SUBJECTS_BY_YEAR[filterGrade as 'Year 11' | 'Year 12']?.map((subject) => (
                   <option key={subject} value={subject}>{subject}</option>
                 ))}
               </select>
@@ -1327,7 +1420,7 @@ export default function HSCGeneratorPage() {
                 }}
               >
                 <option value="">All Topics</option>
-                {TOPICS.map((topic) => (
+                {getTopics(filterGrade, filterSubject).map((topic) => (
                   <option key={topic} value={topic}>{topic}</option>
                 ))}
               </select>
@@ -2233,6 +2326,73 @@ export default function HSCGeneratorPage() {
                   </div>
                 </div>
               </div>
+
+              <div
+                className="p-6 rounded-2xl border mt-6"
+                style={{
+                  backgroundColor: 'var(--clr-surface-a10)',
+                  borderColor: 'var(--clr-surface-tonal-a20)',
+                }}
+              >
+                <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>PDF Intake</h2>
+                <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
+                  Upload the exam paper PDF and the marking criteria PDF. This will send both PDFs to ChatGPT and create new questions automatically.
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Paper PDF</label>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => setExamPdfFile(e.target.files?.[0] || null)}
+                      className="mt-2 w-full px-4 py-2 rounded-lg border"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a0)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                        color: 'var(--clr-primary-a50)',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria PDF</label>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => setCriteriaPdfFile(e.target.files?.[0] || null)}
+                      className="mt-2 w-full px-4 py-2 rounded-lg border"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a0)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                        color: 'var(--clr-primary-a50)',
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={submitPdfPair}
+                      disabled={pdfStatus === 'uploading'}
+                      className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                      style={{
+                        backgroundColor: 'var(--clr-primary-a0)',
+                        color: 'var(--clr-dark-a0)',
+                      }}
+                    >
+                      {pdfStatus === 'uploading' ? 'Uploading...' : 'Send PDFs'}
+                    </button>
+                    {pdfMessage && (
+                      <span
+                        className="text-sm"
+                        style={{ color: pdfStatus === 'error' ? 'var(--clr-danger-a10)' : 'var(--clr-surface-a50)' }}
+                      >
+                        {pdfMessage}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2286,7 +2446,17 @@ export default function HSCGeneratorPage() {
                     <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Grade</label>
                     <select 
                       value={newQuestion.grade}
-                      onChange={(e) => setNewQuestion({...newQuestion, grade: e.target.value})}
+                      onChange={(e) => {
+                        const nextGrade = e.target.value as 'Year 11' | 'Year 12';
+                        const nextSubject = SUBJECTS_BY_YEAR[nextGrade][0];
+                        const nextTopic = getTopics(nextGrade, nextSubject)[0] || '';
+                        setNewQuestion({
+                          ...newQuestion,
+                          grade: nextGrade,
+                          subject: nextSubject,
+                          topic: nextTopic,
+                        });
+                      }}
                       className="w-full px-4 py-2 rounded-lg border"
                       style={{
                         backgroundColor: 'var(--clr-surface-a0)',
@@ -2334,7 +2504,15 @@ export default function HSCGeneratorPage() {
                     <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Subject</label>
                     <select 
                       value={newQuestion.subject}
-                      onChange={(e) => setNewQuestion({...newQuestion, subject: e.target.value})}
+                      onChange={(e) => {
+                        const nextSubject = e.target.value;
+                        const nextTopics = getTopics(newQuestion.grade, nextSubject);
+                        setNewQuestion({
+                          ...newQuestion,
+                          subject: nextSubject,
+                          topic: nextTopics[0] || '',
+                        });
+                      }}
                       className="w-full px-4 py-2 rounded-lg border"
                       style={{
                         backgroundColor: 'var(--clr-surface-a0)',
@@ -2342,26 +2520,28 @@ export default function HSCGeneratorPage() {
                         color: 'var(--clr-primary-a50)',
                       }}
                     >
-                      <option>Mathematics Advanced</option>
-                      <option>Mathematics Extension 1</option>
-                      <option>Mathematics Extension 2</option>
+                      {SUBJECTS_BY_YEAR[newQuestion.grade as 'Year 11' | 'Year 12']?.map((subject) => (
+                        <option key={subject} value={subject}>{subject}</option>
+                      ))}
                     </select>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Topic</label>
-                    <input 
-                      type="text" 
+                    <select
                       value={newQuestion.topic}
                       onChange={(e) => setNewQuestion({...newQuestion, topic: e.target.value})}
-                      placeholder="e.g., Complex Numbers"
                       className="w-full px-4 py-2 rounded-lg border"
                       style={{
                         backgroundColor: 'var(--clr-surface-a0)',
                         borderColor: 'var(--clr-surface-tonal-a20)',
                         color: 'var(--clr-primary-a50)',
                       }}
-                    />
+                    >
+                      {getTopics(newQuestion.grade, newQuestion.subject).map((topic) => (
+                        <option key={topic} value={topic}>{topic}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -2612,7 +2792,17 @@ export default function HSCGeneratorPage() {
                 <label className="block text-sm font-medium mb-2">Grade</label>
                 <select
                   value={editQuestion.grade}
-                  onChange={(e) => setEditQuestion({ ...editQuestion, grade: e.target.value })}
+                  onChange={(e) => {
+                    const nextGrade = e.target.value as 'Year 11' | 'Year 12';
+                    const nextSubject = SUBJECTS_BY_YEAR[nextGrade][0];
+                    const nextTopic = getTopics(nextGrade, nextSubject)[0] || '';
+                    setEditQuestion({
+                      ...editQuestion,
+                      grade: nextGrade,
+                      subject: nextSubject,
+                      topic: nextTopic,
+                    });
+                  }}
                   className="w-full px-4 py-2 rounded-lg border"
                   style={{
                     backgroundColor: 'var(--clr-surface-a0)',
@@ -2642,7 +2832,15 @@ export default function HSCGeneratorPage() {
                 <label className="block text-sm font-medium mb-2">Subject</label>
                 <select
                   value={editQuestion.subject}
-                  onChange={(e) => setEditQuestion({ ...editQuestion, subject: e.target.value })}
+                  onChange={(e) => {
+                    const nextSubject = e.target.value;
+                    const nextTopics = getTopics(editQuestion.grade, nextSubject);
+                    setEditQuestion({
+                      ...editQuestion,
+                      subject: nextSubject,
+                      topic: nextTopics[0] || '',
+                    });
+                  }}
                   className="w-full px-4 py-2 rounded-lg border"
                   style={{
                     backgroundColor: 'var(--clr-surface-a0)',
@@ -2650,15 +2848,14 @@ export default function HSCGeneratorPage() {
                     color: 'var(--clr-primary-a50)',
                   }}
                 >
-                  <option>Mathematics Advanced</option>
-                  <option>Mathematics Extension 1</option>
-                  <option>Mathematics Extension 2</option>
+                  {SUBJECTS_BY_YEAR[editQuestion.grade as 'Year 11' | 'Year 12']?.map((subject) => (
+                    <option key={subject} value={subject}>{subject}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Topic</label>
-                <input
-                  type="text"
+                <select
                   value={editQuestion.topic}
                   onChange={(e) => setEditQuestion({ ...editQuestion, topic: e.target.value })}
                   className="w-full px-4 py-2 rounded-lg border"
@@ -2667,7 +2864,11 @@ export default function HSCGeneratorPage() {
                     borderColor: 'var(--clr-surface-tonal-a20)',
                     color: 'var(--clr-primary-a50)',
                   }}
-                />
+                >
+                  {getTopics(editQuestion.grade, editQuestion.subject).map((topic) => (
+                    <option key={topic} value={topic}>{topic}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Marks</label>
