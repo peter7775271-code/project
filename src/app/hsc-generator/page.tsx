@@ -8,6 +8,8 @@ import {
   RefreshCw, Eye, Download, Bookmark, Settings, Menu, X,
   CheckCircle2, AlertTriangle, XCircle, TrendingUp, Edit2
 } from 'lucide-react';
+import { getStroke } from 'perfect-freehand';
+import { LazyBrush } from 'lazy-brush';
 // TikzRenderer no longer used in this page
 
 // LaTeX and TikZ renderer component
@@ -352,13 +354,23 @@ const MOCK_FEEDBACK = {
 
 export default function HSCGeneratorPage() {
   const router = useRouter();
+  type StrokePoint = [number, number, number];
+  type Stroke = StrokePoint[];
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const drawingRef = useRef(false);
   const dprRef = useRef(1);
+  const activeInputRef = useRef<'pointer' | 'mouse' | 'touch' | null>(null);
+  const strokesRef = useRef<Stroke[]>([]);
+  const currentStrokeRef = useRef<Stroke | null>(null);
+  const lazyBrushRef = useRef(
+    new LazyBrush({ radius: 0, enabled: false, initialPoint: { x: 0, y: 0 } })
+  );
+  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
 
-  const historyRef = useRef<string[]>([]);
-  const redoStackRef = useRef<string[]>([]);
+  const historyRef = useRef<Stroke[][]>([]);
+  const redoStackRef = useRef<Stroke[][]>([]);
 
   // Question data from database
   type Question = {
@@ -619,8 +631,6 @@ export default function HSCGeneratorPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const oldImageData = canvas.toDataURL();
-    
     const dpr = window.devicePixelRatio || 1;
     dprRef.current = dpr;
     const cssWidth = canvas.offsetWidth;
@@ -644,25 +654,17 @@ export default function HSCGeneratorPage() {
 
     ctxRef.current = ctx;
 
-    // Only restore previous content if we have history and it's not empty
     if (historyRef.current.length > 0) {
-      const img = new Image();
-      img.src = oldImageData;
-      img.onload = () => {
-        redrawBackground();
-        ctxRef.current?.drawImage(img, 0, 0);
-        saveState();
-      };
+      const latest = historyRef.current[historyRef.current.length - 1];
+      strokesRef.current = latest.map((stroke) => stroke.map((p) => [...p] as StrokePoint));
     } else {
-      // Fresh canvas - just draw the background
-      redrawBackground();
-      // Initialize with first state
-      setTimeout(() => {
-        if (canvasRef.current && ctxRef.current) {
-          historyRef.current = [canvasRef.current.toDataURL()];
-        }
-      }, 0);
+      strokesRef.current = [];
+      historyRef.current = [[]];
     }
+
+    renderAllStrokes(false);
+    setCanUndo(historyRef.current.length > 1);
+    setCanRedo(redoStackRef.current.length > 0);
   }, [canvasHeight, brushSize]);
 
   // Draw exam-style ruled lines
@@ -701,12 +703,49 @@ export default function HSCGeneratorPage() {
     drawLines();
   };
 
-  // History handling
-  const saveState = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const drawStrokePath = (stroke: Stroke) => {
+    if (!stroke.length) return;
+    const outline = getStroke(stroke, {
+      size: Math.max(2, brushSize * 2),
+      thinning: 0.3,
+      smoothing: 0.3,
+      streamline: 0.2,
+      simulatePressure: false,
+    });
+    if (!outline.length) return;
+    const path = new Path2D();
+    outline.forEach(([x, y], i) => {
+      if (i === 0) path.moveTo(x, y);
+      else path.lineTo(x, y);
+    });
+    path.closePath();
+    ctxRef.current?.fill(path);
+  };
 
-    historyRef.current.push(canvas.toDataURL());
+  const renderAllStrokes = (includeCurrent = true) => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    redrawBackground();
+    const canvas = canvasRef.current;
+    if (canvas && backgroundImageRef.current) {
+      const dpr = dprRef.current || 1;
+      const logicalWidth = canvas.width / dpr;
+      const logicalHeight = canvas.height / dpr;
+      ctx.drawImage(backgroundImageRef.current, 0, 0, logicalWidth, logicalHeight);
+    }
+    ctx.fillStyle = 'white';
+    strokesRef.current.forEach(drawStrokePath);
+    if (includeCurrent && currentStrokeRef.current) {
+      drawStrokePath(currentStrokeRef.current);
+    }
+  };
+
+  // History handling
+  const cloneStrokes = (strokes: Stroke[]) =>
+    strokes.map((stroke) => stroke.map((p) => [...p] as StrokePoint));
+
+  const saveState = () => {
+    historyRef.current.push(cloneStrokes(strokesRef.current));
     if (historyRef.current.length > 50) historyRef.current.shift();
 
     redoStackRef.current = [];
@@ -714,13 +753,9 @@ export default function HSCGeneratorPage() {
     setCanUndo(historyRef.current.length > 1);
   };
 
-  const restoreState = (src: string) => {
-    const img = new Image();
-    img.src = src;
-    img.onload = () => {
-      redrawBackground();
-      ctxRef.current?.drawImage(img, 0, 0);
-    };
+  const restoreState = (strokes: Stroke[]) => {
+    strokesRef.current = cloneStrokes(strokes);
+    renderAllStrokes(false);
   };
 
   // Drawing - optimized for pen + touch
@@ -738,78 +773,131 @@ export default function HSCGeneratorPage() {
     return [x, y];
   };
 
-  const beginStroke = (clientX: number, clientY: number) => {
+  const beginStroke = (clientX: number, clientY: number, pressure = 0.5) => {
     const canvas = canvasRef.current;
     const rect = canvas?.getBoundingClientRect();
     if (!rect) return;
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     drawingRef.current = true;
+    const point: StrokePoint = [x, y, Math.max(0.1, pressure)];
+    currentStrokeRef.current = [point];
     lastPosRef.current = [x, y];
-    ctxRef.current?.beginPath();
-    ctxRef.current?.moveTo(x, y);
+    renderAllStrokes(true);
   };
 
-  const moveStroke = (clientX: number, clientY: number) => {
+  const moveStroke = (clientX: number, clientY: number, pressure = 0.5) => {
     const canvas = canvasRef.current;
     const rect = canvas?.getBoundingClientRect();
     if (!rect) return;
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    const [lastX, lastY] = lastPosRef.current;
-    if (ctxRef.current) {
-      ctxRef.current.quadraticCurveTo(lastX, lastY, (x + lastX) / 2, (y + lastY) / 2);
-      ctxRef.current.stroke();
-    }
+    const point: StrokePoint = [x, y, Math.max(0.1, pressure)];
+    if (!currentStrokeRef.current) currentStrokeRef.current = [];
+    currentStrokeRef.current.push(point);
     lastPosRef.current = [x, y];
+    renderAllStrokes(true);
   };
 
   const endStroke = () => {
     if (!drawingRef.current) return;
     drawingRef.current = false;
     setIsPenDrawing(false);
-    saveState();
+    if (currentStrokeRef.current && currentStrokeRef.current.length) {
+      strokesRef.current.push(currentStrokeRef.current);
+      currentStrokeRef.current = null;
+      renderAllStrokes(false);
+      saveState();
+    }
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (activeInputRef.current === 'pointer') return;
     e.preventDefault();
-    beginStroke(e.clientX, e.clientY);
+    activeInputRef.current = 'mouse';
+    beginStroke(e.clientX, e.clientY, 0.5);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
+    if (activeInputRef.current === 'pointer') return;
     e.preventDefault();
-    moveStroke(e.clientX, e.clientY);
+    moveStroke(e.clientX, e.clientY, 0.5);
   };
 
   const handleMouseUp = () => {
     endStroke();
+    if (activeInputRef.current === 'mouse') {
+      activeInputRef.current = null;
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    activeInputRef.current = 'pointer';
+    const pressure = Math.max(0.1, e.pressure || 0.4);
+    beginStroke(e.clientX, e.clientY, pressure);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    if (activeInputRef.current !== 'pointer') return;
+    if (e.pointerType === 'touch') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pressure = Math.max(0.1, e.pressure || 0.4);
+    moveStroke(e.clientX, e.clientY, pressure);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (activeInputRef.current !== 'pointer') return;
+    if (e.pointerType === 'touch') return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    endStroke();
+    activeInputRef.current = null;
   };
 
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (activeInputRef.current === 'pointer') return;
     if (e.touches.length >= 2) return;
     const touch = e.touches[0];
     const isStylus = (touch as any).touchType === 'stylus';
     if (isIpad && !isStylus) return;
     e.preventDefault();
+    activeInputRef.current = 'touch';
     setIsPenDrawing(true);
-    beginStroke(touch.clientX, touch.clientY);
+    const pressure = Math.max(0.1, (touch as any).force || 0.5);
+    beginStroke(touch.clientX, touch.clientY, pressure);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
+    if (activeInputRef.current === 'pointer') return;
     if (e.touches.length >= 2) return;
     const touch = e.touches[0];
     const isStylus = (touch as any).touchType === 'stylus';
     if (isIpad && !isStylus) return;
     e.preventDefault();
-    moveStroke(touch.clientX, touch.clientY);
+    const pressure = Math.max(0.1, (touch as any).force || 0.5);
+    moveStroke(touch.clientX, touch.clientY, pressure);
   };
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (e.touches.length >= 2) return;
     e.preventDefault();
     endStroke();
+    if (activeInputRef.current === 'touch') {
+      activeInputRef.current = null;
+    }
   };
 
   // Controls
@@ -1292,14 +1380,16 @@ export default function HSCGeneratorPage() {
 
   const clearCanvas = () => {
     // Clear all history and redo stacks
-    historyRef.current = [];
+    historyRef.current = [[]];
     redoStackRef.current = [];
     setCanUndo(false);
     setCanRedo(false);
+    strokesRef.current = [];
+    currentStrokeRef.current = null;
+    backgroundImageRef.current = null;
     
     // Clear the canvas
-    redrawBackground();
-    saveState();
+    renderAllStrokes(false);
   };
 
   const submitAnswer = async () => {
@@ -1408,9 +1498,13 @@ export default function HSCGeneratorPage() {
       const dataUrl = reader.result as string;
       // Store the uploaded file for submission
       setUploadedFile(dataUrl);
-      // Also display it on the canvas
-      restoreState(dataUrl);
-      saveState();
+      // Also display it on the canvas as background
+      const img = new Image();
+      img.onload = () => {
+        backgroundImageRef.current = img;
+        renderAllStrokes(false);
+      };
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -1478,7 +1572,10 @@ export default function HSCGeneratorPage() {
     ctxRef.current = ctx;
     redrawBackground();
 
-    historyRef.current = [canvas.toDataURL()];
+    strokesRef.current = [];
+    currentStrokeRef.current = null;
+    backgroundImageRef.current = null;
+    historyRef.current = [[]];
     redoStackRef.current = [];
     setCanUndo(false);
     setCanRedo(false);
@@ -2042,9 +2139,14 @@ export default function HSCGeneratorPage() {
                     ref={canvasRef}
                     className="w-full cursor-crosshair block"
                     style={{
-                      touchAction: isIpad ? 'pan-y' : 'none',
+                      touchAction: 'none',
                       height: `${canvasHeight}px`,
                     }}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onPointerLeave={handlePointerUp}
+                    onPointerCancel={handlePointerUp}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
