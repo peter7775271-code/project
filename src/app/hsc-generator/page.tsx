@@ -355,6 +355,8 @@ export default function HSCGeneratorPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const drawingRef = useRef(false);
+  const activePointerIdRef = useRef<number | null>(null);
+  const activePointerTypeRef = useRef<'pen' | 'mouse' | 'touch-stylus' | null>(null);
 
   const historyRef = useRef<string[]>([]);
   const redoStackRef = useRef<string[]>([]);
@@ -712,6 +714,14 @@ export default function HSCGeneratorPage() {
   // Drawing - optimized for pen input with Pointer Events API
   const lastPosRef = useRef<[number, number]>([0, 0]);
 
+  const isStylusTouch = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType !== 'touch') return false;
+    const width = typeof e.width === 'number' ? e.width : 0;
+    const height = typeof e.height === 'number' ? e.height : 0;
+    const maxDim = Math.max(width, height);
+    return maxDim > 0 && maxDim <= 12;
+  };
+
   const getPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     const rect = canvas?.getBoundingClientRect();
@@ -724,13 +734,18 @@ export default function HSCGeneratorPage() {
   };
 
   const startDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
+    const isPen = e.pointerType === 'pen';
+    const isMouse = e.pointerType === 'mouse';
+    const isStylus = isStylusTouch(e);
+    if (!isPen && !isMouse && !isStylus) return;
     e.preventDefault();
     const canvas = canvasRef.current;
     if (canvas) canvas.setPointerCapture(e.pointerId);
     
     drawingRef.current = true;
-    if (e.pointerType === 'pen') {
+    activePointerIdRef.current = e.pointerId;
+    activePointerTypeRef.current = isPen ? 'pen' : isMouse ? 'mouse' : 'touch-stylus';
+    if (e.pointerType === 'pen' || isStylus) {
       setIsPenDrawing(true);
     }
     const [x, y] = getPos(e);
@@ -741,7 +756,7 @@ export default function HSCGeneratorPage() {
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
-    if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
+    if (activePointerIdRef.current !== e.pointerId) return;
     e.preventDefault();
     const [x, y] = getPos(e);
     const [lastX, lastY] = lastPosRef.current;
@@ -756,16 +771,18 @@ export default function HSCGeneratorPage() {
   };
 
   const endDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
+    if (activePointerIdRef.current !== e.pointerId) return;
     e.preventDefault();
     const canvas = canvasRef.current;
     if (canvas) canvas.releasePointerCapture(e.pointerId);
     
     if (!drawingRef.current) return;
     drawingRef.current = false;
-    if (e.pointerType === 'pen') {
+    if (activePointerTypeRef.current === 'pen' || activePointerTypeRef.current === 'touch-stylus') {
       setIsPenDrawing(false);
     }
+    activePointerIdRef.current = null;
+    activePointerTypeRef.current = null;
     saveState();
   };
 
