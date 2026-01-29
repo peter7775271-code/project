@@ -355,8 +355,7 @@ export default function HSCGeneratorPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const drawingRef = useRef(false);
-  const activePointerIdRef = useRef<number | null>(null);
-  const activePointerTypeRef = useRef<'pen' | 'mouse' | 'touch-stylus' | null>(null);
+  const dprRef = useRef(1);
 
   const historyRef = useRef<string[]>([]);
   const redoStackRef = useRef<string[]>([]);
@@ -622,12 +621,20 @@ export default function HSCGeneratorPage() {
 
     const oldImageData = canvas.toDataURL();
     
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvasHeight;
+    const dpr = window.devicePixelRatio || 1;
+    dprRef.current = dpr;
+    const cssWidth = canvas.offsetWidth;
+    const cssHeight = canvasHeight;
+    canvas.width = Math.max(1, Math.floor(cssWidth * dpr));
+    canvas.height = Math.max(1, Math.floor(cssHeight * dpr));
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = brushSize;
@@ -665,15 +672,18 @@ export default function HSCGeneratorPage() {
     if (!ctx || !canvas) return;
 
     const spacing = 34;
+    const dpr = dprRef.current || 1;
+    const logicalWidth = canvas.width / dpr;
+    const logicalHeight = canvas.height / dpr;
 
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.18)';
     ctx.lineWidth = 1;
 
-    for (let y = spacing; y < canvas.height; y += spacing) {
+    for (let y = spacing; y < logicalHeight; y += spacing) {
       ctx.beginPath();
       ctx.moveTo(40, y);
-      ctx.lineTo(canvas.width - 10, y);
+      ctx.lineTo(logicalWidth - 10, y);
       ctx.stroke();
     }
 
@@ -686,7 +696,8 @@ export default function HSCGeneratorPage() {
     const ctx = ctxRef.current;
     if (!ctx || !canvas) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const dpr = dprRef.current || 1;
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
     drawLines();
   };
 
@@ -712,16 +723,9 @@ export default function HSCGeneratorPage() {
     };
   };
 
-  // Drawing - optimized for pen input with Pointer Events API
+  // Drawing - optimized for pen + touch
   const lastPosRef = useRef<[number, number]>([0, 0]);
 
-  const isStylusTouch = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType !== 'touch') return false;
-    const width = typeof e.width === 'number' ? e.width : 0;
-    const height = typeof e.height === 'number' ? e.height : 0;
-    const maxDim = Math.max(width, height);
-    return maxDim > 0 && maxDim <= 12;
-  };
 
   const getPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -734,57 +738,78 @@ export default function HSCGeneratorPage() {
     return [x, y];
   };
 
-  const startDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const isPen = e.pointerType === 'pen';
-    const isMouse = e.pointerType === 'mouse';
-    const isStylus = isStylusTouch(e);
-    if (!isPen && !isMouse && !isStylus) return;
-    e.preventDefault();
+  const beginStroke = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
-    if (canvas) canvas.setPointerCapture(e.pointerId);
-    
+    const rect = canvas?.getBoundingClientRect();
+    if (!rect) return;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     drawingRef.current = true;
-    activePointerIdRef.current = e.pointerId;
-    activePointerTypeRef.current = isPen ? 'pen' : isMouse ? 'mouse' : 'touch-stylus';
-    if (e.pointerType === 'pen' || isStylus) {
-      setIsPenDrawing(true);
-    }
-    const [x, y] = getPos(e);
     lastPosRef.current = [x, y];
     ctxRef.current?.beginPath();
     ctxRef.current?.moveTo(x, y);
   };
 
-  const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
-    if (activePointerIdRef.current !== e.pointerId) return;
-    e.preventDefault();
-    const [x, y] = getPos(e);
+  const moveStroke = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    if (!rect) return;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     const [lastX, lastY] = lastPosRef.current;
-
-    // Use quadratic curve for smoother lines
     if (ctxRef.current) {
       ctxRef.current.quadraticCurveTo(lastX, lastY, (x + lastX) / 2, (y + lastY) / 2);
       ctxRef.current.stroke();
     }
-
     lastPosRef.current = [x, y];
   };
 
-  const endDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (activePointerIdRef.current !== e.pointerId) return;
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    if (canvas) canvas.releasePointerCapture(e.pointerId);
-    
+  const endStroke = () => {
     if (!drawingRef.current) return;
     drawingRef.current = false;
-    if (activePointerTypeRef.current === 'pen' || activePointerTypeRef.current === 'touch-stylus') {
-      setIsPenDrawing(false);
-    }
-    activePointerIdRef.current = null;
-    activePointerTypeRef.current = null;
+    setIsPenDrawing(false);
     saveState();
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    beginStroke(e.clientX, e.clientY);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    e.preventDefault();
+    moveStroke(e.clientX, e.clientY);
+  };
+
+  const handleMouseUp = () => {
+    endStroke();
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length >= 2) return;
+    const touch = e.touches[0];
+    const isStylus = (touch as any).touchType === 'stylus';
+    if (isIpad && !isStylus) return;
+    e.preventDefault();
+    setIsPenDrawing(true);
+    beginStroke(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    if (e.touches.length >= 2) return;
+    const touch = e.touches[0];
+    const isStylus = (touch as any).touchType === 'stylus';
+    if (isIpad && !isStylus) return;
+    e.preventDefault();
+    moveStroke(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length >= 2) return;
+    e.preventDefault();
+    endStroke();
   };
 
   // Controls
@@ -2017,14 +2042,17 @@ export default function HSCGeneratorPage() {
                     ref={canvasRef}
                     className="w-full cursor-crosshair block"
                     style={{
-                      touchAction: 'none',
+                      touchAction: isIpad ? 'pan-y' : 'none',
                       height: `${canvasHeight}px`,
                     }}
-                    onPointerDown={startDraw}
-                    onPointerMove={draw}
-                    onPointerUp={endDraw}
-                    onPointerLeave={endDraw}
-                    onPointerCancel={endDraw}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchCancel={handleTouchEnd}
                   />
                 </div>
                 <button
