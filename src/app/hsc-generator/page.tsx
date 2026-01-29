@@ -2139,7 +2139,7 @@ export default function HSCGeneratorPage() {
                     ref={canvasRef}
                     className="w-full cursor-crosshair block"
                     style={{
-                      touchAction: 'none',
+                      touchAction: 'pan-y',
                       height: `${canvasHeight}px`,
                     }}
                     onPointerDown={handlePointerDown}
@@ -2155,6 +2155,11 @@ export default function HSCGeneratorPage() {
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onTouchCancel={handleTouchEnd}
+                    onTouchMoveCapture={(e) => {
+                      if (isIpad && e.touches.length < 2) {
+                        e.preventDefault();
+                      }
+                    }}
                   />
                 </div>
                 <button
