@@ -1008,7 +1008,7 @@ export default function HSCGeneratorPage() {
         canvas.height = h;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve({ hasInk: true });
+          resolve({ lowInk: false, inkRatio: 1, darkPixels: 0 });
           return;
         }
         ctx.drawImage(img, 0, 0, w, h);
