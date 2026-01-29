@@ -9,14 +9,16 @@ const PDF_PROMPT = `The user provided this PDF and is requesting a transformatio
 I have provided one PDF whichis a HSC mathematics exam paper with written questions.
 
 I want you to convert all the questions to nicely formatted LaTeX code. For each question you also need to write up a sample answer in LaTeX code.
+A question may have multiple parts. They should be counted as individual questions, like 11 a), 11 b), etc.
 
 RENDER-SAFE RULES (IMPORTANT):
-- Use $...$ for inline math only. Do NOT use \( \).
-- Use $$...$$ for display math only. Do NOT use \[ \].
-- Always escape currency and percent as \\$ and \\%.
+- Inline math must use $...$ only. Do NOT use \( \).
+- Display math must use $$...$$ only. Do NOT use \[ \].
+- Escape currency and percent as \\\$ and \\\% in plain text.
+- Never output stray or unmatched $ symbols.
 - Never insert line breaks inside words; keep sentences on one line.
-- Keep tables only as \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}.
-- Use \\text{...} inside math for words.
+- Tables must be only \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}. Do not use other environments.
+- Use \\text{...} for words inside math.
 
 SKIP ALL OF THE MULTIPLE CHOICE QUESTIONS (USUALLY QUESTIONS 1 TO 10)
 PLEASE FOLLOW THIS FORMAT FOR EACH WRITTEN QUESTION:
@@ -37,14 +39,13 @@ READABILITY RULES:
 - Include a blank line between the question header info and QUESTION_CONTENT.
 - If a question has multiple parts, separate each part with a blank line.
 
-BELOW ARE THE TOPIC NAMES FOR Year 12 mathematics advanced. Choose the most suitable topic for each question:
-Further graph transformations
-Sequences and series
-Differential calculus
-Integral calculus
-Applications of calculus
-Random variables
-Financial mathematics
+BELOW ARE THE TOPIC NAMES. Choose the most suitable topic for each question:
+Proof by mathematical induction
+Vectors
+Inverse trigonometric functions
+Further calculus skills
+Further applications of calculus
+The binomial distribution and sampling distribution of the mean
 
 MAKE SURE TO SEPERATE EACH QUESTION WITH A NEWLINE AT THE END. DO NOT FORMAT ANY OF YOUR RESPONSE (just give me raw text). DO NOT RESPOND WITH ANYTHING OTHER THAN THE RAW TEXT.`;
 
@@ -57,11 +58,12 @@ MARKS_X {criteria text}
 MARKS_Y {criteria text}
 
 Rules:
+- A question may contain multiple parts. Each main subpart should be treated and counted as an individual question. For example, 11(a) and 11(b) should each be counted separately.
+- Any subparts that start with (i) or (ii) or something MUST BELONG to the main part and should NOT be counted as separate questions. FOR EXAMPLE 11(a)(i) and 11(a)(ii) both belong to question 11(a) and should NOT be counted as separate questions.
 - Only extract the marking criteria from the marking criteria tables.
 - Ignore all sample answers.
 - Skip all multiple choice questions.
 - Use the question number exactly as shown in the marking criteria.
-- If a question has parts (e.g., 11 a) and 11 b)), keep those part labels in the same MARKING_QUESTION_NUMBER block.
 - Use one criterion per line.
 - Each criterion line must start with MARKS_X followed by the criteria text.
 - Do not add any extra text outside the format.
@@ -162,9 +164,25 @@ const parseQuestions = (content: string) => {
 };
 
 type ParsedCriteria = {
-  baseNumber: string;
-  partLabel: string | null;
+  key: string;
+  rawLabel: string;
   criteriaLines: string[];
+};
+
+const normalizeQuestionKey = (raw: string) => {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return { base: '', part: null as string | null, key: '' };
+
+  const baseMatch = trimmed.match(/(\d+)/);
+  const base = baseMatch ? baseMatch[1] : trimmed;
+  const afterBaseIndex = baseMatch ? trimmed.indexOf(base) + base.length : 0;
+  const afterBase = trimmed.slice(afterBaseIndex);
+
+  const partMatch = afterBase.match(/(?:\(|\s|^)([a-z])\s*\)?/i);
+  const part = partMatch ? partMatch[1].toLowerCase() : null;
+
+  const key = base + (part ? `(${part})` : '');
+  return { base, part, key };
 };
 
 const parseCriteria = (content: string) => {
@@ -173,20 +191,12 @@ const parseCriteria = (content: string) => {
   let currentNumber: string | null = null;
   let buffer: string[] = [];
 
-  const parseQuestionLabel = (raw: string) => {
-    const trimmed = raw.trim();
-    const baseMatch = trimmed.match(/(\d+)/);
-    const baseNumber = baseMatch ? baseMatch[1] : trimmed;
-    const partLabel = trimmed.replace(baseNumber, '').trim() || null;
-    return { baseNumber, partLabel };
-  };
-
   const pushCurrent = () => {
     if (!currentNumber) return;
-    const { baseNumber, partLabel } = parseQuestionLabel(currentNumber);
+    const normalized = normalizeQuestionKey(currentNumber);
     const lines = buffer.map((line) => line.trim()).filter(Boolean);
     if (!lines.length) return;
-    criteria.push({ baseNumber, partLabel, criteriaLines: lines });
+    criteria.push({ key: normalized.key || currentNumber.trim(), rawLabel: currentNumber.trim(), criteriaLines: lines });
   };
 
   for (const rawLine of lines) {
@@ -244,6 +254,7 @@ export async function POST(request: Request) {
     const gradeInput = formData.get('grade');
     const yearInput = formData.get('year');
     const subjectInput = formData.get('subject');
+    const overwriteInput = formData.get('overwrite');
 
     const examFile = exam instanceof File ? exam : null;
     const criteriaFile = criteria instanceof File ? criteria : null;
@@ -259,6 +270,7 @@ export async function POST(request: Request) {
     const grade = String(gradeInput).trim();
     const year = parseInt(String(yearInput), 10);
     const subject = String(subjectInput).trim();
+    const overwrite = String(overwriteInput || '').toLowerCase() === 'true';
 
     if (!grade || Number.isNaN(year) || !subject) {
       return NextResponse.json({ error: 'Invalid grade, year, or subject' }, { status: 400 });
@@ -336,6 +348,7 @@ export async function POST(request: Request) {
         const chunk = chunks[index];
 
         const prompt = part.source === 'criteria' ? CRITERIA_PROMPT : PDF_PROMPT;
+        const model = part.source === 'criteria' ? 'gpt-4o' : 'gpt-5';
         const messages = [
           {
             role: 'system' as const,
@@ -348,7 +361,7 @@ export async function POST(request: Request) {
         ];
 
         const response = await openai.chat.completions.create({
-          model: process.env.OPENAI_PDF_MODEL || 'gpt-4o',
+          model,
           messages,
           temperature: 0.2,
         });
@@ -357,9 +370,9 @@ export async function POST(request: Request) {
 
         if (chunkContent.trim() && isRefusal(chunkContent)) {
           const retryResponse = await openai.chat.completions.create({
-            model: process.env.OPENAI_PDF_MODEL || 'gpt-4o',
+            model,
             messages,
-            temperature: 0.1,
+            temperature: 0.2,
           });
           chunkContent = retryResponse.choices?.[0]?.message?.content || '';
         }
@@ -386,6 +399,21 @@ export async function POST(request: Request) {
     const missingCriteria: string[] = [];
 
     if (examFile) {
+      if (overwrite) {
+        const { error: deleteError } = await supabaseAdmin
+          .from('hsc_questions')
+          .delete()
+          .match({ grade, year, subject });
+
+        if (deleteError) {
+          console.error('Overwrite delete error:', deleteError);
+          return NextResponse.json(
+            { error: 'Failed to overwrite existing questions: ' + deleteError.message },
+            { status: 500 }
+          );
+        }
+      }
+
       const examContent = chunkResponses
         .filter((item) => item.source === 'exam')
         .sort((a, b) => a.index - b.index)
@@ -429,6 +457,21 @@ export async function POST(request: Request) {
     }
 
     if (criteriaFile) {
+      if (overwrite) {
+        const { error: clearError } = await supabaseAdmin
+          .from('hsc_questions')
+          .update({ marking_criteria: null })
+          .match({ grade, year, subject });
+
+        if (clearError) {
+          console.error('Overwrite criteria clear error:', clearError);
+          return NextResponse.json(
+            { error: 'Failed to overwrite existing marking criteria: ' + clearError.message },
+            { status: 500 }
+          );
+        }
+      }
+
       const criteriaContent = chunkResponses
         .filter((item) => item.source === 'criteria')
         .sort((a, b) => a.index - b.index)
@@ -437,12 +480,11 @@ export async function POST(request: Request) {
 
       const { criteria } = parseCriteria(criteriaContent);
 
-      const grouped: Record<string, Record<string, string[]>> = {};
+      const grouped: Record<string, string[]> = {};
       criteria.forEach((entry) => {
-        const partKey = entry.partLabel || 'main';
-        if (!grouped[entry.baseNumber]) grouped[entry.baseNumber] = {};
-        if (!grouped[entry.baseNumber][partKey]) grouped[entry.baseNumber][partKey] = [];
-        grouped[entry.baseNumber][partKey].push(...entry.criteriaLines);
+        if (!entry.key) return;
+        if (!grouped[entry.key]) grouped[entry.key] = [];
+        grouped[entry.key].push(...entry.criteriaLines);
       });
 
       const { data: existingQuestions, error: fetchError } = await supabaseAdmin
@@ -454,49 +496,45 @@ export async function POST(request: Request) {
         console.error('Criteria fetch error:', fetchError);
       }
 
-      const byBaseNumber = new Map<string, string[]>();
+      const byQuestionKey = new Map<string, string[]>();
       (existingQuestions || []).forEach((q: any) => {
-        const numberMatch = String(q.question_number || '').match(/(\d+)/);
-        const base = numberMatch ? numberMatch[1] : null;
-        if (!base) return;
-        if (!byBaseNumber.has(base)) byBaseNumber.set(base, []);
-        byBaseNumber.get(base)!.push(q.id);
+        const normalized = normalizeQuestionKey(String(q.question_number || ''));
+        const key = normalized.key || String(q.question_number || '').trim();
+        if (!key) return;
+        if (!byQuestionKey.has(key)) byQuestionKey.set(key, []);
+        byQuestionKey.get(key)!.push(q.id);
       });
 
-      for (const [baseNumber, parts] of Object.entries(grouped)) {
-        const partKeys = Object.keys(parts);
-        const lines: string[] = [];
-
-        if (partKeys.length > 1 || (partKeys.length === 1 && partKeys[0] !== 'main')) {
-          partKeys.forEach((key) => {
-            const label = key === 'main' ? 'Part' : `Part ${key}`;
-            lines.push(`PART ${label}`);
-            lines.push(...parts[key]);
-          });
-        } else {
-          lines.push(...parts[partKeys[0]]);
-        }
-
+      for (const [questionKey, lines] of Object.entries(grouped)) {
         const criteriaText = lines.join('\n');
-        const ids = byBaseNumber.get(baseNumber) || [];
+        const ids = byQuestionKey.get(questionKey) || [];
 
         if (!ids.length) {
-          missingCriteria.push(baseNumber);
+          missingCriteria.push(questionKey);
           continue;
         }
 
-        for (const id of ids) {
-          const { error } = await supabaseAdmin
+        if (overwrite) {
+          const { error: clearError } = await supabaseAdmin
             .from('hsc_questions')
-            .update({ marking_criteria: criteriaText })
-            .eq('id', id);
+            .update({ marking_criteria: null })
+            .in('id', ids);
 
-          if (error) {
-            console.error('Criteria update error:', error);
-            continue;
+          if (clearError) {
+            console.error('Criteria clear error:', clearError);
           }
-          updatedCriteriaCount += 1;
         }
+
+        const { error: updateError } = await supabaseAdmin
+          .from('hsc_questions')
+          .update({ marking_criteria: criteriaText })
+          .in('id', ids);
+
+        if (updateError) {
+          console.error('Criteria update error:', updateError);
+          continue;
+        }
+        updatedCriteriaCount += ids.length;
       }
     }
 

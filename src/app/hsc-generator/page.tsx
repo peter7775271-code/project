@@ -196,6 +196,29 @@ function HtmlSegment({ html }: { html: string }) {
       return output;
     };
 
+    const convertItemizeToHtml = (input: string) => {
+      return input.replace(/\\begin\{itemize\}([\s\S]*?)\\end\{itemize\}/g, (_match, body) => {
+        const items = body
+          .split(/\\item/g)
+          .map((item: string) => item.trim())
+          .filter((item: string) => item.length > 0);
+
+        const listItems = items
+          .map((item: string) => {
+            const labelMatch = item.match(/^\[([^\]]+)\]\s*/);
+            const label = labelMatch ? labelMatch[1] : null;
+            const content = labelMatch ? item.replace(/^\[[^\]]+\]\s*/, '') : item;
+            const safeContent = content.trim();
+            return label
+              ? `<li><span class="item-label">${label}</span> ${safeContent}</li>`
+              : `<li>${safeContent}</li>`;
+          })
+          .join('');
+
+        return `<ul class="latex-list">${listItems}</ul>`;
+      });
+    };
+
     const ensureKatex = () => {
       return new Promise<void>((resolve, reject) => {
         const loadScript = (id: string, src: string, onLoad: () => void) => {
@@ -272,7 +295,9 @@ function HtmlSegment({ html }: { html: string }) {
         return output.join('\n');
       };
 
-      const processedWithTables = convertTabularToHtml(normalizeSpacedLetters(html))
+      const processedWithTables = convertItemizeToHtml(
+        convertTabularToHtml(normalizeSpacedLetters(html))
+      )
         .replace(/(?<!\\)\$(?=\d)/g, '\\$');
 
       const normalizedMath = processedWithTables
@@ -440,6 +465,7 @@ export default function HSCGeneratorPage() {
   const [pdfGrade, setPdfGrade] = useState<'Year 11' | 'Year 12'>('Year 12');
   const [pdfYear, setPdfYear] = useState<string>(new Date().getFullYear().toString());
   const [pdfSubject, setPdfSubject] = useState<string>('Mathematics Advanced');
+  const [pdfOverwrite, setPdfOverwrite] = useState(false);
   const [viewMode, setViewMode] = useState<'generator' | 'saved' | 'settings' | 'dev-questions'>('generator');
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
@@ -476,6 +502,8 @@ export default function HSCGeneratorPage() {
   const [selectedManageQuestionId, setSelectedManageQuestionId] = useState<string | null>(null);
   const [manageQuestionDraft, setManageQuestionDraft] = useState<any | null>(null);
   const [manageQuestionEditMode, setManageQuestionEditMode] = useState(false);
+  const [selectedManageQuestionIds, setSelectedManageQuestionIds] = useState<string[]>([]);
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [newQuestion, setNewQuestion] = useState({
     grade: 'Year 12',
     year: new Date().getFullYear().toString(),
@@ -618,6 +646,7 @@ export default function HSCGeneratorPage() {
       setSelectedManageQuestionId(null);
       setManageQuestionDraft(null);
       setManageQuestionEditMode(false);
+      setSelectedManageQuestionIds([]);
       return;
     }
     if (!selectedManageQuestionId) {
@@ -625,6 +654,12 @@ export default function HSCGeneratorPage() {
       setManageQuestionEditMode(false);
     }
   }, [allQuestions, devTab, selectedManageQuestionId]);
+
+  useEffect(() => {
+    if (!selectedManageQuestionIds.length) return;
+    const availableIds = new Set(allQuestions.map((q) => q.id));
+    setSelectedManageQuestionIds((prev) => prev.filter((id) => availableIds.has(id)));
+  }, [allQuestions, selectedManageQuestionIds.length]);
 
   // Initialize canvas
   useEffect(() => {
@@ -836,8 +871,14 @@ export default function HSCGeneratorPage() {
     if (e.pointerType === 'touch') return;
     e.preventDefault();
     e.stopPropagation();
+    if (e.pointerType === 'pen') {
+      e.currentTarget.style.touchAction = 'none';
+    }
     e.currentTarget.setPointerCapture(e.pointerId);
     activeInputRef.current = 'pointer';
+    if (e.pointerType === 'pen') {
+      setIsPenDrawing(true);
+    }
     const pressure = Math.max(0.1, e.pressure || 0.4);
     beginStroke(e.clientX, e.clientY, pressure);
   };
@@ -862,7 +903,13 @@ export default function HSCGeneratorPage() {
     } catch {
       // ignore
     }
+    if (e.pointerType === 'pen') {
+      e.currentTarget.style.touchAction = 'pan-y';
+    }
     endStroke();
+    if (e.pointerType === 'pen') {
+      setIsPenDrawing(false);
+    }
     activeInputRef.current = null;
   };
 
@@ -873,6 +920,9 @@ export default function HSCGeneratorPage() {
     const isStylus = (touch as any).touchType === 'stylus';
     if (isIpad && !isStylus) return;
     e.preventDefault();
+    if (isStylus) {
+      e.currentTarget.style.touchAction = 'none';
+    }
     activeInputRef.current = 'touch';
     setIsPenDrawing(true);
     const pressure = Math.max(0.1, (touch as any).force || 0.5);
@@ -894,6 +944,7 @@ export default function HSCGeneratorPage() {
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (e.touches.length >= 2) return;
     e.preventDefault();
+    e.currentTarget.style.touchAction = 'pan-y';
     endStroke();
     if (activeInputRef.current === 'touch') {
       activeInputRef.current = null;
@@ -1086,38 +1137,65 @@ export default function HSCGeneratorPage() {
       return;
     }
 
-    try {
+    const sendPdf = async (payload: FormData, label: string) => {
       setPdfStatus('uploading');
-      setPdfMessage('Uploading PDFs...');
-      setPdfChatGptResponse('');
-
-      const formData = new FormData();
-      if (examPdfFile) {
-        formData.append('exam', examPdfFile);
-      }
-      if (criteriaPdfFile) {
-        formData.append('criteria', criteriaPdfFile);
-      }
-      formData.append('grade', pdfGrade);
-      formData.append('year', pdfYear);
-      formData.append('subject', pdfSubject);
+      setPdfMessage(`Uploading ${label}...`);
 
       const response = await fetch('/api/hsc/pdf-ingest', {
         method: 'POST',
-        body: formData,
+        body: payload,
       });
 
       const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to upload PDFs');
+        throw new Error(data?.error || `Failed to upload ${label}`);
+      }
+      if (data?.chatgpt) {
+        setPdfChatGptResponse((prev) => (prev ? `${prev}\n\n${data.chatgpt}` : data.chatgpt));
+      }
+      return data;
+    };
+
+    try {
+      setPdfChatGptResponse('');
+
+      if (examPdfFile && criteriaPdfFile) {
+        const examData = new FormData();
+        examData.append('exam', examPdfFile);
+        examData.append('grade', pdfGrade);
+        examData.append('year', pdfYear);
+        examData.append('subject', pdfSubject);
+        examData.append('overwrite', pdfOverwrite ? 'true' : 'false');
+        await sendPdf(examData, 'exam PDF');
+
+        const criteriaData = new FormData();
+        criteriaData.append('criteria', criteriaPdfFile);
+        criteriaData.append('grade', pdfGrade);
+        criteriaData.append('year', pdfYear);
+        criteriaData.append('subject', pdfSubject);
+        criteriaData.append('overwrite', pdfOverwrite ? 'true' : 'false');
+        const criteriaResponse = await sendPdf(criteriaData, 'criteria PDF');
+
+        setPdfStatus('ready');
+        setPdfMessage(criteriaResponse?.message || 'PDFs received.');
+        return;
       }
 
+      const singleData = new FormData();
+      if (examPdfFile) {
+        singleData.append('exam', examPdfFile);
+      }
+      if (criteriaPdfFile) {
+        singleData.append('criteria', criteriaPdfFile);
+      }
+      singleData.append('grade', pdfGrade);
+      singleData.append('year', pdfYear);
+      singleData.append('subject', pdfSubject);
+      singleData.append('overwrite', pdfOverwrite ? 'true' : 'false');
+
+      const data = await sendPdf(singleData, 'PDF');
       setPdfStatus('ready');
       setPdfMessage(data?.message || 'PDFs received.');
-      if (data?.chatgpt) {
-        setPdfChatGptResponse(data.chatgpt);
-      }
     } catch (err) {
       setPdfStatus('error');
       setPdfMessage(err instanceof Error ? err.message : 'Failed to upload PDFs');
@@ -1305,6 +1383,112 @@ export default function HSCGeneratorPage() {
       alert('Error deleting question');
     } finally {
       setDeletingQuestionId(null);
+    }
+  };
+
+  const toggleManageSelection = (questionId: string, shouldSelect?: boolean) => {
+    setSelectedManageQuestionIds((prev) => {
+      const alreadySelected = prev.includes(questionId);
+      if (shouldSelect === true && alreadySelected) return prev;
+      if (shouldSelect === false && !alreadySelected) return prev;
+      if (alreadySelected) {
+        return prev.filter((id) => id !== questionId);
+      }
+      return [...prev, questionId];
+    });
+  };
+
+  const setAllManageSelections = (selectAll: boolean) => {
+    if (!selectAll) {
+      setSelectedManageQuestionIds([]);
+      return;
+    }
+    setSelectedManageQuestionIds(allQuestions.map((q) => q.id));
+  };
+
+  const deleteSelectedQuestions = async () => {
+    if (!selectedManageQuestionIds.length) return;
+    if (!confirm(`Delete ${selectedManageQuestionIds.length} selected question(s)?`)) {
+      return;
+    }
+
+    try {
+      setBulkActionLoading(true);
+      for (const questionId of selectedManageQuestionIds) {
+        await fetch('/api/hsc/delete-question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ questionId }),
+        });
+      }
+
+      const remaining = allQuestions.filter((q) => !selectedManageQuestionIds.includes(q.id));
+      setAllQuestions(remaining);
+      setSelectedManageQuestionIds([]);
+      if (selectedManageQuestionId && selectedManageQuestionIds.includes(selectedManageQuestionId)) {
+        setSelectedManageQuestionId(null);
+        setManageQuestionDraft(null);
+        setManageQuestionEditMode(false);
+      }
+    } catch (err) {
+      console.error('Error deleting selected questions:', err);
+      alert('Failed to delete selected questions');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const clearSelectedMarkingCriteria = async () => {
+    if (!selectedManageQuestionIds.length) return;
+    if (!confirm(`Clear marking criteria for ${selectedManageQuestionIds.length} selected question(s)?`)) {
+      return;
+    }
+
+    try {
+      setBulkActionLoading(true);
+      const selectedSet = new Set(selectedManageQuestionIds);
+      const updates = allQuestions.filter((q) => selectedSet.has(q.id));
+
+      for (const q of updates) {
+        await fetch('/api/hsc/update-question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionId: q.id,
+            grade: q.grade,
+            year: String(q.year),
+            subject: q.subject,
+            topic: q.topic,
+            marks: q.marks,
+            questionNumber: q.question_number,
+            questionText: q.question_text,
+            markingCriteria: null,
+            sampleAnswer: q.sample_answer,
+            graphImageData: q.graph_image_data,
+            graphImageSize: q.graph_image_size,
+            questionType: q.question_type,
+            mcqOptionA: q.mcq_option_a,
+            mcqOptionB: q.mcq_option_b,
+            mcqOptionC: q.mcq_option_c,
+            mcqOptionD: q.mcq_option_d,
+            mcqCorrectAnswer: q.mcq_correct_answer,
+            mcqExplanation: q.mcq_explanation,
+          }),
+        });
+      }
+
+      setAllQuestions((prev) =>
+        prev.map((q) => (selectedSet.has(q.id) ? { ...q, marking_criteria: null } : q))
+      );
+
+      if (manageQuestionDraft && selectedSet.has(manageQuestionDraft.id)) {
+        setManageQuestionDraft({ ...manageQuestionDraft, marking_criteria: null });
+      }
+    } catch (err) {
+      console.error('Error clearing marking criteria:', err);
+      alert('Failed to clear marking criteria');
+    } finally {
+      setBulkActionLoading(false);
     }
   };
 
@@ -1633,6 +1817,18 @@ export default function HSCGeneratorPage() {
           font-family: 'CMU Serif', serif; 
           background-color: var(--clr-surface-a0);
           color: var(--clr-primary-a50);
+        }
+        .latex-list {
+          list-style: none;
+          padding-left: 0;
+          margin: 0.25rem 0;
+        }
+        .latex-list li {
+          margin: 0.25rem 0;
+        }
+        .latex-list .item-label {
+          font-weight: 600;
+          margin-right: 0.5rem;
         }
       `}</style>
 
@@ -2139,7 +2335,7 @@ export default function HSCGeneratorPage() {
                     ref={canvasRef}
                     className="w-full cursor-crosshair block"
                     style={{
-                      touchAction: 'pan-y',
+                      touchAction: isPenDrawing ? 'none' : 'pan-y',
                       height: `${canvasHeight}px`,
                     }}
                     onPointerDown={handlePointerDown}
@@ -3144,6 +3340,15 @@ export default function HSCGeneratorPage() {
                     />
                   </div>
 
+                  <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
+                    <input
+                      type="checkbox"
+                      checked={pdfOverwrite}
+                      onChange={(e) => setPdfOverwrite(e.target.checked)}
+                    />
+                    Overwrite existing questions and marking criteria for this grade/year/subject
+                  </label>
+
                   <div className="flex items-center gap-3">
                     <button
                       onClick={submitPdfPair}
@@ -3614,6 +3819,36 @@ export default function HSCGeneratorPage() {
                   </button>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
+                    <input
+                      type="checkbox"
+                      checked={allQuestions.length > 0 && selectedManageQuestionIds.length === allQuestions.length}
+                      onChange={(e) => setAllManageSelections(e.target.checked)}
+                    />
+                    Select all
+                  </label>
+                  <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                    {selectedManageQuestionIds.length} selected
+                  </span>
+                  <button
+                    onClick={deleteSelectedQuestions}
+                    disabled={!selectedManageQuestionIds.length || bulkActionLoading}
+                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--clr-danger-a0)', color: 'var(--clr-light-a0)' }}
+                  >
+                    {bulkActionLoading ? 'Working...' : 'Delete Selected'}
+                  </button>
+                  <button
+                    onClick={clearSelectedMarkingCriteria}
+                    disabled={!selectedManageQuestionIds.length || bulkActionLoading}
+                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                  >
+                    {bulkActionLoading ? 'Working...' : 'Clear Marking Criteria'}
+                  </button>
+                </div>
+
                 {loadingQuestions ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="text-center">
@@ -3629,32 +3864,49 @@ export default function HSCGeneratorPage() {
                   <div>
                     {!manageQuestionDraft ? (
                       <div className="space-y-3">
-                        {allQuestions.map((q) => (
-                          <button
-                            key={q.id}
-                            onClick={() => {
-                              setSelectedManageQuestionId(q.id);
-                              setManageQuestionDraft(q);
-                              setManageQuestionEditMode(false);
-                            }}
-                            className="w-full text-left p-4 rounded-lg border transition-colors"
-                            style={{
-                              backgroundColor: 'var(--clr-surface-a10)',
-                              borderColor: 'var(--clr-surface-tonal-a20)',
-                            }}
-                          >
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{q.subject}</span>
-                              {q.question_number && (
-                                <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
-                              )}
-                              <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
-                              <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
-                            </div>
-                            <p style={{ color: 'var(--clr-surface-a40)' }} className="text-sm">{q.topic}</p>
-                            <p style={{ color: 'var(--clr-primary-a40)' }} className="text-xs mt-1 line-clamp-1">{q.question_text}</p>
-                          </button>
-                        ))}
+                        {allQuestions.map((q) => {
+                          const isSelected = selectedManageQuestionIds.includes(q.id);
+                          return (
+                            <button
+                              key={q.id}
+                              onClick={() => {
+                                setSelectedManageQuestionId(q.id);
+                                setManageQuestionDraft(q);
+                                setManageQuestionEditMode(false);
+                              }}
+                              className="w-full text-left p-4 rounded-lg border transition-colors"
+                              style={{
+                                backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                              }}
+                            >
+                              <div className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleManageSelection(q.id, e.target.checked);
+                                  }}
+                                  className="mt-1"
+                                />
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{q.subject}</span>
+                                    {q.question_number && (
+                                      <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
+                                    )}
+                                    <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
+                                    <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
+                                  </div>
+                                  <p style={{ color: 'var(--clr-surface-a40)' }} className="text-sm">{q.topic}</p>
+                                  <p style={{ color: 'var(--clr-primary-a40)' }} className="text-xs mt-1 line-clamp-1">{q.question_text}</p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="space-y-6">

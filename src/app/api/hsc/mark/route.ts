@@ -62,7 +62,7 @@ If the student's answer is correct or nearly correct, you can omit the numbered 
 
     // Call OpenAI API with vision
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [
         {
           role: 'user',
@@ -77,8 +77,7 @@ If the student's answer is correct or nearly correct, you can omit the numbered 
           ],
         },
       ],
-      temperature: 0,
-      max_tokens: 1000,
+      max_completion_tokens: 1000,
     });
 
     const aiEvaluation = response.choices[0]?.message?.content || '';
