@@ -13,7 +13,8 @@ export async function POST(request: NextRequest) {
       markingCriteria, 
       sampleAnswer, 
       maxMarks,
-      userAnswerImage 
+      userAnswerImage,
+      answerQualityHint
     } = body;
 
     if (!questionText || !markingCriteria || !sampleAnswer || !userAnswerImage) {
@@ -21,6 +22,15 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields' },
         { status: 400 }
       );
+    }
+
+    if (answerQualityHint === 'low_ink') {
+      return NextResponse.json({
+        success: true,
+        evaluation: `Marks Awarded: 0/${maxMarks}
+Reasoning: The response appears blank or contains only minimal/illegible scribbles, so no valid working can be identified.
+1. No readable steps were provided to assess against the marking criteria.`,
+      });
     }
 
     // Create the prompt for AI marking
@@ -38,6 +48,7 @@ ${sampleAnswer}
 MAX MARKS: ${maxMarks}
 
 Please evaluate the student's handwritten answer in the image and provide your feedback. When writing mathematical expressions, wrap them in single dollar signs $ like this: $x^2 + 3x + 2$.
+If the student's response is blank, illegible, or only contains random scribbles with no meaningful working, you must award 0 marks and state that no valid working was detected. Do not award full marks unless all criteria are clearly satisfied. Do not infer steps that are not explicitly shown in the student's work.
 
 Use this format for your response:
 
@@ -66,6 +77,7 @@ If the student's answer is correct or nearly correct, you can omit the numbered 
           ],
         },
       ],
+      temperature: 0,
       max_tokens: 1000,
     });
 

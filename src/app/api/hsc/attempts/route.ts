@@ -25,9 +25,16 @@ export async function GET(request: NextRequest) {
           subject,
           topic,
           marks,
+          question_type,
           question_text,
           marking_criteria,
-          sample_answer
+          sample_answer,
+          mcq_option_a,
+          mcq_option_b,
+          mcq_option_c,
+          mcq_option_d,
+          mcq_correct_answer,
+          mcq_explanation
         )
       `)
       .eq('user_id', userId)

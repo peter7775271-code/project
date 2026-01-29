@@ -19,10 +19,17 @@ CREATE TABLE hsc_questions (
   marks INTEGER NOT NULL,
   question_number TEXT,
   question_text TEXT NOT NULL,
+  question_type TEXT DEFAULT 'written',
   graph_image_data TEXT,
   graph_image_size TEXT DEFAULT 'medium',
   marking_criteria TEXT,
   sample_answer TEXT,
+  mcq_option_a TEXT,
+  mcq_option_b TEXT,
+  mcq_option_c TEXT,
+  mcq_option_d TEXT,
+  mcq_correct_answer TEXT,
+  mcq_explanation TEXT,
   created_at TIMESTAMP DEFAULT now()
 );
 
@@ -76,6 +83,14 @@ If you already created the table, run:
 ```sql
 ALTER TABLE hsc_questions ALTER COLUMN marking_criteria DROP NOT NULL;
 ALTER TABLE hsc_questions ALTER COLUMN sample_answer DROP NOT NULL;
+
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'written';
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_option_a TEXT;
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_option_b TEXT;
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_option_c TEXT;
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_option_d TEXT;
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_correct_answer TEXT;
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_explanation TEXT;
 ```
 
 ### Step 2: Configure Supabase Storage
@@ -106,10 +121,17 @@ Your tables should now be created. You'll see:
 | marks | INTEGER | Total marks for question |
 | question_number | TEXT | Optional question number (e.g., 11 or 11a)) |
 | question_text | TEXT | Full question in LaTeX format |
+| question_type | TEXT | 'written' or 'multiple_choice' (default: written) |
 | graph_image_data | TEXT | Optional data URL for pre-rendered graph (e.g., PNG) |
 | graph_image_size | TEXT | Optional size: small, medium, large (default: medium) |
 | marking_criteria | TEXT | Marking criteria in LaTeX format (optional) |
 | sample_answer | TEXT | Sample solution in LaTeX format (optional) |
+| mcq_option_a | TEXT | Option A text (MCQ only) |
+| mcq_option_b | TEXT | Option B text (MCQ only) |
+| mcq_option_c | TEXT | Option C text (MCQ only) |
+| mcq_option_d | TEXT | Option D text (MCQ only) |
+| mcq_correct_answer | TEXT | Correct answer letter A-D (MCQ only) |
+| mcq_explanation | TEXT | Explanation for correct answer (MCQ only) |
 | created_at | TIMESTAMP | When question was added |
 
 ### student_saved_attempts Table
