@@ -249,8 +249,11 @@ export default function DashboardPage() {
 
     try {
       setUser(JSON.parse(userStr));
+      router.replace('/hsc-generator');
+      return;
     } catch (error) {
       router.push('/login');
+      return;
     } finally {
       setLoading(false);
     }
@@ -646,57 +649,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Chat Button Card */}
-        <button
-          onClick={() => setActiveView('chat')}
-          className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 text-left shadow-xl backdrop-blur-xl border border-white/20 hover:border-blue-500/50 hover:bg-white/60 dark:hover:bg-white/10 transition-all duration-300 hover:-translate-y-1"
-        >
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-            <svg className="w-32 h-32 text-blue-600 dark:text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" /></svg>
-          </div>
-          <div className="relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center mb-4 shadow-lg shadow-blue-500/30">
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">AI Chat</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Ask questions, upload files, and get help from GPT-4o.</p>
-          </div>
-        </button>
-
-        {/* Profile Button Card */}
-        <button
-          onClick={() => setActiveView('profile')}
-          className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 text-left shadow-xl backdrop-blur-xl border border-white/20 hover:border-purple-500/50 hover:bg-white/60 dark:hover:bg-white/10 transition-all duration-300 hover:-translate-y-1"
-        >
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-            <svg className="w-32 h-32 text-purple-600 dark:text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" /></svg>
-          </div>
-          <div className="relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-purple-600 flex items-center justify-center mb-4 shadow-lg shadow-purple-500/30">
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">My Profile</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Manage your account details and verification status.</p>
-          </div>
-        </button>
-
-        {/* Nutrition Button Card */}
-        <button
-          onClick={() => setActiveView('nutrition')}
-          className="group relative overflow-hidden rounded-3xl bg-white/40 dark:bg-white/5 p-8 text-left shadow-xl backdrop-blur-xl border border-white/20 hover:border-green-500/50 hover:bg-white/60 dark:hover:bg-white/10 transition-all duration-300 hover:-translate-y-1"
-        >
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-            <svg className="w-32 h-32 text-green-600 dark:text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
-          </div>
-          <div className="relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-green-600 flex items-center justify-center mb-4 shadow-lg shadow-green-500/30">
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Nutrition Analysis</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Analyze products and get a health rating out of 100.</p>
-          </div>
-        </button>
-
         {/* HSC Question Generator Button Card */}
         <button
           onClick={() => router.push('/hsc-generator')}

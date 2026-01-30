@@ -46,7 +46,7 @@ export default function LoginForm() {
       localStorage.setItem('user', JSON.stringify(data.user));
       
       // Redirect
-      window.location.href = '/dashboard';
+      window.location.href = '/hsc-generator';
     } catch (err) {
       setError('An error occurred. Please try again.');
       console.error(err);

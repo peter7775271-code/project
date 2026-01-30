@@ -69,7 +69,7 @@ export default function SignUpForm() {
       
       // Redirect after 2 seconds
       setTimeout(() => {
-        window.location.href = '/dashboard';
+        window.location.href = '/hsc-generator';
       }, 2000);
     } catch (err) {
       setError('An error occurred. Please try again.');

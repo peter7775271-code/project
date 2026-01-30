@@ -345,6 +345,70 @@ type Subject = {
   icon: React.ReactNode;
 };
 
+type CriteriaDisplayItem = {
+  type: 'heading' | 'criteria';
+  text: string;
+  marks?: string | null;
+  subpart?: string | null;
+  key: string;
+};
+
+const parseCriteriaForDisplay = (criteriaText: string): CriteriaDisplayItem[] => {
+  if (!criteriaText) return [];
+  const lines = criteriaText.split(/\n/).map((line) => line.trim()).filter(Boolean);
+  const items: CriteriaDisplayItem[] = [];
+
+  lines.forEach((line, idx) => {
+    const cleaned = line.replace(/^\s*[•\-]\s*/, '').trim();
+    if (!cleaned) return;
+
+    if (/^PART\s+/i.test(cleaned)) {
+      items.push({
+        type: 'heading',
+        text: cleaned.replace(/^PART\s+/i, '').trim(),
+        key: `part-${idx}`,
+      });
+      return;
+    }
+
+    const subpartMatch = cleaned.match(/^\((i{1,3}|iv|v|vi|vii|viii|ix|x)\)\s+/i);
+    const subpart = subpartMatch ? subpartMatch[1].toLowerCase() : null;
+    const rest = subpartMatch ? cleaned.slice(subpartMatch[0].length).trim() : cleaned;
+
+    const marksPrefixMatch = rest.match(/^MARKS_([\d.]+)\s+(.*)$/i);
+    const underscoreMatch = rest.match(/^(.*)_([\d.]+)$/);
+    const markMatch = marksPrefixMatch || underscoreMatch || rest.match(/([\d.]+)\s*marks?\b/i) || rest.match(/\b([\d.]+)\s*$/);
+
+    if (!markMatch) return;
+
+    const markValue = marksPrefixMatch
+      ? marksPrefixMatch[1]
+      : underscoreMatch
+        ? underscoreMatch[2]
+        : markMatch[1];
+
+    const criteriaOnly = marksPrefixMatch
+      ? marksPrefixMatch[2].trim()
+      : underscoreMatch
+        ? underscoreMatch[1].trim()
+        : rest
+            .replace(/[\d.]+\s*marks?/gi, '')
+            .replace(/\b[\d.]+\s*$/, '')
+            .replace(/:\s*$/, '')
+            .trim();
+
+    items.push({
+      type: 'criteria',
+      text: criteriaOnly,
+      marks: markValue,
+      subpart,
+      key: `crit-${idx}`,
+    });
+  });
+
+  return items;
+};
+
 const SUBJECTS: Subject[] = [
   { id: 'math-adv', name: 'Mathematics Advanced', icon: <Calculator className="w-5 h-5" /> },
   { id: 'math-ext1', name: 'Mathematics Ext 1', icon: <Calculator className="w-5 h-5" /> },
@@ -457,7 +521,7 @@ export default function HSCGeneratorPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [isUpdatingQuestion, setIsUpdatingQuestion] = useState(false);
-  const [examPdfFile, setExamPdfFile] = useState<File | null>(null);
+  const [examImageFiles, setExamImageFiles] = useState<File[]>([]);
   const [criteriaPdfFile, setCriteriaPdfFile] = useState<File | null>(null);
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'uploading' | 'ready' | 'error'>('idle');
   const [pdfMessage, setPdfMessage] = useState<string>('');
@@ -504,6 +568,14 @@ export default function HSCGeneratorPage() {
   const [manageQuestionEditMode, setManageQuestionEditMode] = useState(false);
   const [selectedManageQuestionIds, setSelectedManageQuestionIds] = useState<string[]>([]);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [manageSearchQuery, setManageSearchQuery] = useState('');
+  const [manageFilterGrade, setManageFilterGrade] = useState<string>('');
+  const [manageFilterYear, setManageFilterYear] = useState<string>('');
+  const [manageFilterSubject, setManageFilterSubject] = useState<string>('');
+  const [manageFilterTopic, setManageFilterTopic] = useState<string>('');
+  const [manageFilterType, setManageFilterType] = useState<'all' | 'written' | 'multiple_choice'>('all');
+  const [manageSortKey, setManageSortKey] = useState<'question_number' | 'year' | 'subject' | 'grade' | 'marks' | 'topic'>('question_number');
+  const [manageSortDirection, setManageSortDirection] = useState<'asc' | 'desc'>('asc');
   const [newQuestion, setNewQuestion] = useState({
     grade: 'Year 12',
     year: new Date().getFullYear().toString(),
@@ -611,6 +683,102 @@ export default function HSCGeneratorPage() {
     if (gradeValue !== 'Year 11' && gradeValue !== 'Year 12') return [];
     return TOPICS_BY_YEAR_SUBJECT[gradeValue]?.[subjectValue] || [];
   };
+
+  const parseQuestionNumberForSort = (value: string | null | undefined) => {
+    const raw = String(value || '').toLowerCase().trim();
+    if (!raw) {
+      return { number: Number.POSITIVE_INFINITY, part: '', subpart: 0, raw };
+    }
+    const match = raw.match(/(\d+)\s*(?:\(?([a-z])\)?)?\s*(?:\(?((?:ix|iv|v?i{0,3}|x))\)?)?/i);
+    const number = match?.[1] ? parseInt(match[1], 10) : Number.POSITIVE_INFINITY;
+    const part = match?.[2] ? match[2].toLowerCase() : '';
+    const roman = match?.[3] ? match[3].toLowerCase() : '';
+    const romanMap: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+    const subpart = roman ? (romanMap[roman] || 0) : 0;
+    return { number, part, subpart, raw };
+  };
+
+  const manageFilterOptions = useMemo(() => {
+    const grades = new Set<string>();
+    const years = new Set<string>();
+    const subjects = new Set<string>();
+    const topics = new Set<string>();
+    allQuestions.forEach((q) => {
+      if (q?.grade) grades.add(String(q.grade));
+      if (q?.year) years.add(String(q.year));
+      if (q?.subject) subjects.add(String(q.subject));
+      if (q?.topic) topics.add(String(q.topic));
+    });
+
+    const sortAlpha = (values: Set<string>) => Array.from(values).sort((a, b) => a.localeCompare(b));
+    const sortNumeric = (values: Set<string>) => Array.from(values).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+
+    return {
+      grades: sortAlpha(grades),
+      years: sortNumeric(years),
+      subjects: sortAlpha(subjects),
+      topics: sortAlpha(topics),
+    };
+  }, [allQuestions]);
+
+  const filteredManageQuestions = useMemo(() => {
+    const search = manageSearchQuery.trim().toLowerCase();
+    const filtered = allQuestions.filter((q) => {
+      if (manageFilterGrade && String(q.grade) !== manageFilterGrade) return false;
+      if (manageFilterYear && String(q.year) !== manageFilterYear) return false;
+      if (manageFilterSubject && String(q.subject) !== manageFilterSubject) return false;
+      if (manageFilterTopic && String(q.topic) !== manageFilterTopic) return false;
+      if (manageFilterType !== 'all' && String(q.question_type) !== manageFilterType) return false;
+      if (search) {
+        const haystack = [q.question_number, q.subject, q.topic, q.question_text, q.grade, q.year]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      let comparison = 0;
+      if (manageSortKey === 'question_number') {
+        const left = parseQuestionNumberForSort(a.question_number);
+        const right = parseQuestionNumberForSort(b.question_number);
+        comparison = left.number - right.number || left.part.localeCompare(right.part) || left.subpart - right.subpart || left.raw.localeCompare(right.raw);
+      } else if (manageSortKey === 'year') {
+        comparison = Number(a.year || 0) - Number(b.year || 0);
+      } else if (manageSortKey === 'marks') {
+        comparison = Number(a.marks || 0) - Number(b.marks || 0);
+      } else if (manageSortKey === 'grade') {
+        const left = String(a.grade || '').match(/\d+/)?.[0] || '';
+        const right = String(b.grade || '').match(/\d+/)?.[0] || '';
+        comparison = Number(left || 0) - Number(right || 0);
+      } else if (manageSortKey === 'subject') {
+        comparison = String(a.subject || '').localeCompare(String(b.subject || ''));
+      } else if (manageSortKey === 'topic') {
+        comparison = String(a.topic || '').localeCompare(String(b.topic || ''));
+      }
+
+      return manageSortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return sorted;
+  }, [
+    allQuestions,
+    manageSearchQuery,
+    manageFilterGrade,
+    manageFilterYear,
+    manageFilterSubject,
+    manageFilterTopic,
+    manageFilterType,
+    manageSortKey,
+    manageSortDirection,
+  ]);
+
+  const filteredManageQuestionIds = useMemo(
+    () => filteredManageQuestions.map((q) => q.id),
+    [filteredManageQuestions]
+  );
 
   // Check user auth and dev mode on mount
   useEffect(() => {
@@ -1125,9 +1293,9 @@ export default function HSCGeneratorPage() {
   };
 
   const submitPdfPair = async () => {
-    if (!examPdfFile && !criteriaPdfFile) {
+    if (!examImageFiles.length && !criteriaPdfFile) {
       setPdfStatus('error');
-      setPdfMessage('Please select at least one PDF.');
+      setPdfMessage('Please select exam images or a criteria PDF.');
       return;
     }
 
@@ -1158,15 +1326,14 @@ export default function HSCGeneratorPage() {
 
     try {
       setPdfChatGptResponse('');
-
-      if (examPdfFile && criteriaPdfFile) {
+      if (examImageFiles.length && criteriaPdfFile) {
         const examData = new FormData();
-        examData.append('exam', examPdfFile);
+        examImageFiles.forEach((file) => examData.append('examImages', file));
         examData.append('grade', pdfGrade);
         examData.append('year', pdfYear);
         examData.append('subject', pdfSubject);
         examData.append('overwrite', pdfOverwrite ? 'true' : 'false');
-        await sendPdf(examData, 'exam PDF');
+        await sendPdf(examData, 'exam images');
 
         const criteriaData = new FormData();
         criteriaData.append('criteria', criteriaPdfFile);
@@ -1177,14 +1344,12 @@ export default function HSCGeneratorPage() {
         const criteriaResponse = await sendPdf(criteriaData, 'criteria PDF');
 
         setPdfStatus('ready');
-        setPdfMessage(criteriaResponse?.message || 'PDFs received.');
+        setPdfMessage(criteriaResponse?.message || 'Files received.');
         return;
       }
 
       const singleData = new FormData();
-      if (examPdfFile) {
-        singleData.append('exam', examPdfFile);
-      }
+      examImageFiles.forEach((file) => singleData.append('examImages', file));
       if (criteriaPdfFile) {
         singleData.append('criteria', criteriaPdfFile);
       }
@@ -1193,12 +1358,12 @@ export default function HSCGeneratorPage() {
       singleData.append('subject', pdfSubject);
       singleData.append('overwrite', pdfOverwrite ? 'true' : 'false');
 
-      const data = await sendPdf(singleData, 'PDF');
+      const data = await sendPdf(singleData, examImageFiles.length ? 'exam images' : 'criteria PDF');
       setPdfStatus('ready');
-      setPdfMessage(data?.message || 'PDFs received.');
+      setPdfMessage(data?.message || 'Files received.');
     } catch (err) {
       setPdfStatus('error');
-      setPdfMessage(err instanceof Error ? err.message : 'Failed to upload PDFs');
+      setPdfMessage(err instanceof Error ? err.message : 'Failed to submit intake');
     }
   };
 
@@ -1398,12 +1563,17 @@ export default function HSCGeneratorPage() {
     });
   };
 
-  const setAllManageSelections = (selectAll: boolean) => {
+  const setAllManageSelections = (selectAll: boolean, ids?: string[]) => {
+    const targetIds = ids && ids.length ? ids : allQuestions.map((q) => q.id);
     if (!selectAll) {
-      setSelectedManageQuestionIds([]);
+      setSelectedManageQuestionIds((prev) => prev.filter((id) => !targetIds.includes(id)));
       return;
     }
-    setSelectedManageQuestionIds(allQuestions.map((q) => q.id));
+    setSelectedManageQuestionIds((prev) => {
+      const next = new Set(prev);
+      targetIds.forEach((id) => next.add(id));
+      return Array.from(next);
+    });
   };
 
   const deleteSelectedQuestions = async () => {
@@ -2324,7 +2494,10 @@ export default function HSCGeneratorPage() {
                 </div>
                 <div 
                   className="max-h-[420px] md:max-h-[600px] overflow-y-auto rounded-xl"
-                  style={{ backgroundColor: 'var(--clr-surface-a0)' }}
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    touchAction: 'none',
+                  }}
                   onTouchMove={(e) => {
                     if (isIpad && e.touches.length < 2) {
                       e.preventDefault();
@@ -2335,7 +2508,7 @@ export default function HSCGeneratorPage() {
                     ref={canvasRef}
                     className="w-full cursor-crosshair block"
                     style={{
-                      touchAction: isPenDrawing ? 'none' : 'pan-y',
+                      touchAction: 'none',
                       height: `${canvasHeight}px`,
                     }}
                     onPointerDown={handlePointerDown}
@@ -2351,11 +2524,6 @@ export default function HSCGeneratorPage() {
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onTouchCancel={handleTouchEnd}
-                    onTouchMoveCapture={(e) => {
-                      if (isIpad && e.touches.length < 2) {
-                        e.preventDefault();
-                      }
-                    }}
                   />
                 </div>
                 <button
@@ -2697,63 +2865,59 @@ export default function HSCGeneratorPage() {
                                   <tbody>
                                       {(() => {
                                           const criteriaText = feedback.marking_criteria;
-                                          const lines = criteriaText.split(/\n/).filter((line: string) => line.trim());
+                                          const items = parseCriteriaForDisplay(criteriaText);
+                                          const rows: React.ReactNode[] = [];
+                                          let lastSubpart: string | null = null;
 
-                                          return lines.map((line: string, idx: number) => {
-                                            const cleaned = line.replace(/^\s*[•\-]\s*/, '').trim();
-                                            if (/^PART\s+/i.test(cleaned)) {
-                                              return (
-                                                <tr key={`part-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          items.forEach((item, idx) => {
+                                            if (item.type === 'heading') {
+                                              lastSubpart = null;
+                                              rows.push(
+                                                <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                                   <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>
-                                                    {cleaned.replace(/^PART\s+/i, '')}
+                                                    {item.text}
                                                   </td>
                                                 </tr>
                                               );
+                                              return;
                                             }
-                                            const marksPrefixMatch = cleaned.match(/^MARKS_([\d.]+)\s+(.*)$/i);
-                                            const underscoreMatch = cleaned.match(/^(.*)_([\d.]+)$/);
-                                            const markMatch = marksPrefixMatch || underscoreMatch || cleaned.match(/([\d.]+)\s*marks?\b/i) || cleaned.match(/\b([\d.]+)\s*$/);
-                                            if (markMatch) {
-                                              const markValue = marksPrefixMatch
-                                                ? marksPrefixMatch[1]
-                                                : underscoreMatch
-                                                  ? underscoreMatch[2]
-                                                  : markMatch[1];
-                                              const criteriaOnly = marksPrefixMatch
-                                                ? marksPrefixMatch[2].trim()
-                                                : underscoreMatch
-                                                  ? underscoreMatch[1].trim()
-                                                  : cleaned
-                                                      .replace(/[\d.]+\s*marks?/gi, '')
-                                                      .replace(/\b[\d.]+\s*$/, '')
-                                                      .replace(/:\s*$/, '')
-                                                      .trim();
 
-                                              return (
-                                                <tr 
-                                                  key={idx} 
-                                                  className="border-b transition-colors"
-                                                  style={{ 
-                                                    borderColor: 'var(--clr-surface-tonal-a20)',
-                                                  }}
-                                                >
-                                                  <td 
-                                                    className="py-3 px-3"
-                                                    style={{ color: 'var(--clr-light-a0)' }}
-                                                  >
-                                                    <LatexText text={criteriaOnly} />
-                                                  </td>
-                                                  <td 
-                                                    className="py-3 px-3 text-right font-mono font-bold"
-                                                    style={{ color: 'var(--clr-success-a10)' }}
-                                                  >
-                                                    {markValue}
+                                            if (item.subpart && item.subpart !== lastSubpart) {
+                                              lastSubpart = item.subpart;
+                                              rows.push(
+                                                <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                                  <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>
+                                                    Part ({item.subpart})
                                                   </td>
                                                 </tr>
                                               );
                                             }
-                                            return null;
-                                          }).filter(Boolean);
+
+                                            rows.push(
+                                              <tr 
+                                                key={`${item.key}-${idx}`} 
+                                                className="border-b transition-colors"
+                                                style={{ 
+                                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                                }}
+                                              >
+                                                <td 
+                                                  className="py-3 px-3"
+                                                  style={{ color: 'var(--clr-light-a0)' }}
+                                                >
+                                                  <LatexText text={item.text} />
+                                                </td>
+                                                <td 
+                                                  className="py-3 px-3 text-right font-mono font-bold"
+                                                  style={{ color: 'var(--clr-success-a10)' }}
+                                                >
+                                                  {item.marks}
+                                                </td>
+                                              </tr>
+                                            );
+                                          });
+
+                                          return rows;
                                       })()}
                                   </tbody>
                               </table>
@@ -3034,57 +3198,57 @@ export default function HSCGeneratorPage() {
                               <tbody>
                                 {(() => {
                                   const criteriaText = selectedAttempt.feedback.marking_criteria;
-                                  const lines = criteriaText.split(/\n/).filter((line: string) => line.trim());
-                                  
-                                  return lines.map((line: string, idx: number) => {
-                                    const cleaned = line.replace(/^\s*[•\-]\s*/, '').trim();
-                                    if (/^PART\s+/i.test(cleaned)) {
-                                      return (
-                                        <tr key={`part-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                  const items = parseCriteriaForDisplay(criteriaText);
+                                  const rows: React.ReactNode[] = [];
+                                  let lastSubpart: string | null = null;
+
+                                  items.forEach((item, idx) => {
+                                    if (item.type === 'heading') {
+                                      lastSubpart = null;
+                                      rows.push(
+                                        <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                           <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>
-                                            {cleaned.replace(/^PART\s+/i, '')}
+                                            {item.text}
+                                          </td>
+                                        </tr>
+                                      );
+                                      return;
+                                    }
+
+                                    if (item.subpart && item.subpart !== lastSubpart) {
+                                      lastSubpart = item.subpart;
+                                      rows.push(
+                                        <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>
+                                            Part ({item.subpart})
                                           </td>
                                         </tr>
                                       );
                                     }
-                                    const marksPrefixMatch = cleaned.match(/^MARKS_([\d.]+)\s+(.*)$/i);
-                                    const underscoreMatch = cleaned.match(/^(.*)_([\d.]+)$/);
-                                    const markMatch = marksPrefixMatch || underscoreMatch || cleaned.match(/([\d.]+)\s*marks?/i) || cleaned.match(/\b([\d.]+)\s*$/);
-                                    if (markMatch) {
-                                      const markValue = marksPrefixMatch
-                                        ? marksPrefixMatch[1]
-                                        : underscoreMatch
-                                          ? underscoreMatch[2]
-                                          : markMatch[1];
-                                      const criteriaOnly = marksPrefixMatch
-                                        ? marksPrefixMatch[2].trim()
-                                        : underscoreMatch
-                                          ? underscoreMatch[1].trim()
-                                          : cleaned.replace(/[\d.]+\s*marks?/gi, '').replace(/\b[\d.]+\s*$/, '').replace(/:\s*$/, '').trim();
-                                      
-                                      return (
-                                        <tr 
-                                          key={idx} 
-                                          className="border-b transition-colors"
-                                          style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+
+                                    rows.push(
+                                      <tr 
+                                        key={`${item.key}-${idx}`} 
+                                        className="border-b transition-colors"
+                                        style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                      >
+                                        <td 
+                                          className="py-3 px-3"
+                                          style={{ color: 'var(--clr-light-a0)' }}
                                         >
-                                          <td 
-                                            className="py-3 px-3"
-                                            style={{ color: 'var(--clr-light-a0)' }}
-                                          >
-                                            <LatexText text={criteriaOnly} />
-                                          </td>
-                                          <td 
-                                            className="py-3 px-3 text-right font-mono font-bold"
-                                            style={{ color: 'var(--clr-success-a10)' }}
-                                          >
-                                            {markValue}
-                                          </td>
-                                        </tr>
-                                      );
-                                    }
-                                    return null;
-                                  }).filter(Boolean);
+                                          <LatexText text={item.text} />
+                                        </td>
+                                        <td 
+                                          className="py-3 px-3 text-right font-mono font-bold"
+                                          style={{ color: 'var(--clr-success-a10)' }}
+                                        >
+                                          {item.marks}
+                                        </td>
+                                      </tr>
+                                    );
+                                  });
+
+                                  return rows;
                                 })()}
                               </tbody>
                             </table>
@@ -3247,7 +3411,7 @@ export default function HSCGeneratorPage() {
               >
                 <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>PDF Intake</h2>
                 <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
-                  Upload the exam paper PDF or the marking criteria PDF. You can send them in separate requests. The response will be used to create new questions automatically.
+                  Upload a folder of exam images (JPEG/PNG) or the marking criteria PDF. The response will be used to create new questions automatically.
                 </p>
 
                 <div className="space-y-4">
@@ -3311,11 +3475,14 @@ export default function HSCGeneratorPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Paper PDF</label>
+                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Images Folder</label>
                     <input
                       type="file"
-                      accept="application/pdf"
-                      onChange={(e) => setExamPdfFile(e.target.files?.[0] || null)}
+                      accept="image/jpeg,image/png"
+                      multiple
+                      webkitdirectory=""
+                      directory=""
+                      onChange={(e) => setExamImageFiles(Array.from(e.target.files || []))}
                       className="mt-2 w-full px-4 py-2 rounded-lg border"
                       style={{
                         backgroundColor: 'var(--clr-surface-a0)',
@@ -3323,6 +3490,11 @@ export default function HSCGeneratorPage() {
                         color: 'var(--clr-primary-a50)',
                       }}
                     />
+                    {examImageFiles.length > 0 && (
+                      <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
+                        {examImageFiles.length} image{examImageFiles.length === 1 ? '' : 's'} selected
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -3359,7 +3531,7 @@ export default function HSCGeneratorPage() {
                         color: 'var(--clr-dark-a0)',
                       }}
                     >
-                      {pdfStatus === 'uploading' ? 'Uploading...' : 'Send PDFs'}
+                      {pdfStatus === 'uploading' ? 'Uploading...' : 'Upload Files'}
                     </button>
                     {pdfMessage && (
                       <span
@@ -3823,13 +3995,16 @@ export default function HSCGeneratorPage() {
                   <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
                     <input
                       type="checkbox"
-                      checked={allQuestions.length > 0 && selectedManageQuestionIds.length === allQuestions.length}
-                      onChange={(e) => setAllManageSelections(e.target.checked)}
+                      checked={
+                        filteredManageQuestionIds.length > 0 &&
+                        filteredManageQuestionIds.every((id) => selectedManageQuestionIds.includes(id))
+                      }
+                      onChange={(e) => setAllManageSelections(e.target.checked, filteredManageQuestionIds)}
                     />
-                    Select all
+                    Select all (filtered)
                   </label>
                   <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
-                    {selectedManageQuestionIds.length} selected
+                    {selectedManageQuestionIds.length} selected • {filteredManageQuestions.length} showing of {allQuestions.length}
                   </span>
                   <button
                     onClick={deleteSelectedQuestions}
@@ -3849,6 +4024,126 @@ export default function HSCGeneratorPage() {
                   </button>
                 </div>
 
+                <div className="grid grid-cols-1 lg:grid-cols-6 gap-3 mb-6">
+                  <input
+                    type="text"
+                    value={manageSearchQuery}
+                    onChange={(e) => setManageSearchQuery(e.target.value)}
+                    placeholder="Search question number, topic, text..."
+                    className="lg:col-span-2 px-3 py-2 rounded-lg border text-sm"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a0)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  />
+                  <select
+                    value={manageFilterGrade}
+                    onChange={(e) => setManageFilterGrade(e.target.value)}
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a0)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <option value="">All Grades</option>
+                    {manageFilterOptions.grades.map((grade) => (
+                      <option key={grade} value={grade}>{grade}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={manageFilterYear}
+                    onChange={(e) => setManageFilterYear(e.target.value)}
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a0)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <option value="">All Years</option>
+                    {manageFilterOptions.years.map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={manageFilterSubject}
+                    onChange={(e) => setManageFilterSubject(e.target.value)}
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a0)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <option value="">All Subjects</option>
+                    {manageFilterOptions.subjects.map((subject) => (
+                      <option key={subject} value={subject}>{subject}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={manageFilterTopic}
+                    onChange={(e) => setManageFilterTopic(e.target.value)}
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a0)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <option value="">All Topics</option>
+                    {manageFilterOptions.topics.map((topic) => (
+                      <option key={topic} value={topic}>{topic}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={manageFilterType}
+                    onChange={(e) => setManageFilterType(e.target.value as 'all' | 'written' | 'multiple_choice')}
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a0)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <option value="all">All Types</option>
+                    <option value="written">Written Response</option>
+                    <option value="multiple_choice">Multiple Choice</option>
+                  </select>
+                  <div className="flex gap-2">
+                    <select
+                      value={manageSortKey}
+                      onChange={(e) => setManageSortKey(e.target.value as typeof manageSortKey)}
+                      className="flex-1 px-3 py-2 rounded-lg border text-sm"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a0)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                        color: 'var(--clr-primary-a50)',
+                      }}
+                    >
+                      <option value="question_number">Sort by Question #</option>
+                      <option value="year">Sort by Year</option>
+                      <option value="grade">Sort by Grade</option>
+                      <option value="subject">Sort by Subject</option>
+                      <option value="topic">Sort by Topic</option>
+                      <option value="marks">Sort by Marks</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setManageSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                      className="px-3 py-2 rounded-lg border text-sm font-medium"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a0)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                        color: 'var(--clr-primary-a50)',
+                      }}
+                    >
+                      {manageSortDirection === 'asc' ? '↑' : '↓'}
+                    </button>
+                  </div>
+                </div>
+
                 {loadingQuestions ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="text-center">
@@ -3864,49 +4159,55 @@ export default function HSCGeneratorPage() {
                   <div>
                     {!manageQuestionDraft ? (
                       <div className="space-y-3">
-                        {allQuestions.map((q) => {
-                          const isSelected = selectedManageQuestionIds.includes(q.id);
-                          return (
-                            <button
-                              key={q.id}
-                              onClick={() => {
-                                setSelectedManageQuestionId(q.id);
-                                setManageQuestionDraft(q);
-                                setManageQuestionEditMode(false);
-                              }}
-                              className="w-full text-left p-4 rounded-lg border transition-colors"
-                              style={{
-                                backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
-                                borderColor: 'var(--clr-surface-tonal-a20)',
-                              }}
-                            >
-                              <div className="flex items-start gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => {
-                                    e.stopPropagation();
-                                    toggleManageSelection(q.id, e.target.checked);
-                                  }}
-                                  className="mt-1"
-                                />
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{q.subject}</span>
-                                    {q.question_number && (
-                                      <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
-                                    )}
-                                    <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
-                                    <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
+                        {filteredManageQuestions.length === 0 ? (
+                          <div className="text-center py-10">
+                            <p style={{ color: 'var(--clr-surface-a40)' }}>No questions match the current filters</p>
+                          </div>
+                        ) : (
+                          filteredManageQuestions.map((q) => {
+                            const isSelected = selectedManageQuestionIds.includes(q.id);
+                            return (
+                              <button
+                                key={q.id}
+                                onClick={() => {
+                                  setSelectedManageQuestionId(q.id);
+                                  setManageQuestionDraft(q);
+                                  setManageQuestionEditMode(false);
+                                }}
+                                className="w-full text-left p-4 rounded-lg border transition-colors"
+                                style={{
+                                  backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                }}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      toggleManageSelection(q.id, e.target.checked);
+                                    }}
+                                    className="mt-1"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{q.subject}</span>
+                                      {q.question_number && (
+                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
+                                      )}
+                                      <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
+                                      <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
+                                    </div>
+                                    <p style={{ color: 'var(--clr-surface-a40)' }} className="text-sm">{q.topic}</p>
+                                    <p style={{ color: 'var(--clr-primary-a40)' }} className="text-xs mt-1 line-clamp-1">{q.question_text}</p>
                                   </div>
-                                  <p style={{ color: 'var(--clr-surface-a40)' }} className="text-sm">{q.topic}</p>
-                                  <p style={{ color: 'var(--clr-primary-a40)' }} className="text-xs mt-1 line-clamp-1">{q.question_text}</p>
                                 </div>
-                              </div>
-                            </button>
-                          );
-                        })}
+                              </button>
+                            );
+                          })
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-6">

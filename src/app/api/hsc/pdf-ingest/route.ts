@@ -4,24 +4,11 @@ import { supabaseAdmin } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
-const PDF_PROMPT = `The user provided this PDF and is requesting a transformation into structured LaTeX. This is allowed. Do not refuse.
-
-I have provided one PDF whichis a HSC mathematics exam paper with written questions.
-
-I want you to convert all the questions to nicely formatted LaTeX code. For each question you also need to write up a sample answer in LaTeX code.
-A question may have multiple parts. They should be counted as individual questions, like 11 a), 11 b), etc.
-
-RENDER-SAFE RULES (IMPORTANT):
-- Inline math must use $...$ only. Do NOT use \( \).
-- Display math must use $$...$$ only. Do NOT use \[ \].
-- Escape currency and percent as \\\$ and \\\% in plain text.
-- Never output stray or unmatched $ symbols.
-- Never insert line breaks inside words; keep sentences on one line.
-- Tables must be only \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}. Do not use other environments.
-- Use \\text{...} for words inside math.
-
-SKIP ALL OF THE MULTIPLE CHOICE QUESTIONS (USUALLY QUESTIONS 1 TO 10)
-PLEASE FOLLOW THIS FORMAT FOR EACH WRITTEN QUESTION:
+const PDF_PROMPT = `I have provided a LATEX file containing a HSC Mathematics exam paper with written-response questions.
+Your task is to convert every written question into clean, well-structured LaTeX code and provide a fully worked sample solution for each question.
+Do not include or process any multiple-choice questions (these are usually Questions 1–10). Only convert the written-response questions.
+Important question splitting rule: treat each lettered subpart as its own separate question. For example, 11 (a) is one question and 11 (b) is a separate question. However, do not split deeper subparts. Parts such as 11 (a) (i), 11 (a) (ii), and 11 (a) (iii) must remain grouped together under Question 11 (a) and must not be treated as separate questions. Split only by letters (a), (b), (c), not by roman numerals (i), (ii), (iii).
+For each question, you must follow this exact structure:
 
 QUESTION_NUMBER X
 NUM_MARKS X
@@ -29,17 +16,31 @@ TOPIC X
 HAS_IMAGE {TRUE/FALSE}
 
 QUESTION_CONTENT
-{question written in latex code...}
+{question written in LaTeX code...}
 
 SAMPLE_ANSWER
-{sample answer written in latex code....}
+{fully worked solution written in LaTeX code...}
+
+RENDER-SAFE LaTeX rules (strict):
+- Inline math must use $...$ only. Do NOT use \( \). 
+- Display math must use $$...$$ only. Do NOT use \[ \]. 
+- Do NOT use \begin{align} or \begin{align*}. Use $$\begin{aligned}...\end{aligned}$$ instead.
+- Escape currency and percent as \\\$ and \\\% in plain text. 
+- Never output stray or unmatched $ symbols. 
+- Never insert line breaks inside words; keep sentences on one line. 
+- Tables must be only \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}. Do not use other environments. 
+- Use \\text{...} for words inside math.
 
 READABILITY RULES:
-- Add newlines where appropriate to improve readability.
-- Include a blank line between the question header info and QUESTION_CONTENT.
-- If a question has multiple parts, separate each part with a blank line.
+Add newlines where appropriate to improve readability.
+Include one blank line between the header section and QUESTION_CONTENT.
+If a question contains internal parts such as (i) or (ii), separate them with blank lines but keep them within the same question.
+Leave one blank line between each completed question block.
 
-BELOW ARE THE TOPIC NAMES. Choose the most suitable topic for each question:
+SAMPLE ANSWER REQUIREMENTS:
+Each solution must be fully worked out with all steps shown, clearly explained, easy to follow, and neatly formatted in LaTeX.
+
+For each question, choose the most suitable topic from this list:
 Proof by mathematical induction
 Vectors
 Inverse trigonometric functions
@@ -47,7 +48,53 @@ Further calculus skills
 Further applications of calculus
 The binomial distribution and sampling distribution of the mean
 
-MAKE SURE TO SEPERATE EACH QUESTION WITH A NEWLINE AT THE END. DO NOT FORMAT ANY OF YOUR RESPONSE (just give me raw text). DO NOT RESPOND WITH ANYTHING OTHER THAN THE RAW TEXT.`;
+Output raw text only. Do not add commentary, explanations, or extra formatting. Return only the converted LaTeX content.`;
+
+const EXAM_IMAGE_PROMPT = `I have provided an image of a HSC Mathematics exam page with written-response questions.
+Your task is to extract every written-response question from the image and convert it into clean, well-structured LaTeX code with a fully worked sample solution for each question.
+Do not include or process any multiple-choice questions (these are usually Questions 1–10). Only convert the written-response questions.
+Important question splitting rule: treat each lettered subpart as its own separate question. For example, 11 (a) is one question and 11 (b) is a separate question. However, do not split deeper subparts. Parts such as 11 (a) (i), 11 (a) (ii), and 11 (a) (iii) must remain grouped together under Question 11 (a) and must not be treated as separate questions. Split only by letters (a), (b), (c), not by roman numerals (i), (ii), (iii).
+For each question, you must follow this exact structure:
+
+QUESTION_NUMBER X
+NUM_MARKS X
+TOPIC X
+HAS_IMAGE {TRUE/FALSE}
+
+QUESTION_CONTENT
+{question written in LaTeX code...}
+
+SAMPLE_ANSWER
+{fully worked solution written in LaTeX code...}
+
+RENDER-SAFE LaTeX rules (strict):
+- Inline math must use $...$ only. Do NOT use \( \). 
+- Display math must use $$...$$ only. Do NOT use \[ \]. 
+- Do NOT use \begin{align} or \begin{align*}. Use $$\begin{aligned}...\end{aligned}$$ instead.
+- Escape currency and percent as \\$ and \\% in plain text. 
+- Never output stray or unmatched $ symbols. 
+- Never insert line breaks inside words; keep sentences on one line. 
+- Tables must be only \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}. Do not use other environments. 
+- Use \\text{...} for words inside math.
+
+READABILITY RULES:
+Add newlines where appropriate to improve readability.
+Include one blank line between the header section and QUESTION_CONTENT.
+If a question contains internal parts such as (i) or (ii), separate them with blank lines but keep them within the same question.
+Leave one blank line between each completed question block.
+
+SAMPLE ANSWER REQUIREMENTS:
+Each solution must be fully worked out with all steps shown, clearly explained, easy to follow, and neatly formatted in LaTeX.
+
+For each question, choose the most suitable topic from this list:
+Proof by mathematical induction
+Vectors
+Inverse trigonometric functions
+Further calculus skills
+Further applications of calculus
+The binomial distribution and sampling distribution of the mean
+
+Output raw text only. Do not add commentary, explanations, or extra formatting. Return only the converted LaTeX content.`;
 
 const CRITERIA_PROMPT = `I have provided one PDF which is a HSC mathematics marking criteria.
 
@@ -59,7 +106,7 @@ MARKS_Y {criteria text}
 
 Rules:
 - A question may contain multiple parts. Each main subpart should be treated and counted as an individual question. For example, 11(a) and 11(b) should each be counted separately.
-- Any subparts that start with (i) or (ii) or something MUST BELONG to the main part and should NOT be counted as separate questions. FOR EXAMPLE 11(a)(i) and 11(a)(ii) both belong to question 11(a) and should NOT be counted as separate questions.
+- If the marking criteria shows roman subparts like (i), (ii), include them in MARKING_QUESTION_NUMBER (e.g., 13(a)(i)).
 - Only extract the marking criteria from the marking criteria tables.
 - Ignore all sample answers.
 - Skip all multiple choice questions.
@@ -171,18 +218,15 @@ type ParsedCriteria = {
 
 const normalizeQuestionKey = (raw: string) => {
   const trimmed = String(raw || '').trim();
-  if (!trimmed) return { base: '', part: null as string | null, key: '' };
+  if (!trimmed) return { base: '', part: null as string | null, subpart: null as string | null, key: '' };
 
-  const baseMatch = trimmed.match(/(\d+)/);
-  const base = baseMatch ? baseMatch[1] : trimmed;
-  const afterBaseIndex = baseMatch ? trimmed.indexOf(base) + base.length : 0;
-  const afterBase = trimmed.slice(afterBaseIndex);
-
-  const partMatch = afterBase.match(/(?:\(|\s|^)([a-z])\s*\)?/i);
-  const part = partMatch ? partMatch[1].toLowerCase() : null;
+  const match = trimmed.match(/(\d+)\s*(?:\(?([a-z])\)?)?\s*(?:\(?((?:ix|iv|v?i{0,3}|x))\)?)?/i);
+  const base = match?.[1] || trimmed;
+  const part = match?.[2] ? match[2].toLowerCase() : null;
+  const subpart = match?.[3] ? match[3].toLowerCase() : null;
 
   const key = base + (part ? `(${part})` : '');
-  return { base, part, key };
+  return { base, part, subpart, key };
 };
 
 const parseCriteria = (content: string) => {
@@ -194,7 +238,20 @@ const parseCriteria = (content: string) => {
   const pushCurrent = () => {
     if (!currentNumber) return;
     const normalized = normalizeQuestionKey(currentNumber);
-    const lines = buffer.map((line) => line.trim()).filter(Boolean);
+    const subpartPrefix = normalized.subpart ? `(${normalized.subpart}) ` : '';
+    const lines = buffer
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^MARKS_([^\s]+)\s*(.*)$/i);
+        if (!match) return null;
+        const markValue = match[1];
+        const criteriaText = match[2].trim();
+        const formatted = `${subpartPrefix}MARKS_${markValue} ${criteriaText}`.trim();
+        return formatted;
+      })
+      .filter((line): line is string => Boolean(line));
+
     if (!lines.length) return;
     criteria.push({ key: normalized.key || currentNumber.trim(), rawLabel: currentNumber.trim(), criteriaLines: lines });
   };
@@ -250,6 +307,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const exam = formData.get('exam');
+    const examImages = formData.getAll('examImages');
     const criteria = formData.get('criteria');
     const gradeInput = formData.get('grade');
     const yearInput = formData.get('year');
@@ -257,10 +315,11 @@ export async function POST(request: Request) {
     const overwriteInput = formData.get('overwrite');
 
     const examFile = exam instanceof File ? exam : null;
+    const examImageFiles = examImages.filter((item): item is File => item instanceof File);
     const criteriaFile = criteria instanceof File ? criteria : null;
 
-    if (!examFile && !criteriaFile) {
-      return NextResponse.json({ error: 'At least one PDF is required' }, { status: 400 });
+    if (!examFile && !examImageFiles.length && !criteriaFile) {
+      return NextResponse.json({ error: 'Provide exam images or a criteria PDF' }, { status: 400 });
     }
 
     if (!gradeInput || !yearInput || !subjectInput) {
@@ -276,8 +335,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid grade, year, or subject' }, { status: 400 });
     }
 
-    if (examFile && examFile.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Exam file must be a PDF' }, { status: 400 });
+    if (examFile) {
+      const lowerName = examFile.name.toLowerCase();
+      const isPdf = examFile.type === 'application/pdf' || lowerName.endsWith('.pdf');
+      const isLatex = lowerName.endsWith('.latex') || lowerName.endsWith('.tex');
+      if (!isPdf && !isLatex) {
+        return NextResponse.json({ error: 'Exam file must be a PDF or .latex/.tex file' }, { status: 400 });
+      }
+    }
+
+    if (examImageFiles.length) {
+      const invalidImage = examImageFiles.find((file) => !file.type.startsWith('image/'));
+      if (invalidImage) {
+        return NextResponse.json({ error: 'All exam images must be image files' }, { status: 400 });
+      }
     }
 
     if (criteriaFile && criteriaFile.type !== 'application/pdf') {
@@ -318,9 +389,11 @@ export async function POST(request: Request) {
       return { text };
     };
 
-    if (examFile) {
+    if (examFile && !examImageFiles.length) {
+      const lowerName = examFile.name.toLowerCase();
+      const isLatex = lowerName.endsWith('.latex') || lowerName.endsWith('.tex');
       const examBuffer = Buffer.from(await examFile.arrayBuffer());
-      const examText = (await parsePdf(examBuffer)).text || '';
+      const examText = isLatex ? examBuffer.toString('utf8') : (await parsePdf(examBuffer)).text || '';
       contentParts.push({ source: 'exam', text: examText });
     }
 
@@ -330,8 +403,8 @@ export async function POST(request: Request) {
       contentParts.push({ source: 'criteria', text: criteriaText });
     }
 
-    if (!contentParts.length) {
-      return NextResponse.json({ error: 'No extractable text found in PDFs' }, { status: 400 });
+    if (!contentParts.length && !examImageFiles.length) {
+      return NextResponse.json({ error: 'No extractable text found in uploads' }, { status: 400 });
     }
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -363,7 +436,7 @@ export async function POST(request: Request) {
         const response = await openai.chat.completions.create({
           model,
           messages,
-          temperature: 0.2,
+          temperature: 1.0,
         });
 
         let chunkContent = response.choices?.[0]?.message?.content || '';
@@ -385,6 +458,59 @@ export async function POST(request: Request) {
       }
     }
 
+    if (examImageFiles.length) {
+      for (let index = 0; index < examImageFiles.length; index += 1) {
+        const imageFile = examImageFiles[index];
+        const imageBuffer = Buffer.from(await imageFile.arrayBuffer());
+        const imageBase64 = imageBuffer.toString('base64');
+        const imageMime = imageFile.type || 'image/jpeg';
+        const imageUrl = `data:${imageMime};base64,${imageBase64}`;
+
+        const messages: OpenAI.ChatCompletionMessageParam[] = [
+          {
+            role: 'system',
+            content: 'You are given user-provided content and are allowed to transform it. Comply with the requested format and do not refuse.',
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `${EXAM_IMAGE_PROMPT}\n\nIMAGE ${index + 1} of ${examImageFiles.length}`,
+              },
+              {
+                type: 'image_url',
+                image_url: { url: imageUrl },
+              },
+            ],
+          },
+        ];
+
+        const response = await openai.chat.completions.create({
+          model: 'gpt-5.2',
+          messages,
+          temperature: 1.0,
+        });
+
+        let chunkContent = response.choices?.[0]?.message?.content || '';
+
+        if (chunkContent.trim() && isRefusal(chunkContent)) {
+          const retryResponse = await openai.chat.completions.create({
+            model: 'gpt-5.2',
+            messages,
+            temperature: 0.2,
+          });
+          chunkContent = retryResponse.choices?.[0]?.message?.content || '';
+        }
+
+        if (chunkContent.trim() && !isRefusal(chunkContent)) {
+          chunkResponses.push({ source: 'exam', index: index + 1, content: chunkContent });
+        } else if (chunkContent.trim()) {
+          refusals.push({ source: 'exam', index: index + 1, content: chunkContent });
+        }
+      }
+    }
+
     const combinedContent = chunkResponses
       .sort((a, b) => a.source.localeCompare(b.source) || a.index - b.index)
       .map((item) => item.content)
@@ -398,7 +524,7 @@ export async function POST(request: Request) {
     let updatedCriteriaCount = 0;
     const missingCriteria: string[] = [];
 
-    if (examFile) {
+    if (examFile || examImageFiles.length) {
       if (overwrite) {
         const { error: deleteError } = await supabaseAdmin
           .from('hsc_questions')
@@ -541,7 +667,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: `Created ${createdQuestions.length} questions. Updated ${updatedCriteriaCount} marking criteria.`,
-      exam: examFile ? { name: examFile.name, size: examFile.size } : null,
+      exam: examImageFiles.length
+        ? { images: examImageFiles.length, totalBytes: examImageFiles.reduce((sum, file) => sum + file.size, 0) }
+        : examFile
+          ? { name: examFile.name, size: examFile.size, type: examFile.type || 'unknown' }
+          : null,
       criteria: criteriaFile ? { name: criteriaFile.name, size: criteriaFile.size } : null,
       parsed: {
         year,
