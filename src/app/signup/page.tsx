@@ -1,46 +1,45 @@
 import SignUpForm from '@/components/SignUpForm';
-import Link from "next/link";
+import Link from 'next/link';
 
 export default function SignUpPage() {
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-950 selection:bg-blue-500/30">
-      
-      {/* Background Decorative Blobs */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl pointer-events-none z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-blue-400/20 blur-[100px] mix-blend-multiply dark:mix-blend-screen animate-blob" />
-        <div className="absolute top-[20%] right-[-10%] w-[400px] h-[400px] rounded-full bg-indigo-500/20 blur-[100px] mix-blend-multiply dark:mix-blend-screen animate-blob animation-delay-2000" />
-        <div className="absolute bottom-[-10%] left-[20%] w-[600px] h-[600px] rounded-full bg-purple-400/20 blur-[120px] mix-blend-multiply dark:mix-blend-screen animate-blob animation-delay-4000" />
-      </div>
+    <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-grid selection:bg-[#dacb7d] selection:text-black">
+      <div className="absolute inset-0 -z-10" />
 
-      {/* Main Glass Card */}
       <main className="relative z-10 w-full max-w-md px-6 animate-fade-in-up">
-        <div className="group relative overflow-hidden rounded-2xl bg-white/40 dark:bg-white/5 p-8 shadow-2xl backdrop-blur-xl border border-white/20 ring-1 ring-gray-900/5 transition-all hover:shadow-blue-500/10">
-          
-          <div className="relative flex flex-col items-center">
-            {/* Header */}
-            <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white text-center">
-              Create Account
-            </h1>
-            <p className="mb-8 text-sm text-gray-600 dark:text-gray-300 text-center">
-              Join us to get started with your journey
-            </p>
+        <div className="text-center mb-10">
+          <Link href="/" className="inline-flex items-center gap-2 mb-4 group">
+            <div className="w-10 h-10 bg-[#dacb7d] rounded-xl flex items-center justify-center font-black text-black group-hover:rotate-6 transition-transform">H</div>
+            <span className="text-2xl font-bold tracking-tight text-white uppercase tracking-widest">HSC.AI</span>
+          </Link>
+          <h1 className="text-3xl font-black text-white mb-2 tracking-tight">Create Account</h1>
+          <p className="text-gray-500 text-sm font-medium">Start your journey to Band 6.</p>
+        </div>
 
-            {/* Form Container */}
-            <div className="w-full">
-              <SignUpForm />
-            </div>
+        <div className="glass p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#dacb7d] opacity-5 blur-3xl rounded-full" />
+          <SignUpForm />
 
-            {/* Footer Link */}
-            <p className="mt-6 text-xs text-center text-gray-500 dark:text-gray-400">
-              Already have an account?{' '}
-              <Link 
-                href="/login" 
-                className="font-semibold text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-              >
-                Log in
+          <div className="mt-8 text-center relative z-10">
+            <p className="text-xs text-gray-500 font-medium">
+              Already have an account?
+              <Link href="/login" className="text-[#dacb7d] font-black hover:underline ml-1 transition-all">
+                Sign In
               </Link>
             </p>
           </div>
+        </div>
+
+        <div className="mt-10 text-center">
+          <Link
+            href="/"
+            className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-600 hover:text-white transition-colors inline-flex items-center justify-center gap-2 group"
+          >
+            <svg className="w-3 h-3 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to Home
+          </Link>
         </div>
       </main>
     </div>

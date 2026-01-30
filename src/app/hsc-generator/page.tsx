@@ -57,7 +57,6 @@ function LatexText({ text }: { text: string }) {
     </div>
   );
 }
-
 function TikzBlock({ code }: { code: string }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [svg, setSvg] = useState<string | null>(null);
@@ -351,7 +350,6 @@ function HtmlSegment({ html }: { html: string }) {
 
   return <div ref={containerRef} style={{ whiteSpace: 'pre-wrap' }} />;
 }
-
 type Subject = {
   id: string;
   name: string;
@@ -837,9 +835,7 @@ export default function HSCGeneratorPage() {
       setUserCreatedAt(user.created_at);
 
       // Check if user is dev
-      if (user.email === 'peter7775271@gmail.com') {
-        setIsDevMode(true);
-      }
+      setIsDevMode(user.email === 'peter7775271@gmail.com');
     } catch (e) {
       console.error('Error parsing user:', e);
     }
@@ -871,15 +867,6 @@ export default function HSCGeneratorPage() {
     }
   }, [viewMode, allQuestions.length, loadingQuestions]);
 
-  useEffect(() => {
-    if (!allQuestions.length) return;
-    const hasMissingImages = allQuestions.some(
-      (q) => !q.graph_image_data && q.graph_image_size === 'missing'
-    );
-    if (hasMissingImages) {
-      setIsDevMode(true);
-    }
-  }, [allQuestions]);
 
   useEffect(() => {
     if (devTab !== 'manage') return;
@@ -2347,18 +2334,6 @@ export default function HSCGeneratorPage() {
               className="mt-auto pt-6 border-t space-y-3"
               style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
             >
-              {isDevMode && (
-                <button 
-                  onClick={() => setViewMode('dev-questions')}
-                  className="flex items-center gap-3 p-3 rounded-xl w-full transition-colors cursor-pointer font-medium text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-warning-a0)',
-                    color: 'var(--clr-light-a0)',
-                  }}
-                >
-                  <span>Dev Mode ON</span>
-                </button>
-              )}
               <button 
                 onClick={() => setViewMode('settings')}
                 className="flex items-center gap-3 p-3 rounded-xl w-full transition-colors cursor-pointer"
@@ -3700,156 +3675,108 @@ export default function HSCGeneratorPage() {
                 </div>
               </div>
 
-              <div
-                className="p-6 rounded-2xl border mt-6"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                }}
-              >
-                <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>PDF Intake</h2>
-                <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
-                  Upload a folder of exam images (JPEG/PNG) or the marking criteria PDF. The response will be used to create new questions automatically.
-                </p>
+              {isDevMode && (
+                <div
+                  className="p-6 rounded-2xl border mt-6"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a10)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                  }}
+                >
+                  <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>PDF Intake</h2>
+                  <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
+                    Upload a folder of exam images (JPEG/PNG) or the marking criteria PDF. The response will be used to create new questions automatically.
+                  </p>
 
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Grade</label>
+                        <select
+                          value={pdfGrade}
+                          onChange={(e) => {
+                            const nextGrade = e.target.value as 'Year 11' | 'Year 12';
+                            const nextSubjects = SUBJECTS_BY_YEAR[nextGrade];
+                            setPdfGrade(nextGrade);
+                            if (!nextSubjects.includes(pdfSubject)) {
+                              setPdfSubject(nextSubjects[0]);
+                            }
+                          }}
+                          className="mt-2 w-full px-4 py-2 rounded-lg border"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        >
+                          <option value="Year 11">Year 11</option>
+                          <option value="Year 12">Year 12</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Year</label>
+                        <select
+                          value={pdfYear}
+                          onChange={(e) => setPdfYear(e.target.value)}
+                          className="mt-2 w-full px-4 py-2 rounded-lg border"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        >
+                          {YEARS.map((year) => (
+                            <option key={year} value={year}>{year}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Subject</label>
+                        <select
+                          value={pdfSubject}
+                          onChange={(e) => setPdfSubject(e.target.value)}
+                          className="mt-2 w-full px-4 py-2 rounded-lg border"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        >
+                          {SUBJECTS_BY_YEAR[pdfGrade].map((subject) => (
+                            <option key={subject} value={subject}>{subject}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                     <div>
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Grade</label>
-                      <select
-                        value={pdfGrade}
-                        onChange={(e) => {
-                          const nextGrade = e.target.value as 'Year 11' | 'Year 12';
-                          const nextSubjects = SUBJECTS_BY_YEAR[nextGrade];
-                          setPdfGrade(nextGrade);
-                          if (!nextSubjects.includes(pdfSubject)) {
-                            setPdfSubject(nextSubjects[0]);
-                          }
-                        }}
+                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Images Folder</label>
+                      <input
+                        ref={examFolderInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        multiple
+                        onChange={(e) => setExamImageFiles(Array.from(e.target.files || []))}
                         className="mt-2 w-full px-4 py-2 rounded-lg border"
                         style={{
                           backgroundColor: 'var(--clr-surface-a0)',
                           borderColor: 'var(--clr-surface-tonal-a20)',
                           color: 'var(--clr-primary-a50)',
                         }}
-                      >
-                        <option value="Year 11">Year 11</option>
-                        <option value="Year 12">Year 12</option>
-                      </select>
+                      />
+                      {examImageFiles.length > 0 && (
+                        <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
+                          {examImageFiles.length} image{examImageFiles.length === 1 ? '' : 's'} selected
+                        </p>
+                      )}
                     </div>
+
                     <div>
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Year</label>
-                      <select
-                        value={pdfYear}
-                        onChange={(e) => setPdfYear(e.target.value)}
+                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria PDF</label>
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        onChange={(e) => setCriteriaPdfFile(e.target.files?.[0] || null)}
                         className="mt-2 w-full px-4 py-2 rounded-lg border"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      >
-                        {YEARS.map((year) => (
-                          <option key={year} value={year}>{year}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Subject</label>
-                      <select
-                        value={pdfSubject}
-                        onChange={(e) => setPdfSubject(e.target.value)}
-                        className="mt-2 w-full px-4 py-2 rounded-lg border"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      >
-                        {SUBJECTS_BY_YEAR[pdfGrade].map((subject) => (
-                          <option key={subject} value={subject}>{subject}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Images Folder</label>
-                    <input
-                      ref={examFolderInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png"
-                      multiple
-                      onChange={(e) => setExamImageFiles(Array.from(e.target.files || []))}
-                      className="mt-2 w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
-                    {examImageFiles.length > 0 && (
-                      <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
-                        {examImageFiles.length} image{examImageFiles.length === 1 ? '' : 's'} selected
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria PDF</label>
-                    <input
-                      type="file"
-                      accept="application/pdf"
-                      onChange={(e) => setCriteriaPdfFile(e.target.files?.[0] || null)}
-                      className="mt-2 w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
-                  </div>
-
-                  <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
-                    <input
-                      type="checkbox"
-                      checked={pdfOverwrite}
-                      onChange={(e) => setPdfOverwrite(e.target.checked)}
-                    />
-                    Overwrite existing questions and marking criteria for this grade/year/subject
-                  </label>
-
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={submitPdfPair}
-                      disabled={pdfStatus === 'uploading'}
-                      className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
-                      style={{
-                        backgroundColor: 'var(--clr-primary-a0)',
-                        color: 'var(--clr-dark-a0)',
-                      }}
-                    >
-                      {pdfStatus === 'uploading' ? 'Uploading...' : 'Upload Files'}
-                    </button>
-                    {pdfMessage && (
-                      <span
-                        className="text-sm"
-                        style={{ color: pdfStatus === 'error' ? 'var(--clr-danger-a10)' : 'var(--clr-surface-a50)' }}
-                      >
-                        {pdfMessage}
-                      </span>
-                    )}
-                  </div>
-
-                  {pdfChatGptResponse && (
-                    <div className="mt-4">
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
-                        ChatGPT Response
-                      </label>
-                      <textarea
-                        readOnly
-                        value={pdfChatGptResponse}
-                        rows={12}
-                        className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
                         style={{
                           backgroundColor: 'var(--clr-surface-a0)',
                           borderColor: 'var(--clr-surface-tonal-a20)',
@@ -3857,9 +3784,59 @@ export default function HSCGeneratorPage() {
                         }}
                       />
                     </div>
-                  )}
+
+                    <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
+                      <input
+                        type="checkbox"
+                        checked={pdfOverwrite}
+                        onChange={(e) => setPdfOverwrite(e.target.checked)}
+                      />
+                      Overwrite existing questions and marking criteria for this grade/year/subject
+                    </label>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={submitPdfPair}
+                        disabled={pdfStatus === 'uploading'}
+                        className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                        style={{
+                          backgroundColor: 'var(--clr-primary-a0)',
+                          color: 'var(--clr-dark-a0)',
+                        }}
+                      >
+                        {pdfStatus === 'uploading' ? 'Uploading...' : 'Upload Files'}
+                      </button>
+                      {pdfMessage && (
+                        <span
+                          className="text-sm"
+                          style={{ color: pdfStatus === 'error' ? 'var(--clr-danger-a10)' : 'var(--clr-surface-a50)' }}
+                        >
+                          {pdfMessage}
+                        </span>
+                      )}
+                    </div>
+
+                    {pdfChatGptResponse && (
+                      <div className="mt-4">
+                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                          ChatGPT Response
+                        </label>
+                        <textarea
+                          readOnly
+                          value={pdfChatGptResponse}
+                          rows={12}
+                          className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
