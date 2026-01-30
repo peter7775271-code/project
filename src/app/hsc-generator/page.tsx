@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Undo2, Redo2, Trash2, Send, Upload, ArrowLeft,
@@ -456,7 +456,6 @@ const MOCK_FEEDBACK = {
 
 export default function HSCGeneratorPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   type StrokePoint = [number, number, number];
   type Stroke = StrokePoint[];
 
@@ -847,13 +846,15 @@ export default function HSCGeneratorPage() {
   }, []);
 
   useEffect(() => {
-    const view = searchParams?.get('view');
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
     if (view === 'papers') {
       setViewMode('papers');
     } else if (view === 'generator') {
       setViewMode('generator');
     }
-  }, [searchParams]);
+  }, []);
 
   // Fetch questions when entering dev mode
   useEffect(() => {
