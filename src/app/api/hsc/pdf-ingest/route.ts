@@ -564,7 +564,7 @@ export async function POST(request: Request) {
         marking_criteria: null,
         sample_answer: question.sampleAnswer || null,
         graph_image_data: null,
-        graph_image_size: 'medium',
+        graph_image_size: question.hasImage ? 'missing' : 'medium',
       }));
 
       const { data, error } = await supabaseAdmin

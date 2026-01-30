@@ -295,22 +295,35 @@ function HtmlSegment({ html }: { html: string }) {
         return output.join('\n');
       };
 
-      const processedWithTables = convertItemizeToHtml(
-        convertTabularToHtml(normalizeSpacedLetters(html))
-      )
-        .replace(/(?<!\\)\$(?=\d)/g, '\\$');
+      const applyTextFormatting = (input: string) => {
+        return input.replace(/\\textbf\{([^}]*)\}/g, '<strong>$1</strong>');
+      };
+
+      const processedWithTables = applyTextFormatting(
+        convertItemizeToHtml(convertTabularToHtml(normalizeSpacedLetters(html)))
+      );
 
       const normalizedMath = processedWithTables
         .replace(/\\\(/g, '$')
-        .replace(/\\\)/g, '$');
+        .replace(/\\\)/g, '$')
+        .replace(/(\$\$[\s\S]*?\$\$)/g, '\n$1\n')
+        .replace(/(\\\[[\s\S]*?\\\])/g, '\n$1\n');
       const parts = normalizedMath.split(/((?<!\\)\$\$[\s\S]*?(?<!\\)\$\$|\\\[[\s\S]*?\\\]|(?<!\\)\$[^\$]*?(?<!\\)\$)/g);
+      const wrapBareLatexCommands = (value: string) => {
+        return value.replace(/\\+(leq|geq|le|ge|neq|approx|times)\b/g, '$\\$1$');
+      };
+
       const processed = parts
         .map((part, index) => {
-          if (index % 2 === 1) return part;
-          return part
-            .replace(/\\%/g, '%')
-            .replace(/\\\$/g, '$')
-            .replace(/\n/g, '<br />');
+          if (index % 2 === 1) {
+            return part.replace(/\\+(leq|geq|le|ge|neq|approx|times)\b/g, '\\$1');
+          }
+          return wrapBareLatexCommands(
+            part
+              .replace(/\\%/g, '%')
+              .replace(/\\\$/g, '$')
+              .replace(/\n/g, '<br />')
+          );
         })
         .join('');
       containerRef.current.innerHTML = processed;
@@ -568,6 +581,7 @@ export default function HSCGeneratorPage() {
   const [manageQuestionEditMode, setManageQuestionEditMode] = useState(false);
   const [selectedManageQuestionIds, setSelectedManageQuestionIds] = useState<string[]>([]);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [manageMissingImagesOnly, setManageMissingImagesOnly] = useState(false);
   const [manageSearchQuery, setManageSearchQuery] = useState('');
   const [manageFilterGrade, setManageFilterGrade] = useState<string>('');
   const [manageFilterYear, setManageFilterYear] = useState<string>('');
@@ -724,6 +738,7 @@ export default function HSCGeneratorPage() {
   const filteredManageQuestions = useMemo(() => {
     const search = manageSearchQuery.trim().toLowerCase();
     const filtered = allQuestions.filter((q) => {
+      if (manageMissingImagesOnly && (q.graph_image_data || q.graph_image_size !== 'missing')) return false;
       if (manageFilterGrade && String(q.grade) !== manageFilterGrade) return false;
       if (manageFilterYear && String(q.year) !== manageFilterYear) return false;
       if (manageFilterSubject && String(q.subject) !== manageFilterSubject) return false;
@@ -807,6 +822,16 @@ export default function HSCGeneratorPage() {
       fetchAllQuestions();
     }
   }, [viewMode, devTab]);
+
+  useEffect(() => {
+    if (!allQuestions.length) return;
+    const hasMissingImages = allQuestions.some(
+      (q) => !q.graph_image_data && q.graph_image_size === 'missing'
+    );
+    if (hasMissingImages) {
+      setIsDevMode(true);
+    }
+  }, [allQuestions]);
 
   useEffect(() => {
     if (devTab !== 'manage') return;
@@ -927,15 +952,18 @@ export default function HSCGeneratorPage() {
 
   const renderAllStrokes = (includeCurrent = true) => {
     const ctx = ctxRef.current;
-    if (!ctx) return;
-    redrawBackground();
     const canvas = canvasRef.current;
-    if (canvas && backgroundImageRef.current) {
+    if (!ctx || !canvas) return;
+
+    redrawBackground();
+
+    if (backgroundImageRef.current) {
       const dpr = dprRef.current || 1;
       const logicalWidth = canvas.width / dpr;
       const logicalHeight = canvas.height / dpr;
       ctx.drawImage(backgroundImageRef.current, 0, 0, logicalWidth, logicalHeight);
     }
+
     ctx.fillStyle = 'white';
     strokesRef.current.forEach(drawStrokePath);
     if (includeCurrent && currentStrokeRef.current) {
@@ -4022,6 +4050,16 @@ export default function HSCGeneratorPage() {
                   >
                     {bulkActionLoading ? 'Working...' : 'Clear Marking Criteria'}
                   </button>
+                  <button
+                    onClick={() => setManageMissingImagesOnly((prev) => !prev)}
+                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                    style={{
+                      backgroundColor: manageMissingImagesOnly ? 'var(--clr-warning-a0)' : 'var(--clr-surface-a20)',
+                      color: manageMissingImagesOnly ? 'var(--clr-light-a0)' : 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    {manageMissingImagesOnly ? 'Showing Missing Images' : 'Show Missing Images'}
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-6 gap-3 mb-6">
@@ -4197,6 +4235,9 @@ export default function HSCGeneratorPage() {
                                       {q.question_number && (
                                         <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
                                       )}
+                                      {!q.graph_image_data && q.graph_image_size === 'missing' && (
+                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-warning-a0)', color: 'var(--clr-light-a0)' }}>Missing Image</span>
+                                      )}
                                       <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
                                       <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
                                     </div>
@@ -4334,6 +4375,42 @@ export default function HSCGeneratorPage() {
                                       color: 'var(--clr-primary-a50)',
                                     }}
                                   />
+                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image URL</label>
+                                  <input
+                                    type="text"
+                                    value={manageQuestionDraft.graph_image_data || ''}
+                                    onChange={(e) => {
+                                      const nextUrl = e.target.value;
+                                      setManageQuestionDraft({
+                                        ...manageQuestionDraft,
+                                        graph_image_data: nextUrl,
+                                        graph_image_size: nextUrl ? (manageQuestionDraft.graph_image_size || 'medium') : manageQuestionDraft.graph_image_size,
+                                      });
+                                    }}
+                                    placeholder="https://... or data:image/png;base64,..."
+                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  />
+                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image Size</label>
+                                  <select
+                                    value={manageQuestionDraft.graph_image_size || 'medium'}
+                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, graph_image_size: e.target.value })}
+                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  >
+                                    <option value="small">Small</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="large">Large</option>
+                                    <option value="missing">Missing</option>
+                                  </select>
                                 </div>
                               )}
                             </div>
