@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Undo2, Redo2, Trash2, Send, Upload, ArrowLeft,
@@ -456,6 +456,7 @@ const MOCK_FEEDBACK = {
 
 export default function HSCGeneratorPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   type StrokePoint = [number, number, number];
   type Stroke = StrokePoint[];
 
@@ -544,10 +545,13 @@ export default function HSCGeneratorPage() {
   const [pdfYear, setPdfYear] = useState<string>(new Date().getFullYear().toString());
   const [pdfSubject, setPdfSubject] = useState<string>('Mathematics Advanced');
   const [pdfOverwrite, setPdfOverwrite] = useState(false);
-  const [viewMode, setViewMode] = useState<'generator' | 'saved' | 'settings' | 'dev-questions'>('generator');
+  const [viewMode, setViewMode] = useState<'generator' | 'saved' | 'settings' | 'dev-questions' | 'papers' | 'paper'>('generator');
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [userCreatedAt, setUserCreatedAt] = useState<string>('');
+  const [paperQuestions, setPaperQuestions] = useState<Question[]>([]);
+  const [paperIndex, setPaperIndex] = useState(0);
+  const [activePaper, setActivePaper] = useState<{ year: string; subject: string; grade: string; count: number } | null>(null);
 
   const fallbackQuestion: Question = {
     id: 'fallback-001',
@@ -640,7 +644,7 @@ export default function HSCGeneratorPage() {
   const [filterTopic, setFilterTopic] = useState<string>('');
 
   // Available filter options
-  const YEARS = ['2020', '2021', '2022', '2023', '2024'];
+  const YEARS = ['2020', '2021', '2022', '2023', '2024', '2025'];
 
   const SUBJECTS_BY_YEAR: Record<'Year 11' | 'Year 12', string[]> = {
     'Year 11': ['Mathematics Advanced', 'Mathematics Extension 1'],
@@ -736,6 +740,31 @@ export default function HSCGeneratorPage() {
     };
   }, [allQuestions]);
 
+  const availablePapers = useMemo(() => {
+    const map = new Map<string, { year: string; subject: string; grade: string; count: number }>();
+    allQuestions.forEach((q) => {
+      if (!q?.year || !q?.subject || !q?.grade) return;
+      const year = String(q.year);
+      const subject = String(q.subject);
+      const grade = String(q.grade);
+      const key = `${year}__${grade}__${subject}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(key, { year, subject, grade, count: 1 });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => {
+      const yearCompare = Number(b.year) - Number(a.year);
+      if (yearCompare !== 0) return yearCompare;
+      const gradeCompare = a.grade.localeCompare(b.grade);
+      if (gradeCompare !== 0) return gradeCompare;
+      return a.subject.localeCompare(b.subject);
+    });
+  }, [allQuestions]);
+
   const filteredManageQuestions = useMemo(() => {
     const search = manageSearchQuery.trim().toLowerCase();
     const filtered = allQuestions.filter((q) => {
@@ -817,12 +846,29 @@ export default function HSCGeneratorPage() {
     }
   }, []);
 
+  useEffect(() => {
+    const view = searchParams?.get('view');
+    if (view === 'papers') {
+      setViewMode('papers');
+    } else if (view === 'generator') {
+      setViewMode('generator');
+    }
+  }, [searchParams]);
+
   // Fetch questions when entering dev mode
   useEffect(() => {
     if (viewMode === 'dev-questions' && devTab === 'manage') {
       fetchAllQuestions();
     }
   }, [viewMode, devTab]);
+
+  useEffect(() => {
+    if (viewMode === 'papers' || viewMode === 'paper') {
+      if (!allQuestions.length && !loadingQuestions) {
+        fetchAllQuestions();
+      }
+    }
+  }, [viewMode, allQuestions.length, loadingQuestions]);
 
   useEffect(() => {
     if (!allQuestions.length) return;
@@ -1974,6 +2020,62 @@ export default function HSCGeneratorPage() {
     setCanvasHeight((prev) => prev + 300);
   };
 
+  const resetForQuestion = (nextQuestion: Question | null) => {
+    setQuestion(nextQuestion);
+    setAppState('idle');
+    setFeedback(null);
+    setError(null);
+    setShowAnswer(false);
+    setUploadedFile(null);
+    setSubmittedAnswer(null);
+    setSelectedMcqAnswer(null);
+    setCanvasHeight(400);
+    setTimeout(() => resetCanvas(400), 0);
+
+    historyRef.current = [];
+    redoStackRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+  };
+
+  const clearPaperState = () => {
+    setActivePaper(null);
+    setPaperQuestions([]);
+    setPaperIndex(0);
+  };
+
+  const startPaperAttempt = (paper: { year: string; subject: string; grade: string; count: number }) => {
+    const matching = allQuestions
+      .filter(
+        (q) =>
+          String(q.year) === paper.year &&
+          String(q.subject) === paper.subject &&
+          String(q.grade) === paper.grade
+      )
+      .sort((a, b) => {
+        const left = parseQuestionNumberForSort(a.question_number);
+        const right = parseQuestionNumberForSort(b.question_number);
+        return left.number - right.number || left.part.localeCompare(right.part) || left.subpart - right.subpart || left.raw.localeCompare(right.raw);
+      });
+
+    if (!matching.length) {
+      alert('No questions found for this paper yet.');
+      return;
+    }
+
+    setActivePaper(paper);
+    setPaperQuestions(matching as Question[]);
+    setPaperIndex(0);
+    setViewMode('paper');
+    resetForQuestion(matching[0] as Question);
+  };
+
+  const goToPaperQuestion = (nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= paperQuestions.length) return;
+    setPaperIndex(nextIndex);
+    resetForQuestion(paperQuestions[nextIndex]);
+  };
+
   // Initial load
   useEffect(() => {
     const loadInitialQuestion = async () => {
@@ -2008,6 +2110,8 @@ export default function HSCGeneratorPage() {
   const maxMarks = feedback?.maxMarks ?? 0;
   const isMultipleChoiceReview = question?.question_type === 'multiple_choice' || feedback?.mcq_correct_answer;
   const isMarking = appState === 'marking';
+  const isPaperMode = viewMode === 'paper';
+  const paperProgress = paperQuestions.length ? (paperIndex + 1) / paperQuestions.length : 0;
 
   return (
     <div 
@@ -2109,40 +2213,81 @@ export default function HSCGeneratorPage() {
               <span className="font-bold text-xl tracking-tight" style={{ color: 'var(--clr-primary-a50)' }}>HSC Forge</span>
             </div>
 
-            <div className="space-y-1 flex-1">
-              <p 
-                className="text-xs font-bold uppercase tracking-widest mb-4 px-2"
+            <div className="space-y-2 mb-6">
+              <p
+                className="text-xs font-bold uppercase tracking-widest mb-2 px-2"
                 style={{ color: 'var(--clr-surface-a40)' }}
-              >Quick Filters</p>
-              <button 
-                onClick={() => { setFilterGrade('Year 11'); setViewMode('generator'); setMobileMenuOpen(false); }}
+              >Navigation</p>
+              <button
+                onClick={() => {
+                  setViewMode('generator');
+                  clearPaperState();
+                  setMobileMenuOpen(false);
+                }}
                 className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer ${
-                  filterGrade === 'Year 11' 
-                    ? 'shadow-lg' 
-                    : 'hover:opacity-80'
+                  viewMode === 'generator' ? 'shadow-lg' : 'hover:opacity-80'
                 }`}
                 style={{
-                  backgroundColor: filterGrade === 'Year 11' ? 'var(--clr-primary-a0)' : 'transparent',
-                  color: filterGrade === 'Year 11' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
+                  backgroundColor: viewMode === 'generator' ? 'var(--clr-primary-a0)' : 'transparent',
+                  color: viewMode === 'generator' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
                 }}
               >
-                <span className="font-medium text-sm">Year 11</span>
+                <span className="font-medium text-sm">Browse HSC Questions</span>
               </button>
-              <button 
-                onClick={() => { setFilterGrade('Year 12'); setViewMode('generator'); setMobileMenuOpen(false); }}
+              <button
+                onClick={() => {
+                  setViewMode('papers');
+                  clearPaperState();
+                  setMobileMenuOpen(false);
+                }}
                 className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer ${
-                  filterGrade === 'Year 12' 
-                    ? 'shadow-lg' 
-                    : 'hover:opacity-80'
+                  viewMode === 'papers' || viewMode === 'paper' ? 'shadow-lg' : 'hover:opacity-80'
                 }`}
                 style={{
-                  backgroundColor: filterGrade === 'Year 12' ? 'var(--clr-primary-a0)' : 'transparent',
-                  color: filterGrade === 'Year 12' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
+                  backgroundColor: viewMode === 'papers' || viewMode === 'paper' ? 'var(--clr-primary-a0)' : 'transparent',
+                  color: viewMode === 'papers' || viewMode === 'paper' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
                 }}
               >
-                <span className="font-medium text-sm">Year 12</span>
+                <span className="font-medium text-sm">Browse HSC Papers</span>
               </button>
             </div>
+
+            {viewMode === 'generator' && (
+              <div className="space-y-1 flex-1">
+                <p
+                  className="text-xs font-bold uppercase tracking-widest mb-4 px-2"
+                  style={{ color: 'var(--clr-surface-a40)' }}
+                >Quick Filters</p>
+                <button
+                  onClick={() => { setFilterGrade('Year 11'); setViewMode('generator'); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer ${
+                    filterGrade === 'Year 11'
+                      ? 'shadow-lg'
+                      : 'hover:opacity-80'
+                  }`}
+                  style={{
+                    backgroundColor: filterGrade === 'Year 11' ? 'var(--clr-primary-a0)' : 'transparent',
+                    color: filterGrade === 'Year 11' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
+                  }}
+                >
+                  <span className="font-medium text-sm">Year 11</span>
+                </button>
+                <button
+                  onClick={() => { setFilterGrade('Year 12'); setViewMode('generator'); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer ${
+                    filterGrade === 'Year 12'
+                      ? 'shadow-lg'
+                      : 'hover:opacity-80'
+                  }`}
+                  style={{
+                    backgroundColor: filterGrade === 'Year 12' ? 'var(--clr-primary-a0)' : 'transparent',
+                    color: filterGrade === 'Year 12' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
+                  }}
+                >
+                  <span className="font-medium text-sm">Year 12</span>
+                </button>
+              </div>
+            )}
 
             {/* Saved Answers Section */}
             <div 
@@ -2234,7 +2379,7 @@ export default function HSCGeneratorPage() {
         >
           <div className="max-w-5xl mx-auto space-y-8">
             
-            {viewMode === 'generator' ? (
+            {(viewMode === 'generator' || viewMode === 'paper') ? (
               <>
             {/* Header Area */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -2242,97 +2387,160 @@ export default function HSCGeneratorPage() {
                 <h1 
                   className="text-4xl font-bold mb-2"
                   style={{ color: 'var(--clr-primary-a50)' }}
-                >HSC Practice Generator</h1>
+                >{isPaperMode ? 'HSC Paper Attempt' : 'HSC Practice Generator'}</h1>
                 <p 
                   className="text-lg"
                   style={{ color: 'var(--clr-surface-a40)' }}
-                >Practice exam-style questions and handwrite your answers.</p>
+                >{isPaperMode
+                  ? `${activePaper?.year || ''} ${activePaper?.subject || ''} • ${activePaper?.grade || ''}`
+                  : 'Practice exam-style questions and handwrite your answers.'}
+                </p>
               </div>
-              <button 
-                onClick={generateQuestion}
-                disabled={isGenerating || loading}
-                className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-70 disabled:hover:scale-100 whitespace-nowrap cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--clr-primary-a0)',
-                  color: 'var(--clr-dark-a0)',
-                }}
-              >
-                <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
-                {isGenerating ? 'Loading...' : 'Generate'}
-              </button>
+              {!isPaperMode && (
+                <button 
+                  onClick={generateQuestion}
+                  disabled={isGenerating || loading}
+                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-70 disabled:hover:scale-100 whitespace-nowrap cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--clr-primary-a0)',
+                    color: 'var(--clr-dark-a0)',
+                  }}
+                >
+                  <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
+                  {isGenerating ? 'Loading...' : 'Generate'}
+                </button>
+              )}
             </div>
+
+            {isPaperMode && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    onClick={() => {
+                      setViewMode('papers');
+                      clearPaperState();
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a10)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to Papers
+                  </button>
+                  <div className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>
+                    Question {paperIndex + 1} of {paperQuestions.length}
+                  </div>
+                </div>
+                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--clr-surface-a20)' }}>
+                  <div
+                    className="h-full transition-all duration-500"
+                    style={{
+                      width: `${Math.round(paperProgress * 100)}%`,
+                      backgroundColor: 'var(--clr-primary-a0)',
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    onClick={() => goToPaperQuestion(paperIndex - 1)}
+                    disabled={paperIndex === 0}
+                    className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a10)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >Previous Question</button>
+                  <button
+                    onClick={() => goToPaperQuestion(paperIndex + 1)}
+                    disabled={paperIndex >= paperQuestions.length - 1}
+                    className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-primary-a0)',
+                      borderColor: 'var(--clr-primary-a0)',
+                      color: 'var(--clr-dark-a0)',
+                    }}
+                  >Next Question</button>
+                </div>
+              </div>
+            )}
 
             {/* Filters Bar */}
-            <div 
-              className="flex flex-wrap gap-3 pb-4 border-b"
-              style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-            >
-              <select 
-                value={filterGrade}
-                onChange={(e) => setFilterGrade(e.target.value)}
-                className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                  color: 'var(--clr-primary-a50)',
-                  border: `1px solid var(--clr-surface-tonal-a20)`,
-                }}
+            {!isPaperMode && (
+              <div 
+                className="flex flex-wrap gap-3 pb-4 border-b"
+                style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
               >
-                <option value="Year 11">Year 11</option>
-                <option value="Year 12">Year 12</option>
-              </select>
+                <select 
+                  value={filterGrade}
+                  onChange={(e) => setFilterGrade(e.target.value)}
+                  className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a10)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                    border: `1px solid var(--clr-surface-tonal-a20)`,
+                  }}
+                >
+                  <option value="Year 11">Year 11</option>
+                  <option value="Year 12">Year 12</option>
+                </select>
 
-              <select 
-                value={filterYear}
-                onChange={(e) => setFilterYear(e.target.value)}
-                className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                  color: 'var(--clr-primary-a50)',
-                  border: `1px solid var(--clr-surface-tonal-a20)`,
-                }}
-              >
-                <option value="">All Years</option>
-                {YEARS.map((year) => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
+                <select 
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                  className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a10)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                    border: `1px solid var(--clr-surface-tonal-a20)`,
+                  }}
+                >
+                  <option value="">All Years</option>
+                  {YEARS.map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
 
-              <select 
-                value={filterSubject}
-                onChange={(e) => setFilterSubject(e.target.value)}
-                className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                  color: 'var(--clr-primary-a50)',
-                  border: `1px solid var(--clr-surface-tonal-a20)`,
-                }}
-              >
-                <option value="">All Subjects</option>
-                {SUBJECTS_BY_YEAR[filterGrade as 'Year 11' | 'Year 12']?.map((subject) => (
-                  <option key={subject} value={subject}>{subject}</option>
-                ))}
-              </select>
+                <select 
+                  value={filterSubject}
+                  onChange={(e) => setFilterSubject(e.target.value)}
+                  className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a10)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                    border: `1px solid var(--clr-surface-tonal-a20)`,
+                  }}
+                >
+                  <option value="">All Subjects</option>
+                  {SUBJECTS_BY_YEAR[filterGrade as 'Year 11' | 'Year 12']?.map((subject) => (
+                    <option key={subject} value={subject}>{subject}</option>
+                  ))}
+                </select>
 
-              <select 
-                value={filterTopic}
-                onChange={(e) => setFilterTopic(e.target.value)}
-                className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                  color: 'var(--clr-primary-a50)',
-                  border: `1px solid var(--clr-surface-tonal-a20)`,
-                }}
-              >
-                <option value="">All Topics</option>
-                {getTopics(filterGrade, filterSubject).map((topic) => (
-                  <option key={topic} value={topic}>{topic}</option>
-                ))}
-              </select>
-            </div>
+                <select 
+                  value={filterTopic}
+                  onChange={(e) => setFilterTopic(e.target.value)}
+                  className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a10)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                    border: `1px solid var(--clr-surface-tonal-a20)`,
+                  }}
+                >
+                  <option value="">All Topics</option>
+                  {getTopics(filterGrade, filterSubject).map((topic) => (
+                    <option key={topic} value={topic}>{topic}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Question Card */}
             <div className="relative">
@@ -2361,7 +2569,7 @@ export default function HSCGeneratorPage() {
                     <div className="text-center">
                       <p className="text-red-400 font-medium">Error: {error}</p>
                       <button 
-                        onClick={generateQuestion}
+                        onClick={() => (isPaperMode ? goToPaperQuestion(paperIndex) : generateQuestion())}
                         className="mt-4 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors cursor-pointer"
                       >
                         Try Again
@@ -3033,8 +3241,9 @@ export default function HSCGeneratorPage() {
                       style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
                     >
                         <button
-                            onClick={() => generateQuestion()}
-                            className="flex-1 px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                            onClick={() => (isPaperMode ? goToPaperQuestion(paperIndex + 1) : generateQuestion())}
+                            disabled={isPaperMode && paperIndex >= paperQuestions.length - 1}
+                            className="flex-1 px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                             style={{
                               backgroundColor: 'var(--clr-primary-a0)',
                               color: 'var(--clr-dark-a0)',
@@ -3078,6 +3287,59 @@ export default function HSCGeneratorPage() {
                 </div>
               </div>
             )}
+              </>
+            ) : viewMode === 'papers' ? (
+              <>
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+                  <div>
+                    <h1
+                      className="text-4xl font-bold mb-2"
+                      style={{ color: 'var(--clr-primary-a50)' }}
+                    >Browse HSC Papers</h1>
+                    <p
+                      className="text-lg"
+                      style={{ color: 'var(--clr-surface-a40)' }}
+                    >Select a paper to start a full exam attempt.</p>
+                  </div>
+                </div>
+
+                {loadingQuestions ? (
+                  <div className="flex items-center justify-center min-h-[240px]">
+                    <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--clr-surface-a40)' }} />
+                  </div>
+                ) : availablePapers.length === 0 ? (
+                  <div className="text-center py-16">
+                    <p className="text-lg" style={{ color: 'var(--clr-surface-a40)' }}>No papers available yet.</p>
+                    <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>Upload exam questions to create papers.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {availablePapers.map((paper) => (
+                      <button
+                        key={`${paper.year}-${paper.grade}-${paper.subject}`}
+                        onClick={() => startPaperAttempt(paper)}
+                        className="text-left border rounded-2xl p-6 transition-all hover:-translate-y-0.5 hover:shadow-xl cursor-pointer"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a10)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                        }}
+                      >
+                        <div className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>
+                          {paper.year}
+                        </div>
+                        <div className="text-xl font-semibold mt-2" style={{ color: 'var(--clr-primary-a50)' }}>
+                          {paper.subject}
+                        </div>
+                        <div className="text-sm mt-1" style={{ color: 'var(--clr-surface-a50)' }}>
+                          {paper.grade}
+                        </div>
+                        <div className="text-xs mt-4" style={{ color: 'var(--clr-surface-a40)' }}>
+                          {paper.count} question{paper.count === 1 ? '' : 's'} available
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             ) : (
               <>

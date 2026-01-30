@@ -48,14 +48,6 @@ const TOPIC_LISTS = {
       'Permutations and combinations',
       'The binomial theorem',
     ],
-    'extension 2': [
-      'Proof by mathematical induction',
-      'Vectors',
-      'Inverse trigonometric functions',
-      'Further calculus skills',
-      'Further applications of calculus',
-      'The binomial distribution and sampling distribution of the mean',
-    ],
   },
 } as const;
 
@@ -77,7 +69,11 @@ const normalizeSubjectKey = (subject: string) => {
 const getTopicOptions = (grade: string, subject: string) => {
   const yearKey = normalizeYearKey(grade);
   const subjectKey = normalizeSubjectKey(subject);
-  return TOPIC_LISTS[yearKey]?.[subjectKey] || TOPIC_LISTS['Year 12']['extension 1'];
+  if (yearKey === 'Year 11' && subjectKey === 'extension 2') {
+    return null;
+  }
+  const yearTopics = TOPIC_LISTS[yearKey] as Record<string, ReadonlyArray<string>>;
+  return yearTopics[subjectKey] || TOPIC_LISTS['Year 12']['extension 1'];
 };
 
 const buildPdfPrompt = (topics: ReadonlyArray<string>) => `I have provided a LATEX file containing a HSC Mathematics exam paper with written-response questions.
@@ -475,6 +471,9 @@ export async function POST(request: Request) {
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const topicOptions = getTopicOptions(grade, subject);
+    if (!topicOptions) {
+      return NextResponse.json({ error: 'Year 11 Extension 2 is not supported.' }, { status: 400 });
+    }
 
     const chunkResponses: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
     const refusals: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
