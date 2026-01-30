@@ -4,7 +4,83 @@ import { supabaseAdmin } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
-const PDF_PROMPT = `I have provided a LATEX file containing a HSC Mathematics exam paper with written-response questions.
+const TOPIC_LISTS = {
+  'Year 12': {
+    advanced: [
+      'Further graph transformations',
+      'Sequences and series',
+      'Differential calculus',
+      'Integral calculus',
+      'Applications of calculus',
+      'Random variables',
+      'Financial mathematics',
+    ],
+    'extension 1': [
+      'Proof by mathematical induction',
+      'Vectors',
+      'Inverse trigonometric functions',
+      'Further calculus skills',
+      'Further applications of calculus',
+      'The binomial distribution and sampling distribution of the mean',
+    ],
+    'extension 2': [
+      'The nature of proof',
+      'Further work with vectors',
+      'Introduction to complex numbers',
+      'Further integration',
+      'Applications of calculus to mechanics',
+    ],
+  },
+  'Year 11': {
+    advanced: [
+      'Working with functions',
+      'Trigonometry and measure of angles',
+      'Trigonometric identities and equations',
+      'Differentiation',
+      'Exponential and logarithmic functions',
+      'Graph transformations',
+      'Probability and data',
+    ],
+    'extension 1': [
+      'Further work with functions',
+      'Polynomials',
+      'Further trigonometry',
+      'Permutations and combinations',
+      'The binomial theorem',
+    ],
+    'extension 2': [
+      'Proof by mathematical induction',
+      'Vectors',
+      'Inverse trigonometric functions',
+      'Further calculus skills',
+      'Further applications of calculus',
+      'The binomial distribution and sampling distribution of the mean',
+    ],
+  },
+} as const;
+
+const normalizeYearKey = (grade: string) => {
+  const value = String(grade || '').toLowerCase();
+  if (value.includes('12')) return 'Year 12';
+  if (value.includes('11')) return 'Year 11';
+  return 'Year 12';
+};
+
+const normalizeSubjectKey = (subject: string) => {
+  const value = String(subject || '').toLowerCase();
+  if (value.includes('extension 2') || value.includes('ext 2')) return 'extension 2';
+  if (value.includes('extension 1') || value.includes('ext 1')) return 'extension 1';
+  if (value.includes('advanced')) return 'advanced';
+  return 'extension 1';
+};
+
+const getTopicOptions = (grade: string, subject: string) => {
+  const yearKey = normalizeYearKey(grade);
+  const subjectKey = normalizeSubjectKey(subject);
+  return TOPIC_LISTS[yearKey]?.[subjectKey] || TOPIC_LISTS['Year 12']['extension 1'];
+};
+
+const buildPdfPrompt = (topics: ReadonlyArray<string>) => `I have provided a LATEX file containing a HSC Mathematics exam paper with written-response questions.
 Your task is to convert every written question into clean, well-structured LaTeX code and provide a fully worked sample solution for each question.
 Do not include or process any multiple-choice questions (these are usually Questions 1–10). Only convert the written-response questions.
 Important question splitting rule: treat each lettered subpart as its own separate question. For example, 11 (a) is one question and 11 (b) is a separate question. However, do not split deeper subparts. Parts such as 11 (a) (i), 11 (a) (ii), and 11 (a) (iii) must remain grouped together under Question 11 (a) and must not be treated as separate questions. Split only by letters (a), (b), (c), not by roman numerals (i), (ii), (iii).
@@ -41,20 +117,15 @@ SAMPLE ANSWER REQUIREMENTS:
 Each solution must be fully worked out with all steps shown, clearly explained, easy to follow, and neatly formatted in LaTeX.
 
 For each question, choose the most suitable topic from this list:
-Proof by mathematical induction
-Vectors
-Inverse trigonometric functions
-Further calculus skills
-Further applications of calculus
-The binomial distribution and sampling distribution of the mean
+${topics.join('\n')}
 
 Output raw text only. Do not add commentary, explanations, or extra formatting. Return only the converted LaTeX content.`;
 
-const EXAM_IMAGE_PROMPT = `I have provided an image of a HSC Mathematics exam page with written-response questions.
+const buildExamImagePrompt = (topics: ReadonlyArray<string>) => `I have provided an image of a HSC Mathematics exam page with written-response questions.
 Your task is to extract every written-response question from the image and convert it into clean, well-structured LaTeX code with a fully worked sample solution for each question.
 Do not include or process any multiple-choice questions (these are usually Questions 1–10). Only convert the written-response questions.
 Important question splitting rule: treat each lettered subpart as its own separate question. For example, 11 (a) is one question and 11 (b) is a separate question. However, do not split deeper subparts. Parts such as 11 (a) (i), 11 (a) (ii), and 11 (a) (iii) must remain grouped together under Question 11 (a) and must not be treated as separate questions. Split only by letters (a), (b), (c), not by roman numerals (i), (ii), (iii).
-For each question, you must follow this exact structure:
+If a question has an image/graph/diagram, HAS_IMAGE should be set to true. For each question, you must follow this exact structure:
 
 QUESTION_NUMBER X
 NUM_MARKS X
@@ -87,12 +158,7 @@ SAMPLE ANSWER REQUIREMENTS:
 Each solution must be fully worked out with all steps shown, clearly explained, easy to follow, and neatly formatted in LaTeX.
 
 For each question, choose the most suitable topic from this list:
-Proof by mathematical induction
-Vectors
-Inverse trigonometric functions
-Further calculus skills
-Further applications of calculus
-The binomial distribution and sampling distribution of the mean
+${topics.join('\n')}
 
 Output raw text only. Do not add commentary, explanations, or extra formatting. Return only the converted LaTeX content.`;
 
@@ -116,11 +182,11 @@ Rules:
 - Do not add any extra text outside the format.
 - Escape currency and percent as \\$ and \\%.
 `;
+
 const getHeaderValue = (line: string) => {
   const parts = line.split(/\s+/).slice(1);
   return parts.join(' ').trim();
 };
-
 
 type ParsedQuestion = {
   questionNumber: string | null;
@@ -408,6 +474,7 @@ export async function POST(request: Request) {
     }
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const topicOptions = getTopicOptions(grade, subject);
 
     const chunkResponses: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
     const refusals: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
@@ -420,7 +487,7 @@ export async function POST(request: Request) {
       for (let index = 0; index < totalChunks; index += 1) {
         const chunk = chunks[index];
 
-        const prompt = part.source === 'criteria' ? CRITERIA_PROMPT : PDF_PROMPT;
+        const prompt = part.source === 'criteria' ? CRITERIA_PROMPT : buildPdfPrompt(topicOptions);
         const model = part.source === 'criteria' ? 'gpt-4o' : 'gpt-5';
         const messages = [
           {
@@ -476,7 +543,7 @@ export async function POST(request: Request) {
             content: [
               {
                 type: 'text',
-                text: `${EXAM_IMAGE_PROMPT}\n\nIMAGE ${index + 1} of ${examImageFiles.length}`,
+                text: `${buildExamImagePrompt(topicOptions)}\n\nIMAGE ${index + 1} of ${examImageFiles.length}`,
               },
               {
                 type: 'image_url',
