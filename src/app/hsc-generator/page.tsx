@@ -470,6 +470,7 @@ export default function HSCGeneratorPage() {
     new LazyBrush({ radius: 0, enabled: false, initialPoint: { x: 0, y: 0 } })
   );
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const examFolderInputRef = useRef<HTMLInputElement | null>(null);
 
   const historyRef = useRef<Stroke[][]>([]);
   const redoStackRef = useRef<Stroke[][]>([]);
@@ -894,6 +895,12 @@ export default function HSCGeneratorPage() {
     setCanUndo(historyRef.current.length > 1);
     setCanRedo(redoStackRef.current.length > 0);
   }, [canvasHeight, brushSize]);
+
+  useEffect(() => {
+    if (!examFolderInputRef.current) return;
+    examFolderInputRef.current.setAttribute('webkitdirectory', '');
+    examFolderInputRef.current.setAttribute('directory', '');
+  }, []);
 
   // Draw exam-style ruled lines
   const drawLines = () => {
@@ -3505,11 +3512,10 @@ export default function HSCGeneratorPage() {
                   <div>
                     <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Images Folder</label>
                     <input
+                      ref={examFolderInputRef}
                       type="file"
                       accept="image/jpeg,image/png"
                       multiple
-                      webkitdirectory=""
-                      directory=""
                       onChange={(e) => setExamImageFiles(Array.from(e.target.files || []))}
                       className="mt-2 w-full px-4 py-2 rounded-lg border"
                       style={{
