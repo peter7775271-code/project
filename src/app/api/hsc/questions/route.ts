@@ -29,17 +29,16 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
+      console.error('[questions] Supabase error:', error.message, error.code);
       return NextResponse.json(
-        { error: 'Failed to fetch questions', details: error.message },
+        { error: 'Failed to fetch questions', details: error.message, code: error.code },
         { status: 500 }
       );
     }
 
     if (!data || data.length === 0) {
-
-      
       return NextResponse.json(
-        { error: 'No questions found matching filters' },
+        { error: 'No questions found matching filters', filters: { grade, year, subject, topic } },
         { status: 404 }
       );
     }

@@ -8,17 +8,19 @@ export async function GET() {
       .order('created_at', { ascending: false });
 
     if (error) {
+      console.error('[all-questions] Supabase error:', error.message, error.code);
       return Response.json(
-        { error: 'Failed to fetch questions', details: error.message },
+        { error: 'Failed to fetch questions', details: error.message, code: error.code },
         { status: 500 }
       );
     }
 
-    return Response.json(data || []);
+    return Response.json(data ?? []);
   } catch (error) {
-    console.error('API error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[all-questions] Error:', message);
     return Response.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: message },
       { status: 500 }
     );
   }

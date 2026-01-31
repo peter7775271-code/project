@@ -10,22 +10,43 @@ if (supabaseUrl && supabaseServiceKey) {
   supabaseAdminInstance = createClient(supabaseUrl, supabaseServiceKey);
 }
 
-// Create a safe mock for build time or when credentials are missing
+// When credentials are missing, return an awaitable that resolves with empty/error so API routes don't throw
+const supabaseNotInitializedError = new Error(
+  'Supabase not initialized. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local'
+);
+const emptyResult = { data: [] as any[], error: null as Error | null };
+const errorResult = { data: null as any, error: supabaseNotInitializedError };
+
+function thenable(res: { data: any; error: Error | null } = emptyResult) {
+  const p = Promise.resolve(res);
+  return Object.assign(p, { then: p.then.bind(p), catch: p.catch.bind(p) });
+}
+
+function chainable() {
+  const t = thenable(emptyResult);
+  return {
+    eq: () => chainable(),
+    order: () => thenable(emptyResult),
+    then: t.then.bind(t),
+    catch: t.catch.bind(t),
+  };
+}
+
 const mockClient = {
   from: () => ({
-    select: () => ({ 
-      eq: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Supabase not initialized - check environment variables') }) }),
-      single: () => Promise.resolve({ data: null, error: new Error('Supabase not initialized - check environment variables') }),
-      limit: () => Promise.resolve({ data: [], error: new Error('Supabase not initialized - check environment variables') }),
+    select: () => ({
+      eq: () => chainable(),
+      order: () => thenable(emptyResult),
+      single: () => Promise.resolve(errorResult),
+      limit: () => Promise.resolve(emptyResult),
+      then: thenable(emptyResult).then,
+      catch: thenable(emptyResult).catch,
     }),
-    insert: () => ({ 
-      select: () => ({ 
-        single: () => Promise.resolve({ data: null, error: new Error('Supabase not initialized - check environment variables') }) 
-      }),
+    insert: () => ({
+      select: () => ({ single: () => Promise.resolve(errorResult) }),
     }),
-    update: () => ({ 
-      eq: () => Promise.resolve({ data: null, error: new Error('Supabase not initialized - check environment variables') }),
-    }),
+    update: () => ({ eq: () => Promise.resolve(errorResult) }),
+    delete: () => ({ eq: () => Promise.resolve(errorResult) }),
   }),
 };
 

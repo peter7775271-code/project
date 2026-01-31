@@ -60,25 +60,34 @@ Reasoning: [Brief explanation of why the student received this mark]
 
 If the student's answer is correct or nearly correct, you can omit the numbered list and just provide positive feedback in the reasoning section. Always wrap mathematical expressions in $ signs.`;
 
-    // Call OpenAI API with vision
-    const response = await openai.chat.completions.create({
-      model: 'gpt-5',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            {
-              type: 'image_url',
-              image_url: {
-                url: userAnswerImage,
+    const callVisionModel = async (model: string) => {
+      return openai.chat.completions.create({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: userAnswerImage,
+                },
               },
-            },
-          ],
-        },
-      ],
-      max_completion_tokens: 1000,
-    });
+            ],
+          },
+        ],
+        max_completion_tokens: 2000,
+      });
+    };
+
+    let response;
+    try {
+      response = await callVisionModel('gpt-5');
+    } catch (err) {
+      console.warn('Primary model failed, retrying with gpt-4o:', err);
+      response = await callVisionModel('gpt-4o');
+    }
 
     const aiEvaluation = response.choices[0]?.message?.content || '';
 

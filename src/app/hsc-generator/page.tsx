@@ -4,9 +4,10 @@ import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Undo2, Redo2, Trash2, Send, Upload, ArrowLeft,
-  BookOpen, Calculator, Atom, Beaker, ChevronRight,
+  BookOpen, Calculator, Atom, Beaker, ChevronRight, ChevronLeft,
   RefreshCw, Eye, Download, Bookmark, Settings, Menu, X,
-  CheckCircle2, AlertTriangle, XCircle, TrendingUp, Edit2
+  CheckCircle2, AlertTriangle, XCircle, TrendingUp, Edit2,
+  PanelLeftClose, PanelLeftOpen, Timer, Eraser
 } from 'lucide-react';
 import { getStroke } from 'perfect-freehand';
 import { LazyBrush } from 'lazy-brush';
@@ -139,6 +140,9 @@ function HtmlSegment({ html }: { html: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
     const wrapCellLatex = (cell: string) => {
       const trimmed = cell.trim();
       if (!trimmed) return '';
@@ -167,7 +171,7 @@ function HtmlSegment({ html }: { html: string }) {
         const tableRows = rows
           .map((row: string) => {
             const cells = row.split('&').map((cell) => wrapCellLatex(cell));
-            const tds = cells.map((cell) => `<td>${cell}</td>`).join('');
+            const tds = cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('');
             return `<tr>${tds}</tr>`;
           })
           .join('');
@@ -184,7 +188,7 @@ function HtmlSegment({ html }: { html: string }) {
         const tableRows = rows
           .map((row: string) => {
             const cells = row.split('&').map((cell) => wrapCellLatex(cell));
-            const tds = cells.map((cell) => `<td>${cell}</td>`).join('');
+            const tds = cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('');
             return `<tr>${tds}</tr>`;
           })
           .join('');
@@ -195,26 +199,34 @@ function HtmlSegment({ html }: { html: string }) {
       return output;
     };
 
+    const parseListItems = (body: string) => {
+      const items = body
+        .split(/\\item/g)
+        .map((item: string) => item.trim())
+        .filter((item: string) => item.length > 0);
+      return items
+        .map((item: string) => {
+          const labelMatch = item.match(/^\[([^\]]+)\]\s*/);
+          const label = labelMatch ? labelMatch[1] : null;
+          const content = labelMatch ? item.replace(/^\[[^\]]+\]\s*/, '') : item;
+          const safeContent = escapeHtml(content.trim());
+          const safeLabel = label ? escapeHtml(label) : '';
+          return label
+            ? `<li><span class="item-label">${safeLabel}</span> ${safeContent}</li>`
+            : `<li>${safeContent}</li>`;
+        })
+        .join('');
+    };
+
+    const convertEnumerateToHtml = (input: string) => {
+      return input.replace(/\\begin\{enumerate\}([\s\S]*?)\\end\{enumerate\}/g, (_match, body) => {
+        return `<ol class="latex-list">${parseListItems(body)}</ol>`;
+      });
+    };
+
     const convertItemizeToHtml = (input: string) => {
       return input.replace(/\\begin\{itemize\}([\s\S]*?)\\end\{itemize\}/g, (_match, body) => {
-        const items = body
-          .split(/\\item/g)
-          .map((item: string) => item.trim())
-          .filter((item: string) => item.length > 0);
-
-        const listItems = items
-          .map((item: string) => {
-            const labelMatch = item.match(/^\[([^\]]+)\]\s*/);
-            const label = labelMatch ? labelMatch[1] : null;
-            const content = labelMatch ? item.replace(/^\[[^\]]+\]\s*/, '') : item;
-            const safeContent = content.trim();
-            return label
-              ? `<li><span class="item-label">${label}</span> ${safeContent}</li>`
-              : `<li>${safeContent}</li>`;
-          })
-          .join('');
-
-        return `<ul class="latex-list">${listItems}</ul>`;
+        return `<ul class="latex-list">${parseListItems(body)}</ul>`;
       });
     };
 
@@ -299,10 +311,27 @@ function HtmlSegment({ html }: { html: string }) {
       };
 
       const processedWithTables = applyTextFormatting(
-        convertItemizeToHtml(convertTabularToHtml(normalizeSpacedLetters(html)))
+        convertItemizeToHtml(convertEnumerateToHtml(convertTabularToHtml(normalizeSpacedLetters(html))))
       );
 
-      const normalizedMath = processedWithTables
+      // Extract list/table blocks BEFORE math split so \[...\] inside list items doesn't break HTML
+      const HTML_BLOCK_PREFIX = '\u200B\u200BHTMLLATEXBLOCK';
+      const htmlBlocks: string[] = [];
+      let preProcessed = processedWithTables;
+      preProcessed = preProcessed.replace(/<div class="latex-table"><table>[\s\S]*?<\/table><\/div>/g, (match) => {
+        htmlBlocks.push(match);
+        return `${HTML_BLOCK_PREFIX}${htmlBlocks.length - 1}\u200B\u200B`;
+      });
+      preProcessed = preProcessed.replace(/<ol class="latex-list">[\s\S]*?<\/ol>/g, (match) => {
+        htmlBlocks.push(match);
+        return `${HTML_BLOCK_PREFIX}${htmlBlocks.length - 1}\u200B\u200B`;
+      });
+      preProcessed = preProcessed.replace(/<ul class="latex-list">[\s\S]*?<\/ul>/g, (match) => {
+        htmlBlocks.push(match);
+        return `${HTML_BLOCK_PREFIX}${htmlBlocks.length - 1}\u200B\u200B`;
+      });
+
+      const normalizedMath = preProcessed
         .replace(/\\\(/g, '$')
         .replace(/\\\)/g, '$')
         .replace(/(\$\$[\s\S]*?\$\$)/g, '\n$1\n')
@@ -312,6 +341,8 @@ function HtmlSegment({ html }: { html: string }) {
         return value.replace(/\\+(leq|geq|le|ge|neq|approx|times)\b/g, '$\\$1$');
       };
 
+      const BR_PLACEHOLDER = '\u200B\u200BBR\u200B\u200B';
+      const DOLLAR_PLACEHOLDER = '\u200B\u200BDOLLAR\u200B\u200B';
       const processed = parts
         .map((part, index) => {
           if (index % 2 === 1) {
@@ -320,12 +351,34 @@ function HtmlSegment({ html }: { html: string }) {
           return wrapBareLatexCommands(
             part
               .replace(/\\%/g, '%')
-              .replace(/\\\$/g, '$')
-              .replace(/\n/g, '<br />')
+              .replace(/\\\$/g, DOLLAR_PLACEHOLDER)
+              .replace(/\\{,\\}/g, ',')  // LaTeX: 400\{,\}000
+              .replace(/\{,\}/g, ',')   // LaTeX: 400{,}000
+              .replace(/\n/g, BR_PLACEHOLDER)
           );
         })
         .join('');
-      containerRef.current.innerHTML = processed;
+      const withLineBreaks = processed.split(BR_PLACEHOLDER).join('<br />');
+      const withLiteralDollars = withLineBreaks.split(DOLLAR_PLACEHOLDER).join('<code class="tex-literal-dollar">$</code>');
+
+      // toEscape already has list/table as placeholders (extracted before math split)
+      let toEscape = withLiteralDollars;
+      const escaped = toEscape
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/&lt;br\s*\/?&gt;/g, '<br />')
+        .replace(/&lt;code class=&quot;tex-literal-dollar&quot;&gt;\$&lt;\/code&gt;/g, '<code class="tex-literal-dollar">$</code>');
+
+      // Restore \textbf -> <strong> and protected table/list blocks
+      let finalHtml = escaped
+        .replace(/&lt;strong&gt;/g, '<strong>')
+        .replace(/&lt;\/strong&gt;/g, '</strong>');
+      htmlBlocks.forEach((block, i) => {
+        finalHtml = finalHtml.replace(`${HTML_BLOCK_PREFIX}${i}\u200B\u200B`, block);
+      });
+      containerRef.current.innerHTML = finalHtml;
 
       try {
         await ensureKatex();
@@ -338,6 +391,7 @@ function HtmlSegment({ html }: { html: string }) {
               { left: '$', right: '$', display: false },
             ],
             throwOnError: false,
+            ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
           });
         }
       } catch (e) {
@@ -426,32 +480,6 @@ const SUBJECTS: Subject[] = [
   { id: 'math-ext2', name: 'Mathematics Ext 2', icon: <Calculator className="w-5 h-5" /> },
 ];
 
-const HSC_QUESTIONS = [
-  "HSC Mathematics Ext 2 (4 marks)\n\nThe complex number $z$ is given by $z = \\sqrt{3} + i$.\n\n(i) Find the modulus and argument of $z$.\n\n(ii) Hence, show that $z^{6}$ is real and find its value.\n\n(iii) Find the least positive integer $n$ such that $z^{n}$ is purely imaginary.",
-  "HSC Mathematics Advanced (3 marks)\n\nConsider the function $f(x) = x^3 - 6x^2 + 9x$.\n\n(i) Find the coordinates of the stationary points.\n\n(ii) Determine whether each stationary point is a maximum or minimum.",
-  "HSC Mathematics Ext 1 (4 marks)\n\nSolve the equation $\\sin(2x) = \\cos(x)$ for $0 \\leq x \\leq 2\\pi$.",
-  "HSC Mathematics Advanced (2 marks)\n\nDifferentiate $y = e^{x} \\ln(x)$ with respect to $x$.",
-  "HSC Mathematics Ext 2 (5 marks)\n\nFind the area enclosed between the curves $y = x^2$ and $y = 4 - x^2$.",
-  "HSC Mathematics Advanced (3 marks)\n\nIf $\\tan(\\theta) = \\frac{3}{4}$ and $\\theta$ is in the second quadrant, find the exact value of $\\sin(\\theta)$.",
-  "HSC Mathematics Ext 1 (4 marks)\n\nProve by mathematical induction that $1^2 + 2^2 + 3^2 + \\ldots + n^2 = \\frac{n(n+1)(2n+1)}{6}$ for all positive integers $n$.",
-  "HSC Mathematics Advanced (3 marks)\n\nSolve $2^{x} = 5$ for $x$, giving your answer to 2 decimal places.",
-  "HSC Mathematics Ext 2 (4 marks)\n\nFind the general solution to the differential equation $\\frac{dy}{dx} = 2xy$ where $y > 0$.",
-  "HSC Mathematics Advanced (2 marks)\n\nSimplify $\\frac{\\sqrt{18} + \\sqrt{8}}{\\sqrt{2}}$.",
-];
-
-const MOCK_FEEDBACK = {
-  score: 3,
-  maxMarks: 4,
-  band: 'E4',
-  summary: "Strong understanding of complex numbers and De Moivre's Theorem demonstrated. Correctly applied the theorem and found all required values. Minor presentation issue prevented full marks.",
-  breakdown: [
-    { type: 'success', text: 'Correctly calculated modulus $|z| = 2$ and argument $\\arg(z) = \\frac{\\pi}{6}$.', mark: '+1' },
-    { type: 'success', text: 'Correct application of De Moivre\'s Theorem for $z^6 = -64$.', mark: '+1' },
-    { type: 'success', text: 'Correctly identified that $n = 3$ for $z^n$ to be purely imaginary.', mark: '+1' },
-    { type: 'warning', text: 'Working could be clearer in showing intermediate steps for De Moivre\'s application.', mark: '+0' }
-  ]
-};
-
 export default function HSCGeneratorPage() {
   const router = useRouter();
   type StrokePoint = [number, number, number];
@@ -472,6 +500,8 @@ export default function HSCGeneratorPage() {
 
   const historyRef = useRef<Stroke[][]>([]);
   const redoStackRef = useRef<Stroke[][]>([]);
+  const eraserPathRef = useRef<[number, number][]>([]);
+  const ERASER_RADIUS = 20;
 
   // Question data from database
   type Question = {
@@ -516,8 +546,10 @@ export default function HSCGeneratorPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const [appState, setAppState] = useState<'idle' | 'marking' | 'reviewed'>('idle');
   const [canvasHeight, setCanvasHeight] = useState(400);
+  const [isEraser, setIsEraser] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isPenDrawing, setIsPenDrawing] = useState(false);
   const [isIpad, setIsIpad] = useState(false);
@@ -549,34 +581,25 @@ export default function HSCGeneratorPage() {
   const [paperQuestions, setPaperQuestions] = useState<Question[]>([]);
   const [paperIndex, setPaperIndex] = useState(0);
   const [activePaper, setActivePaper] = useState<{ year: string; subject: string; grade: string; count: number } | null>(null);
+  const [examEndsAt, setExamEndsAt] = useState<number | null>(null);
+  const [examRemainingMs, setExamRemainingMs] = useState<number | null>(null);
+  const [examConditionsActive, setExamConditionsActive] = useState(false);
+  const [examAttempts, setExamAttempts] = useState<Array<{ question: Question; submittedAnswer: string | null; feedback: any }>>([]);
+  const [examEnded, setExamEnded] = useState(false);
+  const [showFinishExamPrompt, setShowFinishExamPrompt] = useState(false);
+  const [examReviewMode, setExamReviewMode] = useState(false);
+  const [examReviewIndex, setExamReviewIndex] = useState(0);
+  const [savedExamReviewMode, setSavedExamReviewMode] = useState(false);
+  const [savedExamReviewIndex, setSavedExamReviewIndex] = useState(0);
 
-  const fallbackQuestion: Question = {
-    id: 'fallback-001',
-    grade: yearLevel,
-    year: new Date().getFullYear(),
-    subject: 'Mathematics',
-    topic: 'General',
-    marks: 4,
-    question_number: null,
-    question_text: HSC_QUESTIONS[0],
-    question_type: 'written',
-    marking_criteria: 'Sample question (fallback mode).',
-    sample_answer: 'Sample answer (fallback mode).',
-    graph_image_data: null,
-    graph_image_size: 'medium',
-    mcq_option_a: null,
-    mcq_option_b: null,
-    mcq_option_c: null,
-    mcq_option_d: null,
-    mcq_correct_answer: null,
-    mcq_explanation: null,
-  };
+
 
   // Dev mode state
   const [isDevMode, setIsDevMode] = useState(false);
   const [devTab, setDevTab] = useState<'add' | 'manage'>('add');
   const [allQuestions, setAllQuestions] = useState<any[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [questionsFetchError, setQuestionsFetchError] = useState<string | null>(null);
   const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
   const [selectedManageQuestionId, setSelectedManageQuestionId] = useState<string | null>(null);
   const [manageQuestionDraft, setManageQuestionDraft] = useState<any | null>(null);
@@ -831,11 +854,12 @@ export default function HSCGeneratorPage() {
       if (!userJson) return;
 
       const user = JSON.parse(userJson);
+      const normalizedEmail = String(user.email || '').toLowerCase();
       setUserEmail(user.email);
       setUserCreatedAt(user.created_at);
 
       // Check if user is dev
-      setIsDevMode(user.email === 'peter7775271@gmail.com');
+      setIsDevMode(normalizedEmail === 'peter7775271@gmail.com');
     } catch (e) {
       console.error('Error parsing user:', e);
     }
@@ -889,14 +913,15 @@ export default function HSCGeneratorPage() {
     setSelectedManageQuestionIds((prev) => prev.filter((id) => availableIds.has(id)));
   }, [allQuestions, selectedManageQuestionIds.length]);
 
-  // Initialize canvas
+  // Initialize canvas (use wrapper width so scrollbar doesn't shrink canvas when adding space)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const dpr = window.devicePixelRatio || 1;
     dprRef.current = dpr;
-    const cssWidth = canvas.offsetWidth;
+    const wrapper = canvas.parentElement?.parentElement;
+    const cssWidth = wrapper ? wrapper.getBoundingClientRect().width : canvas.offsetWidth;
     const cssHeight = canvasHeight;
     canvas.width = Math.max(1, Math.floor(cssWidth * dpr));
     canvas.height = Math.max(1, Math.floor(cssHeight * dpr));
@@ -929,6 +954,18 @@ export default function HSCGeneratorPage() {
     setCanUndo(historyRef.current.length > 1);
     setCanRedo(redoStackRef.current.length > 0);
   }, [canvasHeight, brushSize]);
+
+  // Reinit canvas when switching back to generator/paper (fixes layout after Papers → Questions)
+  useEffect(() => {
+    if (viewMode !== 'generator' && viewMode !== 'paper') return;
+    const id = setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (canvas && canvas.offsetWidth > 0) {
+        resizeAndRedrawCanvas();
+      }
+    }, 150);
+    return () => clearTimeout(id);
+  }, [viewMode]);
 
   useEffect(() => {
     if (!examFolderInputRef.current) return;
@@ -975,8 +1012,8 @@ export default function HSCGeneratorPage() {
   const drawStrokePath = (stroke: Stroke) => {
     if (!stroke.length) return;
     const outline = getStroke(stroke, {
-      size: Math.max(2, brushSize * 2),
-      thinning: 0.3,
+      size: Math.max(2, brushSize * 2) * 0.75,
+      thinning: 0.5,
       smoothing: 0.3,
       streamline: 0.2,
       simulatePressure: false,
@@ -1052,6 +1089,19 @@ export default function HSCGeneratorPage() {
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     drawingRef.current = true;
+    if (isEraser) {
+      eraserPathRef.current = [[x, y]];
+      const ctx = ctxRef.current;
+      if (ctx) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(x, y, ERASER_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      return;
+    }
     const point: StrokePoint = [x, y, Math.max(0.1, pressure)];
     currentStrokeRef.current = [point];
     lastPosRef.current = [x, y];
@@ -1064,6 +1114,19 @@ export default function HSCGeneratorPage() {
     if (!rect) return;
     const x = clientX - rect.left;
     const y = clientY - rect.top;
+    if (isEraser) {
+      eraserPathRef.current.push([x, y]);
+      const ctx = ctxRef.current;
+      if (ctx) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(x, y, ERASER_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      return;
+    }
     const point: StrokePoint = [x, y, Math.max(0.1, pressure)];
     if (!currentStrokeRef.current) currentStrokeRef.current = [];
     currentStrokeRef.current.push(point);
@@ -1075,6 +1138,27 @@ export default function HSCGeneratorPage() {
     if (!drawingRef.current) return;
     drawingRef.current = false;
     setIsPenDrawing(false);
+    if (isEraser) {
+      const path = eraserPathRef.current;
+      eraserPathRef.current = [];
+      if (path.length > 0) {
+        const dist = (x1: number, y1: number, x2: number, y2: number) =>
+          Math.hypot(x1 - x2, y1 - y2);
+        saveState();
+        strokesRef.current = strokesRef.current.filter(
+          (stroke) =>
+            !stroke.some(
+              (p) =>
+                path.some(
+                  (ep) => dist(p[0], p[1], ep[0], ep[1]) < ERASER_RADIUS
+                )
+            )
+        );
+        renderAllStrokes(false);
+        setCanUndo(historyRef.current.length > 1);
+      }
+      return;
+    }
     if (currentStrokeRef.current && currentStrokeRef.current.length) {
       strokesRef.current.push(currentStrokeRef.current);
       currentStrokeRef.current = null;
@@ -1254,8 +1338,39 @@ export default function HSCGeneratorPage() {
       setSavedAttempts(attempts);
       setViewMode('saved');
       setSelectedAttempt(null);
+      setSavedExamReviewMode(false);
     } catch (err) {
       console.error('Error loading attempts:', err);
+    }
+  };
+
+  const saveExam = () => {
+    const totalPossible = examAttempts.reduce((sum, a) => sum + (a.question?.marks ?? 0), 0);
+    const totalAwarded = examAttempts.reduce((sum, a) => sum + (typeof a.feedback?.score === 'number' ? a.feedback.score : 0), 0);
+    const exam = {
+      type: 'exam',
+      id: Date.now(),
+      paperYear: activePaper?.year ?? '',
+      paperSubject: activePaper?.subject ?? '',
+      paperGrade: activePaper?.grade ?? '',
+      examAttempts: [...examAttempts],
+      totalScore: totalAwarded,
+      totalPossible,
+      savedAt: new Date().toISOString(),
+    };
+    const existing = JSON.parse(localStorage.getItem('savedAttempts') || '[]');
+    existing.push(exam);
+    localStorage.setItem('savedAttempts', JSON.stringify(existing));
+    setSavedAttempts(existing);
+  };
+
+  const removeSavedAttempt = (id: number) => {
+    const next = savedAttempts.filter((a: { id: number }) => a.id !== id);
+    localStorage.setItem('savedAttempts', JSON.stringify(next));
+    setSavedAttempts(next);
+    if (selectedAttempt?.id === id) {
+      setSelectedAttempt(null);
+      setSavedExamReviewMode(false);
     }
   };
 
@@ -1437,12 +1552,49 @@ export default function HSCGeneratorPage() {
   };
 
   const extractMarksAwarded = (evaluation: string, maxMarks: number) => {
-    if (!evaluation) return null;
-    const match = evaluation.match(/Marks\s*Awarded:\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)/i);
-    if (!match) return null;
-    const awarded = parseFloat(match[1]);
-    if (Number.isNaN(awarded)) return null;
-    return Math.min(Math.max(awarded, 0), maxMarks);
+    if (!evaluation || typeof evaluation !== 'string') return null;
+    const trimmed = evaluation.trim();
+    const patterns = [
+      /Marks\s*Awarded:\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)/i,
+      /Score:\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)/i,
+      /([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*marks?/i,
+      /Awarded:\s*([0-9]+(?:\.[0-9]+)?)/i,
+    ];
+    for (const re of patterns) {
+      const match = trimmed.match(re);
+      if (match && match[1]) {
+        const awarded = parseFloat(match[1]);
+        if (!Number.isNaN(awarded)) return Math.min(Math.max(awarded, 0), maxMarks);
+      }
+    }
+    return null;
+  };
+
+  const resizeImageForMarking = (dataUrl: string, maxDimension = 1536): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = img.width;
+        const h = img.height;
+        if (w <= maxDimension && h <= maxDimension) {
+          resolve(dataUrl);
+          return;
+        }
+        const scale = maxDimension / Math.max(w, h);
+        const c = document.createElement('canvas');
+        c.width = Math.round(w * scale);
+        c.height = Math.round(h * scale);
+        const ctx = c.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.88));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
   };
 
   const analyzeAnswerImage = (dataUrl: string) => {
@@ -1576,17 +1728,22 @@ export default function HSCGeneratorPage() {
   const fetchAllQuestions = async () => {
     try {
       setLoadingQuestions(true);
+      setQuestionsFetchError(null);
       const response = await fetch('/api/hsc/all-questions');
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        const data = await response.json();
         setAllQuestions(Array.isArray(data) ? data : []);
       } else {
-        console.error('Failed to fetch questions');
+        const msg = data?.details ?? data?.error ?? `Failed to fetch questions (${response.status})`;
+        setQuestionsFetchError(msg);
         setAllQuestions([]);
+        console.error('[fetchAllQuestions]', msg);
       }
     } catch (err) {
-      console.error('Error fetching questions:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to fetch questions';
+      setQuestionsFetchError(msg);
       setAllQuestions([]);
+      console.error('Error fetching questions:', err);
     } finally {
       setLoadingQuestions(false);
     }
@@ -1813,24 +1970,30 @@ export default function HSCGeneratorPage() {
     
     // Clear the canvas
     renderAllStrokes(false);
+    setIsEraser(false);
   };
 
-  const submitAnswer = async () => {
+  const hasCurrentAnswer = () => {
+    if (!question) return false;
+    if (question.question_type === 'multiple_choice') return !!selectedMcqAnswer;
+    return !!uploadedFile || !!(strokesRef.current && strokesRef.current.some((s: { length: number }) => s.length > 0));
+  };
+
+  const submitAnswer = async (endExamMode?: boolean) => {
     if (!question) return;
+
+    const isLastQuestion = endExamMode ? false : (isPaperMode && paperIndex >= paperQuestions.length - 1);
 
     if (question.question_type === 'multiple_choice') {
       if (!selectedMcqAnswer) {
-        setError('Please select an answer option before submitting.');
+        if (!endExamMode) setError('Please select an answer option before submitting.');
         return;
       }
 
       const correctAnswer = question.mcq_correct_answer ? question.mcq_correct_answer.toUpperCase() : null;
       const isCorrect = correctAnswer === selectedMcqAnswer;
       const score = isCorrect ? question.marks : 0;
-
-      setSubmittedAnswer(selectedMcqAnswer);
-      setError(null);
-      setFeedback({
+      const mcqFeedback = {
         score,
         maxMarks: question.marks,
         marking_criteria: null,
@@ -1839,7 +2002,27 @@ export default function HSCGeneratorPage() {
         mcq_correct_answer: correctAnswer,
         mcq_explanation: question.mcq_explanation || null,
         mcq_selected_answer: selectedMcqAnswer,
-      });
+      };
+
+      if (examConditionsActive) {
+        setExamAttempts((prev) => [
+          ...prev,
+          { question: { ...question }, submittedAnswer: selectedMcqAnswer, feedback: mcqFeedback },
+        ]);
+        setError(null);
+        setSubmittedAnswer(selectedMcqAnswer);
+        if (endExamMode) return;
+        if (isLastQuestion) {
+          setShowFinishExamPrompt(true);
+        } else {
+          goToPaperQuestion(paperIndex + 1);
+        }
+        return;
+      }
+
+      setSubmittedAnswer(selectedMcqAnswer);
+      setError(null);
+      setFeedback(mcqFeedback);
       setAppState('reviewed');
       return;
     }
@@ -1849,53 +2032,119 @@ export default function HSCGeneratorPage() {
       setTimeout(() => setAppState('idle'), 300);
       return;
     }
-    
+
+    let imageDataUrl: string;
     try {
-      setAppState('marking');
-      let imageDataUrl: string;
-      
-      // Use uploaded file if available, otherwise use canvas drawing
       if (uploadedFile) {
         imageDataUrl = uploadedFile;
       } else {
-        // Get the canvas image as base64
         const canvas = canvasRef.current;
-        if (!canvas) {
-          throw new Error('Canvas not found');
-        }
+        if (!canvas) throw new Error('Canvas not found');
         imageDataUrl = canvas.toDataURL('image/png');
       }
-      
-      const { lowInk } = await analyzeAnswerImage(imageDataUrl);
+    } catch {
+      setError('Could not capture answer.');
+      return;
+    }
 
-      // Save the submitted answer for review
+    if (examConditionsActive) {
+      const attemptIndex = examAttempts.length;
+      setExamAttempts((prev) => [
+        ...prev,
+        { question: { ...question }, submittedAnswer: imageDataUrl, feedback: null },
+      ]);
       setSubmittedAnswer(imageDataUrl);
-      
-      // Send to AI for marking
+      setError(null);
+      if (!endExamMode) {
+        if (isLastQuestion) {
+          setShowFinishExamPrompt(true);
+        } else {
+          goToPaperQuestion(paperIndex + 1);
+        }
+      }
+      // Mark in background and update examAttempts when done
+      (async () => {
+        try {
+          const { lowInk } = await analyzeAnswerImage(imageDataUrl);
+          const imageToSend = await resizeImageForMarking(imageDataUrl);
+          const response = await fetch('/api/hsc/mark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              questionText: question.question_text,
+              markingCriteria: question.marking_criteria,
+              sampleAnswer: question.sample_answer,
+              maxMarks: question.marks,
+              userAnswerImage: imageToSend,
+              answerQualityHint: lowInk ? 'low_ink' : 'normal',
+            }),
+          });
+          if (!response.ok) {
+            const errData = await response.json().catch(() => null);
+            throw new Error(errData?.error || 'Failed to get AI marking');
+          }
+          const data = await response.json();
+          const awardedMarks = extractMarksAwarded(data.evaluation, question.marks);
+          setExamAttempts((prev) => {
+            const next = [...prev];
+            if (next[attemptIndex]) {
+              next[attemptIndex] = {
+                ...next[attemptIndex],
+                feedback: {
+                  score: awardedMarks,
+                  maxMarks: question.marks,
+                  marking_criteria: question.marking_criteria,
+                  sample_answer: question.sample_answer,
+                  ai_evaluation: data.evaluation,
+                },
+              };
+            }
+            return next;
+          });
+        } catch (err) {
+          console.error('Background marking failed:', err);
+          setExamAttempts((prev) => {
+            const next = [...prev];
+            if (next[attemptIndex]) {
+              next[attemptIndex] = {
+                ...next[attemptIndex],
+                feedback: { score: null, maxMarks: question.marks, marking_criteria: question.marking_criteria, sample_answer: question.sample_answer, ai_evaluation: null, _error: true },
+              };
+            }
+            return next;
+          });
+        }
+      })();
+      return;
+    }
+
+    try {
+      setAppState('marking');
+      const { lowInk } = await analyzeAnswerImage(imageDataUrl);
+      setSubmittedAnswer(imageDataUrl);
+      const imageToSend = await resizeImageForMarking(imageDataUrl);
+
       const response = await fetch('/api/hsc/mark', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionText: question.question_text,
           markingCriteria: question.marking_criteria,
           sampleAnswer: question.sample_answer,
           maxMarks: question.marks,
-          userAnswerImage: imageDataUrl,
+          userAnswerImage: imageToSend,
           answerQualityHint: lowInk ? 'low_ink' : 'normal',
         }),
       });
-      
+
       if (!response.ok) {
         const errData = await response.json().catch(() => null);
         throw new Error(errData?.error || 'Failed to get AI marking');
       }
-      
-      const data = await response.json();
 
+      const data = await response.json();
       const awardedMarks = extractMarksAwarded(data.evaluation, question.marks);
-      
+
       setFeedback({
         score: awardedMarks,
         maxMarks: question.marks,
@@ -1904,7 +2153,6 @@ export default function HSCGeneratorPage() {
         ai_evaluation: data.evaluation,
       });
       setAppState('reviewed');
-      
     } catch (error) {
       console.error('Error submitting answer:', error);
       setError('Failed to submit answer. Please try again.');
@@ -1965,9 +2213,9 @@ export default function HSCGeneratorPage() {
 
       const data = await response.json();
       setQuestion(data.question);
+      setTimeout(() => resetCanvas(400), 100);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load question');
-      setQuestion(fallbackQuestion);
       console.error('Error fetching question:', err);
     } finally {
       setIsGenerating(false);
@@ -1979,12 +2227,20 @@ export default function HSCGeneratorPage() {
     if (!canvas) return;
 
     const targetHeight = height ?? canvasHeight;
-    canvas.width = canvas.offsetWidth;
-    canvas.height = targetHeight;
+    const dpr = window.devicePixelRatio || 1;
+    dprRef.current = dpr;
+    const cssW = Math.max(1, canvas.offsetWidth || 1);
+    const cssH = targetHeight;
+    canvas.width = Math.max(1, Math.floor(cssW * dpr));
+    canvas.height = Math.max(1, Math.floor(cssH * dpr));
+    canvas.style.width = `${cssW}px`;
+    canvas.style.height = `${cssH}px`;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = brushSize;
@@ -2004,8 +2260,35 @@ export default function HSCGeneratorPage() {
     setCanRedo(false);
   };
 
+  const resizeAndRedrawCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const wrapper = canvas.parentElement?.parentElement;
+    const cssW = wrapper ? wrapper.getBoundingClientRect().width : canvas.offsetWidth;
+    if (cssW <= 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    dprRef.current = dpr;
+    const cssH = canvasHeight;
+    canvas.width = Math.max(1, Math.floor(cssW * dpr));
+    canvas.height = Math.max(1, Math.floor(cssH * dpr));
+    canvas.style.width = `${cssW}px`;
+    canvas.style.height = `${cssH}px`;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = brushSize;
+    ctx.strokeStyle = 'white';
+    ctxRef.current = ctx;
+    redrawBackground();
+    renderAllStrokes(false);
+  };
+
+  const CANVAS_EXTEND_PX = 500;
   const extendCanvas = () => {
-    setCanvasHeight((prev) => prev + 300);
+    setCanvasHeight((prev) => prev + CANVAS_EXTEND_PX);
   };
 
   const resetForQuestion = (nextQuestion: Question | null) => {
@@ -2018,6 +2301,7 @@ export default function HSCGeneratorPage() {
     setSubmittedAnswer(null);
     setSelectedMcqAnswer(null);
     setCanvasHeight(400);
+    setIsEraser(false);
     setTimeout(() => resetCanvas(400), 0);
 
     historyRef.current = [];
@@ -2030,6 +2314,47 @@ export default function HSCGeneratorPage() {
     setActivePaper(null);
     setPaperQuestions([]);
     setPaperIndex(0);
+    setExamEndsAt(null);
+    setExamRemainingMs(null);
+    setExamConditionsActive(false);
+    setExamAttempts([]);
+    setExamEnded(false);
+    setShowFinishExamPrompt(false);
+    setExamReviewMode(false);
+    setExamReviewIndex(0);
+  };
+
+  const getExamDurationHours = (subject?: string | null) => {
+    const normalized = String(subject || '').toLowerCase();
+    if (normalized.includes('extension 1') || normalized.includes('ext 1')) return 2;
+    if (normalized.includes('extension 2') || normalized.includes('ext 2') || normalized.includes('advanced')) return 3;
+    return 3;
+  };
+
+  const startExamSimulation = () => {
+    const durationHours = getExamDurationHours(activePaper?.subject);
+    const durationMs = durationHours * 60 * 60 * 1000;
+    setExamEndsAt(Date.now() + durationMs);
+    setExamRemainingMs(durationMs);
+    setExamConditionsActive(true);
+    setExamAttempts([]);
+    setExamEnded(false);
+    setShowFinishExamPrompt(false);
+    setExamReviewMode(false);
+    setExamReviewIndex(0);
+    setIsSidebarHidden(true);
+    setMobileMenuOpen(false);
+  };
+
+  const endExam = () => {
+    setExamConditionsActive(false);
+    setExamEnded(true);
+    setShowFinishExamPrompt(false);
+  };
+
+  const handleEndExam = async () => {
+    if (question && hasCurrentAnswer()) await submitAnswer(true);
+    endExam();
   };
 
   const startPaperAttempt = (paper: { year: string; subject: string; grade: string; count: number }) => {
@@ -2078,7 +2403,6 @@ export default function HSCGeneratorPage() {
       } catch (err) {
         console.error('Error loading initial question:', err);
         setError(err instanceof Error ? err.message : 'Failed to load question');
-        setQuestion(fallbackQuestion);
       } finally {
         setLoading(false);
       }
@@ -2094,12 +2418,37 @@ export default function HSCGeneratorPage() {
     setIsIpad(isiPad);
   }, []);
 
+  useEffect(() => {
+    if (!examEndsAt) {
+      setExamRemainingMs(null);
+      return;
+    }
+
+    const tick = () => {
+      const remaining = Math.max(0, examEndsAt - Date.now());
+      setExamRemainingMs(remaining);
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [examEndsAt]);
+
   const awardedMarks = typeof feedback?.score === 'number' ? feedback.score : null;
   const maxMarks = feedback?.maxMarks ?? 0;
   const isMultipleChoiceReview = question?.question_type === 'multiple_choice' || feedback?.mcq_correct_answer;
   const isMarking = appState === 'marking';
   const isPaperMode = viewMode === 'paper';
   const paperProgress = paperQuestions.length ? (paperIndex + 1) / paperQuestions.length : 0;
+  const examTimeRemainingLabel = useMemo(() => {
+    if (examRemainingMs === null) return null;
+    const totalSeconds = Math.max(0, Math.ceil(examRemainingMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  }, [examRemainingMs]);
 
   return (
     <div 
@@ -2127,9 +2476,23 @@ export default function HSCGeneratorPage() {
           font-weight: 600;
           margin-right: 0.5rem;
         }
+        .latex-table {
+          margin: 0.75rem 0;
+          overflow-x: auto;
+        }
+        .latex-table table {
+          border-collapse: collapse;
+          width: 100%;
+        }
+        .latex-table td,
+        .latex-table th {
+          border: 1px solid var(--clr-surface-tonal-a30, rgba(255,255,255,0.2));
+          padding: 0.35rem 0.6rem;
+          vertical-align: middle;
+        }
       `}</style>
 
-      {isMarking && (
+      {isMarking && !examConditionsActive && (
         <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
           <div
             className="rounded-2xl border shadow-2xl px-8 py-6 text-center"
@@ -2179,14 +2542,29 @@ export default function HSCGeneratorPage() {
         {/* Sidebar */}
         <aside 
           className={`
-            fixed inset-y-0 left-0 z-40 w-72 border-r transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:h-auto
+            fixed inset-y-0 left-0 z-40 w-72 border-r transform transition-all duration-300 ease-in-out lg:relative lg:h-auto relative
             ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+            ${isSidebarHidden ? 'lg:-translate-x-full lg:w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:translate-x-0 lg:opacity-100'}
           `}
           style={{
             backgroundColor: 'var(--clr-surface-a10)',
-            borderColor: 'var(--clr-surface-tonal-a20)',
+            borderColor: isSidebarHidden ? 'transparent' : 'var(--clr-surface-tonal-a20)',
           }}
         >
+          {!isSidebarHidden && (
+            <button
+              onClick={() => setIsSidebarHidden(true)}
+              aria-label="Hide sidebar"
+              className="hidden lg:flex items-center justify-center w-9 h-9 rounded-full border absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 shadow-lg cursor-pointer"
+              style={{
+                backgroundColor: 'var(--clr-surface-a10)',
+                borderColor: 'var(--clr-surface-tonal-a20)',
+                color: 'var(--clr-primary-a50)',
+              }}
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          )}
           <div className="p-6 h-full flex flex-col">
             <div className="hidden lg:flex items-center gap-3 mb-10">
               <div 
@@ -2334,6 +2712,18 @@ export default function HSCGeneratorPage() {
               className="mt-auto pt-6 border-t space-y-3"
               style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
             >
+              {isDevMode && (
+                <button 
+                  onClick={() => setViewMode('dev-questions')}
+                  className="flex items-center gap-3 p-3 rounded-xl w-full transition-colors cursor-pointer font-medium text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-warning-a0)',
+                    color: 'var(--clr-light-a0)',
+                  }}
+                >
+                  <span>Dev Mode ON</span>
+                </button>
+              )}
               <button 
                 onClick={() => setViewMode('settings')}
                 className="flex items-center gap-3 p-3 rounded-xl w-full transition-colors cursor-pointer"
@@ -2350,12 +2740,416 @@ export default function HSCGeneratorPage() {
 
         {/* Main Content */}
         <main 
-          className="flex-1 p-4 lg:p-8 overflow-y-auto"
+          className="flex-1 p-4 lg:p-8 overflow-y-auto relative"
           style={{ backgroundColor: 'var(--clr-surface-a0)' }}
         >
+          {isSidebarHidden && (
+            <button
+              onClick={() => setIsSidebarHidden(false)}
+              aria-label="Show sidebar"
+              className="hidden lg:flex items-center justify-center w-9 h-9 rounded-full border absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 shadow-lg cursor-pointer"
+              style={{
+                backgroundColor: 'var(--clr-surface-a10)',
+                borderColor: 'var(--clr-surface-tonal-a20)',
+                color: 'var(--clr-primary-a50)',
+              }}
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+          )}
           <div className="max-w-5xl mx-auto space-y-8">
             
             {(viewMode === 'generator' || viewMode === 'paper') ? (
+              <>
+            {/* Exam Review Mode: one question at a time */}
+            {examEnded && examReviewMode && examAttempts.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    onClick={() => { setExamReviewMode(false); }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a10)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to Overview
+                  </button>
+                  <span className="text-sm font-medium" style={{ color: 'var(--clr-surface-a40)' }}>
+                    Question {examReviewIndex + 1} of {examAttempts.length}
+                  </span>
+                </div>
+                <div className="flex gap-6">
+                  <aside
+                    className="w-52 flex-shrink-0 rounded-xl border p-3 space-y-1 overflow-y-auto max-h-[70vh]"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a10)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                    }}
+                  >
+                    <p className="text-xs font-bold uppercase tracking-widest mb-2 px-2" style={{ color: 'var(--clr-surface-a40)' }}>Questions</p>
+                    {examAttempts.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setExamReviewIndex(i)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                        style={{
+                          backgroundColor: examReviewIndex === i ? 'var(--clr-primary-a0)' : 'transparent',
+                          color: examReviewIndex === i ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
+                        }}
+                      >
+                        Question {i + 1}
+                        {examAttempts[i]?.feedback != null && (
+                          <span className="ml-1 text-xs opacity-80">
+                            ({typeof examAttempts[i].feedback?.score === 'number' ? examAttempts[i].feedback.score : '—'}/{examAttempts[i].question?.marks ?? 0})
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </aside>
+                  <div className="flex-1 min-w-0">
+                {(() => {
+                  const attempt = examAttempts[examReviewIndex];
+                  if (!attempt) return null;
+                  const revQuestion = attempt.question;
+                  const revFeedback = attempt.feedback;
+                  const revSubmitted = attempt.submittedAnswer;
+                  const isMcq = revQuestion?.question_type === 'multiple_choice';
+                  const revAwarded = typeof revFeedback?.score === 'number' ? revFeedback.score : null;
+                  const revMax = revFeedback?.maxMarks ?? revQuestion?.marks ?? 0;
+                  const revCriteriaText = revFeedback?.marking_criteria ?? revQuestion?.marking_criteria ?? null;
+                  return (
+                    <div
+                      className="rounded-2xl overflow-hidden border shadow-2xl"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a10)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                      }}
+                    >
+                      {/* Report Header (same as generator) */}
+                      <div
+                        className="p-6 border-b flex flex-wrap items-center justify-between gap-6"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a0)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                        }}
+                      >
+                        <div>
+                          <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--clr-primary-a50)' }}>
+                            {revFeedback ? (
+                              revAwarded === 0 ? (
+                                <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} />
+                              ) : revAwarded !== null && revAwarded < revMax ? (
+                                <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} />
+                              ) : (
+                                <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />
+                              )
+                            ) : null}
+                            {revFeedback ? 'Marking Complete' : 'Marking…'}
+                          </h3>
+                          <p className="text-sm mt-1" style={{ color: 'var(--clr-surface-a40)' }}>Assessed against NESA Guidelines</p>
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <div className="text-right">
+                            <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a50)' }}>Score</span>
+                            <div className="flex items-baseline gap-1 justify-end">
+                              <span className="text-4xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{revAwarded === null ? '--' : revAwarded}</span>
+                              <span className="text-xl font-medium" style={{ color: 'var(--clr-surface-a50)' }}>/{revMax}</span>
+                            </div>
+                            {isMcq && revFeedback && (
+                              <div className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                                <div>Selected: <strong style={{ color: 'var(--clr-light-a0)' }}>{revFeedback.mcq_selected_answer ?? revSubmitted ?? '-'}</strong></div>
+                                <div>Correct: <strong style={{ color: 'var(--clr-success-a10)' }}>{revFeedback.mcq_correct_answer ?? revQuestion?.mcq_correct_answer ?? '-'}</strong></div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Question */}
+                      <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                        <h4 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
+                        <div className="font-serif" style={{ color: 'var(--clr-primary-a50)' }}><LatexText text={revQuestion?.question_text || ''} /></div>
+                      </div>
+
+                      {/* AI Feedback / MCQ Explanation */}
+                      {revFeedback && (
+                        <div
+                          className="p-6 border-b"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}>
+                            <TrendingUp className="w-4 h-4" />
+                            {isMcq ? 'Answer Explanation' : 'AI Feedback'}
+                          </h4>
+                          <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a40)' }}>
+                            {isMcq ? (
+                              revFeedback.mcq_explanation ? (
+                                <LatexText text={revFeedback.mcq_explanation} />
+                              ) : (
+                                <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>
+                              )
+                            ) : revFeedback.ai_evaluation ? (
+                              <LatexText text={revFeedback.ai_evaluation} />
+                            ) : revFeedback._error ? (
+                              <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed. Please try again later.</p>
+                            ) : (
+                              <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>AI evaluation is being processed...</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Marking Criteria (table, same as generator) */}
+                      {!isMcq && revCriteriaText && (
+                        <div
+                          className="p-6 border-b"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}>
+                            <CheckCircle2 className="w-4 h-4" />
+                            Marking Criteria
+                          </h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                  <th className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Criteria</th>
+                                  <th className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24" style={{ color: 'var(--clr-surface-a40)' }}>Marks</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(() => {
+                                  const items = parseCriteriaForDisplay(revCriteriaText);
+                                  const rows: React.ReactNode[] = [];
+                                  let lastSubpart: string | null = null;
+                                  items.forEach((item, idx) => {
+                                    if (item.type === 'heading') {
+                                      lastSubpart = null;
+                                      rows.push(
+                                        <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{item.text}</td>
+                                        </tr>
+                                      );
+                                      return;
+                                    }
+                                    if (item.subpart && item.subpart !== lastSubpart) {
+                                      lastSubpart = item.subpart;
+                                      rows.push(
+                                        <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Part ({item.subpart})</td>
+                                        </tr>
+                                      );
+                                    }
+                                    rows.push(
+                                      <tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <td className="py-3 px-3" style={{ color: 'var(--clr-light-a0)' }}><LatexText text={item.text} /></td>
+                                        <td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a10)' }}>{item.marks}</td>
+                                      </tr>
+                                    );
+                                  });
+                                  return rows;
+                                })()}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sample Solution */}
+                      {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) && (
+                        <div
+                          className="p-8 border-t space-y-4"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}>
+                            <BookOpen className="w-5 h-5" />
+                            {isMcq ? 'Answer Explanation' : 'Sample Solution'}
+                          </h3>
+                          <div
+                            className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2"
+                            style={{ color: 'var(--clr-light-a0)', borderColor: 'var(--clr-success-a10)' }}
+                          >
+                            {isMcq && revFeedback?.mcq_explanation ? (
+                              <LatexText text={revFeedback.mcq_explanation} />
+                            ) : (
+                              <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Your Submitted Answer */}
+                      {revSubmitted && (
+                        <div
+                          className="p-8 border-t space-y-4"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-info-a20)' }}>
+                            <Eye className="w-5 h-5" />
+                            Your Submitted Answer
+                          </h3>
+                          <div
+                            className="rounded-lg p-4 border"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a10)',
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                            }}
+                          >
+                            {isMcq ? (
+                              <p className="font-semibold">Selected Answer: {revSubmitted}</p>
+                            ) : (
+                              <img src={revSubmitted} alt="Your answer" className="w-full rounded" style={{ border: '1px solid var(--clr-surface-tonal-a20)' }} />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Nav: Previous / Next */}
+                      <div className="border-t p-6 flex gap-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                        <button
+                          onClick={() => setExamReviewIndex((i) => Math.max(0, i - 1))}
+                          disabled={examReviewIndex === 0}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                          Previous
+                        </button>
+                        <button
+                          onClick={() => setExamReviewIndex((i) => Math.min(examAttempts.length - 1, i + 1))}
+                          disabled={examReviewIndex >= examAttempts.length - 1}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--clr-primary-a0)',
+                            borderColor: 'var(--clr-primary-a0)',
+                            color: 'var(--clr-dark-a0)',
+                          }}
+                        >
+                          Next
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+                  </div>
+                </div>
+              </div>
+            ) : examEnded ? (
+              /* Exam Overview */
+              <div className="space-y-6">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    onClick={() => { clearPaperState(); setViewMode('papers'); }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a10)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to Papers
+                  </button>
+                </div>
+                <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Exam Overview</h1>
+                {(() => {
+                  const totalPossible = examAttempts.reduce((sum, a) => sum + (a.question?.marks ?? 0), 0);
+                  const totalAwarded = examAttempts.reduce((sum, a) => sum + (typeof a.feedback?.score === 'number' ? a.feedback.score : 0), 0);
+                  const pct = totalPossible > 0 ? Math.round((totalAwarded / totalPossible) * 100) : 0;
+                  return (
+                    <>
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                          <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Total Score</div>
+                          <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{totalAwarded} / {totalPossible}</div>
+                        </div>
+                        <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                          <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Percentage</div>
+                          <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{pct}%</div>
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marks per question</h3>
+                        <ul className="space-y-2">
+                          {examAttempts.map((a, i) => (
+                            <li key={i} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                              <span style={{ color: 'var(--clr-primary-a50)' }}>Q{i + 1}</span>
+                              <span style={{ color: 'var(--clr-primary-a50)' }}>
+                                {a.feedback ? (typeof a.feedback.score === 'number' ? a.feedback.score : '—') : 'Marking…'}
+                              </span>
+                              <span style={{ color: 'var(--clr-surface-a40)' }}>/ {a.question?.marks ?? 0}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                        <h3 className="text-sm font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>AI performance evaluation</h3>
+                        <p className="text-sm italic" style={{ color: 'var(--clr-surface-a50)' }}>Strengths and weaknesses analysis will appear here in a future update.</p>
+                      </div>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={saveExam}
+                          className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--clr-info-a0)',
+                            color: 'var(--clr-light-a0)',
+                          }}
+                        >
+                          <Bookmark className="w-5 h-5" />
+                          Save Exam
+                        </button>
+                        <button
+                          onClick={() => { setExamReviewMode(true); setExamReviewIndex(0); }}
+                          className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--clr-primary-a0)',
+                            color: 'var(--clr-dark-a0)',
+                          }}
+                        >
+                          <BookOpen className="w-5 h-5" />
+                          Review Questions
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            ) : isPaperMode && showFinishExamPrompt ? (
+              <div className="rounded-2xl border p-8 text-center space-y-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                <p className="text-lg font-medium" style={{ color: 'var(--clr-primary-a50)' }}>You have completed all questions.</p>
+                <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>Click Finish Exam to see your results.</p>
+                <button
+                  onClick={endExam}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--clr-success-a10)',
+                    color: 'var(--clr-light-a0)',
+                  }}
+                >
+                  Finish Exam
+                </button>
+              </div>
+            ) : (
               <>
             {/* Header Area */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -2372,20 +3166,48 @@ export default function HSCGeneratorPage() {
                   : 'Practice exam-style questions and handwrite your answers.'}
                 </p>
               </div>
-              {!isPaperMode && (
-                <button 
-                  onClick={generateQuestion}
-                  disabled={isGenerating || loading}
-                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-70 disabled:hover:scale-100 whitespace-nowrap cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--clr-primary-a0)',
-                    color: 'var(--clr-dark-a0)',
-                  }}
-                >
-                  <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
-                  {isGenerating ? 'Loading...' : 'Generate'}
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {isPaperMode ? (
+                  <>
+                    {examTimeRemainingLabel && (
+                      <div
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a10)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                          color: 'var(--clr-primary-a50)',
+                        }}
+                      >
+                        <Timer className="w-4 h-4" />
+                        {examTimeRemainingLabel}
+                      </div>
+                    )}
+                    <button
+                      onClick={examConditionsActive ? handleEndExam : startExamSimulation}
+                      className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shadow-lg whitespace-nowrap cursor-pointer"
+                      style={{
+                        backgroundColor: examConditionsActive ? 'var(--clr-danger-a10)' : 'var(--clr-primary-a0)',
+                        color: examConditionsActive ? 'var(--clr-light-a0)' : 'var(--clr-dark-a0)',
+                      }}
+                    >
+                      {examConditionsActive ? 'End Exam' : 'Simulate Exam Conditions'}
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={generateQuestion}
+                    disabled={isGenerating || loading}
+                    className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-70 disabled:hover:scale-100 whitespace-nowrap cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-primary-a0)',
+                      color: 'var(--clr-dark-a0)',
+                    }}
+                  >
+                    <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
+                    {isGenerating ? 'Loading...' : 'Generate'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {isPaperMode && (
@@ -2673,7 +3495,7 @@ export default function HSCGeneratorPage() {
                   ))}
                 </div>
                 <button
-                  onClick={submitAnswer}
+                  onClick={() => submitAnswer()}
                   disabled={isMarking}
                   className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition text-sm disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
                   style={{
@@ -2711,8 +3533,57 @@ export default function HSCGeneratorPage() {
                     </span>
                   )}
                 </div>
+                {/* Toolbar: Undo, Redo, Clear, Eraser (icon-only, above box) */}
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    onClick={undo}
+                    disabled={!canUndo}
+                    title="Undo"
+                    className="p-2.5 rounded-lg font-semibold transition text-sm disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <Undo2 className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={redo}
+                    disabled={!canRedo}
+                    title="Redo"
+                    className="p-2.5 rounded-lg font-semibold transition text-sm disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <Redo2 className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setIsEraser((e) => !e)}
+                    title={isEraser ? 'Eraser (on)' : 'Eraser'}
+                    className="p-2.5 rounded-lg font-semibold transition text-sm cursor-pointer"
+                    style={{
+                      backgroundColor: isEraser ? 'var(--clr-primary-a20)' : 'var(--clr-surface-a20)',
+                      color: isEraser ? 'var(--clr-light-a0)' : 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <Eraser className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={clearCanvas}
+                    title="Clear"
+                    className="p-2.5 rounded-lg font-semibold transition text-sm cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
                 <div 
-                  className="max-h-[420px] md:max-h-[600px] overflow-y-auto rounded-xl"
+                  className="max-h-[420px] md:max-h-[600px] overflow-y-scroll overflow-x-hidden rounded-xl"
                   style={{
                     backgroundColor: 'var(--clr-surface-a0)',
                     touchAction: 'none',
@@ -2725,10 +3596,11 @@ export default function HSCGeneratorPage() {
                 >
                   <canvas
                     ref={canvasRef}
-                    className="w-full cursor-crosshair block"
+                    className="w-full block"
                     style={{
                       touchAction: 'none',
                       height: `${canvasHeight}px`,
+                      cursor: isEraser ? 'cell' : 'crosshair',
                     }}
                     onPointerDown={handlePointerDown}
                     onPointerMove={handlePointerMove}
@@ -2759,67 +3631,10 @@ export default function HSCGeneratorPage() {
               </div>
             )}
 
-            {/* Canvas Controls */}
+            {/* Canvas Controls: Upload + Submit (below answer area) */}
             {appState === 'idle' && question?.question_type !== 'multiple_choice' && (
               <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex gap-2">
-                  <button
-                    onClick={undo}
-                    disabled={!canUndo}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold transition text-sm disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Undo2 className="w-4 h-4" />
-                    Undo
-                  </button>
-
-                  <button
-                    onClick={redo}
-                    disabled={!canRedo}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold transition text-sm disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Redo2 className="w-4 h-4" />
-                    Redo
-                  </button>
-
-                  <button
-                    onClick={clearCanvas}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold transition text-sm cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Clear
-                  </button>
-                </div>
-
                 <div className="flex gap-2 sm:ml-auto">
-                  <button
-                    onClick={submitAnswer}
-                    disabled={isMarking}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold transition text-sm flex-1 sm:flex-none justify-center disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
-                    style={{
-                      backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-success-a0)',
-                      color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-light-a0)',
-                    }}
-                  >
-                    {isMarking ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                    {isMarking ? 'Submitting...' : 'Submit'}
-                  </button>
-
                   <label 
                     className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold transition cursor-pointer text-sm"
                     style={{
@@ -2836,12 +3651,29 @@ export default function HSCGeneratorPage() {
                       onChange={uploadImage}
                     />
                   </label>
+
+                  <button
+                    onClick={() => submitAnswer()}
+                    disabled={isMarking}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold transition text-sm flex-1 sm:flex-none justify-center disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
+                    style={{
+                      backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-success-a0)',
+                      color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-light-a0)',
+                    }}
+                  >
+                    {isMarking ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                    {isMarking ? 'Submitting...' : 'Submit'}
+                  </button>
                 </div>
               </div>
             )}
 
             {/* Action Toolbar */}
-            {appState === 'idle' && (
+            {appState === 'idle' && !examConditionsActive && (
               <div 
                 className="flex flex-wrap items-center justify-between gap-4 backdrop-blur-md p-4 rounded-2xl border"
                 style={{
@@ -2946,7 +3778,7 @@ export default function HSCGeneratorPage() {
             )}
 
             {/* Reviewed Feedback */}
-            {appState === 'reviewed' && feedback && (
+            {appState === 'reviewed' && feedback && !examConditionsActive && (
               <div className="animate-fade-in space-y-4">
                 
                 {/* Marking Report Card */}
@@ -3232,6 +4064,9 @@ export default function HSCGeneratorPage() {
                             onClick={() => {
                               setAppState('idle');
                               setFeedback(null);
+                              setSubmittedAnswer(null);
+                              setUploadedFile(null);
+                              setTimeout(() => resetCanvas(canvasHeight), 50);
                             }}
                             className="px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer"
                             style={{
@@ -3264,6 +4099,8 @@ export default function HSCGeneratorPage() {
               </div>
             )}
               </>
+              ) }
+              </>
             ) : viewMode === 'papers' ? (
               <>
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
@@ -3282,6 +4119,12 @@ export default function HSCGeneratorPage() {
                 {loadingQuestions ? (
                   <div className="flex items-center justify-center min-h-[240px]">
                     <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--clr-surface-a40)' }} />
+                  </div>
+                ) : questionsFetchError ? (
+                  <div className="text-center py-16">
+                    <p className="text-lg" style={{ color: 'var(--clr-warning-a10)' }}>Could not load questions</p>
+                    <p className="text-sm mt-2 max-w-md mx-auto" style={{ color: 'var(--clr-surface-a50)' }}>{questionsFetchError}</p>
+                    <p className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local</p>
                   </div>
                 ) : availablePapers.length === 0 ? (
                   <div className="text-center py-16">
@@ -3346,16 +4189,190 @@ export default function HSCGeneratorPage() {
 
                 {selectedAttempt ? (
                   <>
-                    {/* Selected Attempt Full View */}
-                    <button 
-                      onClick={() => setSelectedAttempt(null)}
-                      className="flex items-center gap-2 px-4 py-2 transition-colors mb-6 cursor-pointer"
-                      style={{ color: 'var(--clr-surface-a40)' }}
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                      Back to list
-                    </button>
+                    <div className="flex items-center justify-between gap-3 mb-6">
+                      <button 
+                        onClick={() => { setSelectedAttempt(null); setSavedExamReviewMode(false); }}
+                        className="flex items-center gap-2 px-4 py-2 transition-colors cursor-pointer"
+                        style={{ color: 'var(--clr-surface-a40)' }}
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                        Back to list
+                      </button>
+                      <button
+                        onClick={() => removeSavedAttempt(selectedAttempt.id)}
+                        className="text-sm font-medium cursor-pointer"
+                        style={{ color: 'var(--clr-danger-a10)' }}
+                      >
+                        Unsave
+                      </button>
+                    </div>
 
+                    {selectedAttempt.type === 'exam' ? (
+                      savedExamReviewMode && selectedAttempt.examAttempts?.length > 0 ? (
+                        <div className="space-y-4">
+                          <button
+                            onClick={() => setSavedExamReviewMode(false)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
+                            style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}
+                          >
+                            <ArrowLeft className="w-4 h-4" />
+                            Back to Overview
+                          </button>
+                          <div className="flex gap-6">
+                            <aside className="w-52 flex-shrink-0 rounded-xl border p-3 space-y-1 overflow-y-auto max-h-[70vh]" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                              <p className="text-xs font-bold uppercase tracking-widest mb-2 px-2" style={{ color: 'var(--clr-surface-a40)' }}>Questions</p>
+                              {(selectedAttempt.examAttempts || []).map((_: any, i: number) => (
+                                <button
+                                  key={i}
+                                  onClick={() => setSavedExamReviewIndex(i)}
+                                  className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                                  style={{
+                                    backgroundColor: savedExamReviewIndex === i ? 'var(--clr-primary-a0)' : 'transparent',
+                                    color: savedExamReviewIndex === i ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
+                                  }}
+                                >
+                                  Question {i + 1}
+                                  {selectedAttempt.examAttempts[i]?.feedback != null && (
+                                    <span className="ml-1 text-xs opacity-80">
+                                      ({typeof selectedAttempt.examAttempts[i].feedback?.score === 'number' ? selectedAttempt.examAttempts[i].feedback.score : '—'}/{selectedAttempt.examAttempts[i].question?.marks ?? 0})
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </aside>
+                            <div className="flex-1 min-w-0">
+                              {(() => {
+                                const attempt = selectedAttempt.examAttempts[savedExamReviewIndex];
+                                if (!attempt) return null;
+                                const revQuestion = attempt.question;
+                                const revFeedback = attempt.feedback;
+                                const revSubmitted = attempt.submittedAnswer;
+                                const isMcq = revQuestion?.question_type === 'multiple_choice';
+                                const revAwarded = typeof revFeedback?.score === 'number' ? revFeedback.score : null;
+                                const revMax = revFeedback?.maxMarks ?? revQuestion?.marks ?? 0;
+                                const revCriteriaText = revFeedback?.marking_criteria ?? revQuestion?.marking_criteria ?? null;
+                                return (
+                                  <div className="rounded-2xl overflow-hidden border shadow-2xl" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                    <div className="p-6 border-b flex flex-wrap items-center justify-between gap-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                      <div>
+                                        <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--clr-primary-a50)' }}>
+                                          {revFeedback ? (revAwarded === 0 ? <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} /> : revAwarded !== null && revAwarded < revMax ? <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} /> : <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />) : null}
+                                          {revFeedback ? 'Marking Complete' : 'Marking…'}
+                                        </h3>
+                                        <p className="text-sm mt-1" style={{ color: 'var(--clr-surface-a40)' }}>Assessed against NESA Guidelines</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a50)' }}>Score</span>
+                                        <div className="flex items-baseline gap-1 justify-end">
+                                          <span className="text-4xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{revAwarded === null ? '--' : revAwarded}</span>
+                                          <span className="text-xl font-medium" style={{ color: 'var(--clr-surface-a50)' }}>/{revMax}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                      <h4 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
+                                      <div className="font-serif" style={{ color: 'var(--clr-primary-a50)' }}><LatexText text={revQuestion?.question_text || ''} /></div>
+                                    </div>
+                                    {revFeedback && (
+                                      <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}><TrendingUp className="w-4 h-4" />{isMcq ? 'Answer Explanation' : 'AI Feedback'}</h4>
+                                        <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a40)' }}>
+                                          {isMcq ? (revFeedback.mcq_explanation ? <LatexText text={revFeedback.mcq_explanation} /> : <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>) : revFeedback.ai_evaluation ? <LatexText text={revFeedback.ai_evaluation} /> : revFeedback._error ? <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed.</p> : <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>AI evaluation is being processed...</p>}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {!isMcq && revCriteriaText && (
+                                      <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}><CheckCircle2 className="w-4 h-4" />Marking Criteria</h4>
+                                        <div className="overflow-x-auto">
+                                          <table className="w-full">
+                                            <thead><tr className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><th className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Criteria</th><th className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24" style={{ color: 'var(--clr-surface-a40)' }}>Marks</th></tr></thead>
+                                            <tbody>
+                                              {(() => {
+                                                const items = parseCriteriaForDisplay(revCriteriaText);
+                                                const rows: React.ReactNode[] = [];
+                                                let lastSubpart: string | null = null;
+                                                items.forEach((item, idx) => {
+                                                  if (item.type === 'heading') {
+                                                    lastSubpart = null;
+                                                    rows.push(<tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{item.text}</td></tr>);
+                                                    return;
+                                                  }
+                                                  if (item.subpart && item.subpart !== lastSubpart) {
+                                                    lastSubpart = item.subpart;
+                                                    rows.push(<tr key={`sub-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Part ({item.subpart})</td></tr>);
+                                                  }
+                                                  rows.push(<tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td className="py-3 px-3" style={{ color: 'var(--clr-light-a0)' }}><LatexText text={item.text} /></td><td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a10)' }}>{item.marks}</td></tr>);
+                                                });
+                                                return rows;
+                                              })()}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) && (
+                                      <div className="p-8 border-t space-y-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}><BookOpen className="w-5 h-5" />{isMcq ? 'Answer Explanation' : 'Sample Solution'}</h3>
+                                        <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2" style={{ color: 'var(--clr-light-a0)', borderColor: 'var(--clr-success-a10)' }}>
+                                          {isMcq && revFeedback?.mcq_explanation ? <LatexText text={revFeedback.mcq_explanation} /> : <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {revSubmitted && (
+                                      <div className="p-8 border-t space-y-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-info-a20)' }}><Eye className="w-5 h-5" />Your Submitted Answer</h3>
+                                        <div className="rounded-lg p-4 border" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          {isMcq ? <p className="font-semibold">Selected Answer: {revSubmitted}</p> : <img src={revSubmitted} alt="Your answer" className="w-full rounded" style={{ border: '1px solid var(--clr-surface-tonal-a20)' }} />}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div className="border-t p-6 flex gap-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                      <button onClick={() => setSavedExamReviewIndex((i) => Math.max(0, i - 1))} disabled={savedExamReviewIndex === 0} className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}><ChevronLeft className="w-4 h-4" />Previous</button>
+                                      <button onClick={() => setSavedExamReviewIndex((i) => Math.min((selectedAttempt.examAttempts?.length ?? 1) - 1, i + 1))} disabled={savedExamReviewIndex >= (selectedAttempt.examAttempts?.length ?? 0) - 1} className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" style={{ backgroundColor: 'var(--clr-primary-a0)', borderColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}>Next<ChevronRight className="w-4 h-4" /></button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-6 rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                          <h1 className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Saved Exam: {selectedAttempt.paperYear} {selectedAttempt.paperSubject}</h1>
+                          <div className="grid gap-4 sm:grid-cols-3">
+                            <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                              <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Total Score</div>
+                              <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{selectedAttempt.totalScore} / {selectedAttempt.totalPossible}</div>
+                            </div>
+                            <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                              <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Percentage</div>
+                              <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{selectedAttempt.totalPossible > 0 ? Math.round((selectedAttempt.totalScore / selectedAttempt.totalPossible) * 100) : 0}%</div>
+                            </div>
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marks per question</h3>
+                            <ul className="space-y-2">
+                              {(selectedAttempt.examAttempts || []).map((a: any, i: number) => (
+                                <li key={i} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                  <span style={{ color: 'var(--clr-primary-a50)' }}>Q{i + 1}</span>
+                                  <span style={{ color: 'var(--clr-primary-a50)' }}>{a.feedback ? (typeof a.feedback.score === 'number' ? a.feedback.score : '—') : '—'}</span>
+                                  <span style={{ color: 'var(--clr-surface-a40)' }}>/ {a.question?.marks ?? 0}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <button
+                            onClick={() => { setSavedExamReviewMode(true); setSavedExamReviewIndex(0); }}
+                            className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                            style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                          >
+                            <BookOpen className="w-5 h-5" />
+                            Review Questions
+                          </button>
+                        </div>
+                      )
+                    ) : (
                     <div 
                       className="rounded-2xl border overflow-hidden shadow-2xl space-y-6 p-8"
                       style={{
@@ -3551,6 +4568,7 @@ export default function HSCGeneratorPage() {
                         </div>
                       )}
                     </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -3573,54 +4591,64 @@ export default function HSCGeneratorPage() {
                     ) : (
                       <div className="grid gap-4">
                         {savedAttempts.map((attempt) => (
-                          <button
+                          <div
                             key={attempt.id}
-                            onClick={() => setSelectedAttempt(attempt)}
-                            className="text-left border rounded-xl p-6 transition-colors space-y-3 cursor-pointer"
+                            className="border rounded-xl p-6 transition-colors space-y-3"
                             style={{
                               backgroundColor: 'var(--clr-surface-a10)',
                               borderColor: 'var(--clr-surface-tonal-a20)',
                             }}
                           >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <h3 
-                                  className="font-bold text-lg"
-                                  style={{ color: 'var(--clr-primary-a50)' }}
-                                >{attempt.subject}</h3>
-                                <p 
-                                  className="text-sm"
-                                  style={{ color: 'var(--clr-surface-a40)' }}
-                                >{attempt.topic}</p>
-                              </div>
-                              <div className="text-right flex-shrink-0 ml-4">
-                                <div 
-                                  className="text-2xl font-bold"
-                                  style={{ color: 'var(--clr-success-a10)' }}
-                                >{attempt.marks}m</div>
-                                <div 
-                                  className="text-xs"
-                                  style={{ color: 'var(--clr-surface-a50)' }}
-                                >{new Date(attempt.savedAt).toLocaleDateString()}</div>
-                              </div>
-                            </div>
-                            <div 
-                              className="pt-2 border-t"
-                              style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                            <button
+                              onClick={() => { setSelectedAttempt(attempt); setSavedExamReviewMode(false); }}
+                              className="w-full text-left cursor-pointer"
                             >
-                              <p 
-                                className="text-sm line-clamp-2"
-                                style={{ color: 'var(--clr-primary-a40)' }}
-                              >{attempt.questionText}</p>
-                            </div>
-                            {(attempt.feedback?.ai_evaluation || attempt.feedback?.mcq_explanation) && (
-                              <div className="pt-2">
-                                <p className="text-xs text-zinc-500 line-clamp-1">
-                                  {(attempt.feedback.ai_evaluation || attempt.feedback.mcq_explanation).split('\n')[0]}
-                                </p>
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-lg" style={{ color: 'var(--clr-primary-a50)' }}>
+                                    {attempt.type === 'exam' ? `${attempt.paperYear || ''} ${attempt.paperSubject || ''}` : attempt.subject}
+                                  </h3>
+                                  <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>
+                                    {attempt.type === 'exam' ? attempt.paperGrade : attempt.topic}
+                                  </p>
+                                </div>
+                                <div className="text-right flex-shrink-0 ml-4">
+                                  {attempt.type === 'exam' ? (
+                                    <>
+                                      <div className="text-2xl font-bold" style={{ color: 'var(--clr-success-a10)' }}>
+                                        {attempt.totalScore} / {attempt.totalPossible}
+                                      </div>
+                                      <div className="text-xs" style={{ color: 'var(--clr-surface-a50)' }}>Exam</div>
+                                    </>
+                                  ) : (
+                                    <div className="text-2xl font-bold" style={{ color: 'var(--clr-success-a10)' }}>{attempt.marks}m</div>
+                                  )}
+                                  <div className="text-xs" style={{ color: 'var(--clr-surface-a50)' }}>{new Date(attempt.savedAt).toLocaleDateString()}</div>
+                                </div>
                               </div>
-                            )}
-                          </button>
+                              {attempt.type !== 'exam' && (
+                                <>
+                                  <div className="pt-2 border-t mt-2" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                    <p className="text-sm line-clamp-2" style={{ color: 'var(--clr-primary-a40)' }}>{attempt.questionText}</p>
+                                  </div>
+                                  {(attempt.feedback?.ai_evaluation || attempt.feedback?.mcq_explanation) && (
+                                    <div className="pt-2">
+                                      <p className="text-xs text-zinc-500 line-clamp-1">
+                                        {(attempt.feedback.ai_evaluation || attempt.feedback.mcq_explanation).split('\n')[0]}
+                                      </p>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); removeSavedAttempt(attempt.id); }}
+                              className="text-sm font-medium cursor-pointer"
+                              style={{ color: 'var(--clr-danger-a10)' }}
+                            >
+                              Unsave
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -4437,7 +5465,15 @@ export default function HSCGeneratorPage() {
                   </div>
                 ) : allQuestions.length === 0 ? (
                   <div className="text-center py-12">
-                    <p style={{ color: 'var(--clr-surface-a40)' }}>No questions found</p>
+                    {questionsFetchError ? (
+                      <>
+                        <p style={{ color: 'var(--clr-warning-a10)' }}>Could not load questions</p>
+                        <p className="text-sm mt-2 max-w-md mx-auto" style={{ color: 'var(--clr-surface-a50)' }}>{questionsFetchError}</p>
+                        <p className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>Check .env.local for Supabase keys</p>
+                      </>
+                    ) : (
+                      <p style={{ color: 'var(--clr-surface-a40)' }}>No questions found</p>
+                    )}
                   </div>
                 ) : (
                   <div>
