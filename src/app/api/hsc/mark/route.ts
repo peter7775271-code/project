@@ -1,9 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,42 +55,70 @@ Reasoning: [Brief explanation of why the student received this mark]
 
 If the student's answer is correct or nearly correct, you can omit the numbered list and just provide positive feedback in the reasoning section. Always wrap mathematical expressions in $ signs.`;
 
+    const xaiApiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
+    if (!xaiApiKey) {
+      return NextResponse.json(
+        { error: 'Missing XAI_API_KEY (or GROK_API_KEY) server configuration' },
+        { status: 500 }
+      );
+    }
+
     const callVisionModel = async (model: string) => {
-      return openai.chat.completions.create({
-        model,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: userAnswerImage,
+      const res = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${xaiApiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: prompt },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: userAnswerImage,
+                    detail: 'high',
+                  },
                 },
-              },
-            ],
-          },
-        ],
-        max_completion_tokens: 2000,
+              ],
+            },
+          ],
+          // xAI is OpenAI-compatible; this maps to output token cap
+          max_tokens: 2000,
+        }),
       });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`xAI API error ${res.status}: ${text || res.statusText}`);
+      }
+
+      return (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
     };
+
+    const primaryModel = process.env.GROK_MARK_MODEL || 'grok-4';
+    const fallbackModel = process.env.GROK_MARK_MODEL_FALLBACK || 'grok-4-latest';
 
     let response;
     try {
-      response = await callVisionModel('gpt-5');
+      response = await callVisionModel(primaryModel);
     } catch (err) {
-      console.warn('Primary model failed, retrying with gpt-4o:', err);
-      response = await callVisionModel('gpt-4o');
+      console.warn(`Primary model failed, retrying with ${fallbackModel}:`, err);
+      response = await callVisionModel(fallbackModel);
     }
 
-    const aiEvaluation = response.choices[0]?.message?.content || '';
+    const aiEvaluation = response.choices?.[0]?.message?.content || '';
 
     return NextResponse.json({
       success: true,
       evaluation: aiEvaluation,
     });
-
   } catch (error) {
     console.error('Error in AI marking:', error);
     return NextResponse.json(
