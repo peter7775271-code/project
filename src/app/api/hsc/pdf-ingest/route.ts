@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { supabaseAdmin } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -417,8 +416,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Criteria file must be a PDF' }, { status: 400 });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 });
+    const xaiApiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
+    if (!xaiApiKey) {
+      return NextResponse.json(
+        { error: 'Missing XAI_API_KEY (or GROK_API_KEY) server configuration' },
+        { status: 500 }
+      );
     }
 
     const contentParts: Array<{ source: 'exam' | 'criteria'; text: string }> = [];
@@ -469,29 +472,100 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No extractable text found in uploads' }, { status: 400 });
     }
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const topicOptions = getTopicOptions(grade, subject);
     if (!topicOptions) {
       return NextResponse.json({ error: 'Year 11 Extension 2 is not supported.' }, { status: 400 });
     }
 
+    const createChatCompletion = async (args: {
+      model: string;
+      messages: any[];
+      temperature?: number;
+      maxTokens?: number;
+    }) => {
+      const send = async (body: Record<string, any>) => {
+        const res = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${xaiApiKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          const err = new Error(`xAI API error ${res.status}: ${text || res.statusText}`);
+          (err as any).status = res.status;
+          (err as any).body = text;
+          throw err;
+        }
+        return (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+      };
+
+      const baseBody: Record<string, any> = {
+        model: args.model,
+        messages: args.messages,
+        max_tokens: typeof args.maxTokens === 'number' ? args.maxTokens : 2000,
+      };
+
+      // Some reasoning models may reject unsupported params. We'll try with temperature,
+      // and if that fails with a 400-level error, retry without it.
+      if (typeof args.temperature === 'number') {
+        try {
+          return await send({ ...baseBody, temperature: args.temperature });
+        } catch (err) {
+          const status = (err as any)?.status;
+          if (status && status >= 400 && status < 500) {
+            return await send(baseBody);
+          }
+          throw err;
+        }
+      }
+
+      return await send(baseBody);
+    };
+
+    const examTextModel = process.env.GROK_PDF_EXAM_MODEL || 'grok-4-1-fast-reasoning';
+    const criteriaTextModel =
+      process.env.GROK_PDF_CRITERIA_MODEL || 'grok-4-1-fast-reasoning';
+    const examVisionModel = process.env.GROK_PDF_VISION_MODEL || 'grok-4';
+
     const chunkResponses: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
     const refusals: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
-    const maxChunkChars = 12000;
+    // Always chunk large documents so each call stays within Grok's comfortable
+    // completion limits. This avoids one huge request that gets truncated.
+    const chunkMaxChars = Number(process.env.GROK_PDF_CHUNK_MAX_CHARS || 20000);
 
     for (const part of contentParts) {
-      const chunks = chunkText(part.text, maxChunkChars);
+      const fullText = String(part.text || '').trim();
+      const chunks = chunkText(fullText, chunkMaxChars);
       const totalChunks = chunks.length;
 
       for (let index = 0; index < totalChunks; index += 1) {
         const chunk = chunks[index];
 
-        const prompt = part.source === 'criteria' ? CRITERIA_PROMPT : buildPdfPrompt(topicOptions);
-        const model = part.source === 'criteria' ? 'gpt-4o' : 'gpt-5';
+        const promptBase =
+          part.source === 'criteria'
+            ? CRITERIA_PROMPT
+            : buildPdfPrompt(topicOptions);
+        const prompt = `${promptBase}
+
+You will receive the exam text in multiple chunks if the document is long. For EACH chunk:
+- Convert every written-response question that is fully contained within THIS chunk.
+- Do not repeat questions that were clearly already completed in previous chunks.
+- If a question is cut off mid-way at the start or end of this chunk, skip that partial question.
+- Do not stop early once you have converted a few questions; keep going until you have processed all complete questions in this chunk.
+
+If the extracted text contains OCR noise, do your best to reconstruct the intended maths faithfully without inventing unseen questions.`;
+        const model = part.source === 'criteria' ? criteriaTextModel : examTextModel;
         const messages = [
           {
             role: 'system' as const,
-            content: 'You are given user-provided content and are allowed to transform it. Comply with the requested format and do not refuse.',
+            content:
+              'You are given user-provided content (OCR / PDF text) and are allowed to transform it. Comply with the requested format.',
           },
           {
             role: 'user' as const,
@@ -499,19 +573,21 @@ export async function POST(request: Request) {
           },
         ];
 
-        const response = await openai.chat.completions.create({
+        const response = await createChatCompletion({
           model,
           messages,
-          temperature: 1.0,
+          temperature: 0.7,
+          maxTokens: 2000,
         });
 
         let chunkContent = response.choices?.[0]?.message?.content || '';
 
         if (chunkContent.trim() && isRefusal(chunkContent)) {
-          const retryResponse = await openai.chat.completions.create({
+          const retryResponse = await createChatCompletion({
             model,
             messages,
             temperature: 0.2,
+            maxTokens: 2000,
           });
           chunkContent = retryResponse.choices?.[0]?.message?.content || '';
         }
@@ -532,10 +608,11 @@ export async function POST(request: Request) {
         const imageMime = imageFile.type || 'image/jpeg';
         const imageUrl = `data:${imageMime};base64,${imageBase64}`;
 
-        const messages: OpenAI.ChatCompletionMessageParam[] = [
+        const messages = [
           {
             role: 'system',
-            content: 'You are given user-provided content and are allowed to transform it. Comply with the requested format and do not refuse.',
+            content:
+              'You are given user-provided content (an exam image) and are allowed to transform it. Comply with the requested format.',
           },
           {
             role: 'user',
@@ -546,25 +623,27 @@ export async function POST(request: Request) {
               },
               {
                 type: 'image_url',
-                image_url: { url: imageUrl },
+                image_url: { url: imageUrl, detail: 'high' },
               },
             ],
           },
         ];
 
-        const response = await openai.chat.completions.create({
-          model: 'gpt-5.2',
+        const response = await createChatCompletion({
+          model: examVisionModel,
           messages,
-          temperature: 1.0,
+          temperature: 0.7,
+          maxTokens: 2000,
         });
 
         let chunkContent = response.choices?.[0]?.message?.content || '';
 
         if (chunkContent.trim() && isRefusal(chunkContent)) {
-          const retryResponse = await openai.chat.completions.create({
-            model: 'gpt-5.2',
+          const retryResponse = await createChatCompletion({
+            model: examVisionModel,
             messages,
             temperature: 0.2,
+            maxTokens: 2000,
           });
           chunkContent = retryResponse.choices?.[0]?.message?.content || '';
         }
@@ -583,7 +662,7 @@ export async function POST(request: Request) {
       .join('\n\n');
 
     if (!combinedContent.trim()) {
-      return NextResponse.json({ error: 'No content returned from ChatGPT' }, { status: 500 });
+      return NextResponse.json({ error: 'No content returned from the model' }, { status: 500 });
     }
 
     const createdQuestions: any[] = [];
@@ -750,7 +829,10 @@ export async function POST(request: Request) {
       missingCriteria,
       chunks: chunkResponses,
       refusals,
+      // Backwards-compatible field name (used by the frontend today)
       chatgpt: combinedContent,
+      // Preferred field name going forward
+      modelOutput: combinedContent,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to process PDFs';

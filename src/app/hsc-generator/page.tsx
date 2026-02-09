@@ -1,16 +1,52 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { 
-  Undo2, Redo2, Trash2, Send, Upload, ArrowLeft,
-  BookOpen, Calculator, Atom, Beaker, ChevronRight, ChevronLeft,
-  RefreshCw, Eye, Download, Bookmark, Settings, Menu, X,
-  CheckCircle2, AlertTriangle, XCircle, TrendingUp, Edit2,
-  PanelLeftClose, PanelLeftOpen, Timer, Eraser
+import {
+  Undo2,
+  Redo2,
+  Trash2,
+  Send,
+  Upload,
+  ArrowLeft,
+  BookOpen,
+  Calculator,
+  Atom,
+  Beaker,
+  ChevronRight,
+  ChevronLeft,
+  RefreshCw,
+  Eye,
+  Download,
+  Bookmark,
+  Settings,
+  Menu,
+  X,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  TrendingUp,
+  Edit2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Timer,
+  Eraser,
 } from 'lucide-react';
 import { getStroke } from 'perfect-freehand';
-import { LazyBrush } from 'lazy-brush';
+import type {
+  AppState as ExcalidrawAppState,
+  BinaryFiles,
+  ExcalidrawElement,
+} from '@excalidraw/excalidraw';
+
+const Excalidraw = dynamic(
+  async () => {
+    const mod = await import('@excalidraw/excalidraw');
+    return mod.Excalidraw;
+  },
+  { ssr: false }
+);
 // TikzRenderer no longer used in this page
 
 // LaTeX and TikZ renderer component
@@ -482,26 +518,23 @@ const SUBJECTS: Subject[] = [
 
 export default function HSCGeneratorPage() {
   const router = useRouter();
+  const dprRef = useRef(1);
+
+  // Legacy freehand canvas refs kept as inert stubs so helpers that still reference
+  // them don't crash at runtime. They are no longer wired to any JSX element.
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   type StrokePoint = [number, number, number];
   type Stroke = StrokePoint[];
-
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
-  const drawingRef = useRef(false);
-  const dprRef = useRef(1);
-  const activeInputRef = useRef<'pointer' | 'mouse' | 'touch' | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
   const currentStrokeRef = useRef<Stroke | null>(null);
-  const lazyBrushRef = useRef(
-    new LazyBrush({ radius: 0, enabled: false, initialPoint: { x: 0, y: 0 } })
-  );
-  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
-  const examFolderInputRef = useRef<HTMLInputElement | null>(null);
-
   const historyRef = useRef<Stroke[][]>([]);
   const redoStackRef = useRef<Stroke[][]>([]);
   const eraserPathRef = useRef<[number, number][]>([]);
+  const drawingRef = useRef(false);
+  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const ERASER_RADIUS = 20;
+  const activeInputRef = useRef<'pointer' | 'mouse' | 'touch' | null>(null);
 
   // Question data from database
   type Question = {
@@ -546,9 +579,9 @@ export default function HSCGeneratorPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isSidebarHidden, setIsSidebarHidden] = useState(false);
+  const [isSidebarHidden, setIsSidebarHidden] = useState(true);
   const [appState, setAppState] = useState<'idle' | 'marking' | 'reviewed'>('idle');
-  const [canvasHeight, setCanvasHeight] = useState(400);
+  const [canvasHeight, setCanvasHeight] = useState(500);
   const [isEraser, setIsEraser] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isPenDrawing, setIsPenDrawing] = useState(false);
@@ -565,7 +598,7 @@ export default function HSCGeneratorPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [isUpdatingQuestion, setIsUpdatingQuestion] = useState(false);
-  const [examImageFiles, setExamImageFiles] = useState<File[]>([]);
+  const [examPdfFile, setExamPdfFile] = useState<File | null>(null);
   const [criteriaPdfFile, setCriteriaPdfFile] = useState<File | null>(null);
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'uploading' | 'ready' | 'error'>('idle');
   const [pdfMessage, setPdfMessage] = useState<string>('');
@@ -591,8 +624,11 @@ export default function HSCGeneratorPage() {
   const [examReviewIndex, setExamReviewIndex] = useState(0);
   const [savedExamReviewMode, setSavedExamReviewMode] = useState(false);
   const [savedExamReviewIndex, setSavedExamReviewIndex] = useState(0);
-
-
+  const excalidrawSceneRef = useRef<{
+    elements: readonly ExcalidrawElement[];
+    appState: ExcalidrawAppState;
+    files: BinaryFiles;
+  } | null>(null);
 
   // Dev mode state
   const [isDevMode, setIsDevMode] = useState(false);
@@ -913,101 +949,7 @@ export default function HSCGeneratorPage() {
     setSelectedManageQuestionIds((prev) => prev.filter((id) => availableIds.has(id)));
   }, [allQuestions, selectedManageQuestionIds.length]);
 
-  // Initialize canvas (use wrapper width so scrollbar doesn't shrink canvas when adding space)
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    dprRef.current = dpr;
-    const wrapper = canvas.parentElement?.parentElement;
-    const cssWidth = wrapper ? wrapper.getBoundingClientRect().width : canvas.offsetWidth;
-    const cssHeight = canvasHeight;
-    canvas.width = Math.max(1, Math.floor(cssWidth * dpr));
-    canvas.height = Math.max(1, Math.floor(cssHeight * dpr));
-    canvas.style.width = `${cssWidth}px`;
-    canvas.style.height = `${cssHeight}px`;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = brushSize;
-    ctx.strokeStyle = 'white';
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    ctxRef.current = ctx;
-
-    if (historyRef.current.length > 0) {
-      const latest = historyRef.current[historyRef.current.length - 1];
-      strokesRef.current = latest.map((stroke) => stroke.map((p) => [...p] as StrokePoint));
-    } else {
-      strokesRef.current = [];
-      historyRef.current = [[]];
-    }
-
-    renderAllStrokes(false);
-    setCanUndo(historyRef.current.length > 1);
-    setCanRedo(redoStackRef.current.length > 0);
-  }, [canvasHeight, brushSize]);
-
-  // Reinit canvas when switching back to generator/paper (fixes layout after Papers → Questions)
-  useEffect(() => {
-    if (viewMode !== 'generator' && viewMode !== 'paper') return;
-    const id = setTimeout(() => {
-      const canvas = canvasRef.current;
-      if (canvas && canvas.offsetWidth > 0) {
-        resizeAndRedrawCanvas();
-      }
-    }, 150);
-    return () => clearTimeout(id);
-  }, [viewMode]);
-
-  useEffect(() => {
-    if (!examFolderInputRef.current) return;
-    examFolderInputRef.current.setAttribute('webkitdirectory', '');
-    examFolderInputRef.current.setAttribute('directory', '');
-  }, []);
-
-  // Draw exam-style ruled lines
-  const drawLines = () => {
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
-    if (!ctx || !canvas) return;
-
-    const spacing = 34;
-    const dpr = dprRef.current || 1;
-    const logicalWidth = canvas.width / dpr;
-    const logicalHeight = canvas.height / dpr;
-
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = 1;
-
-    for (let y = spacing; y < logicalHeight; y += spacing) {
-      ctx.beginPath();
-      ctx.moveTo(40, y);
-      ctx.lineTo(logicalWidth - 10, y);
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  };
-
-  // Redraw background before strokes (so lines never disappear)
-  const redrawBackground = () => {
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
-    if (!ctx || !canvas) return;
-
-    const dpr = dprRef.current || 1;
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-    drawLines();
-  };
+  // Legacy freehand canvas logic removed; Excalidraw now owns the drawing surface.
 
   const drawStrokePath = (stroke: Stroke) => {
     if (!stroke.length) return;
@@ -1028,25 +970,9 @@ export default function HSCGeneratorPage() {
     ctxRef.current?.fill(path);
   };
 
-  const renderAllStrokes = (includeCurrent = true) => {
-    const ctx = ctxRef.current;
-    const canvas = canvasRef.current;
-    if (!ctx || !canvas) return;
-
-    redrawBackground();
-
-    if (backgroundImageRef.current) {
-      const dpr = dprRef.current || 1;
-      const logicalWidth = canvas.width / dpr;
-      const logicalHeight = canvas.height / dpr;
-      ctx.drawImage(backgroundImageRef.current, 0, 0, logicalWidth, logicalHeight);
-    }
-
-    ctx.fillStyle = 'white';
-    strokesRef.current.forEach(drawStrokePath);
-    if (includeCurrent && currentStrokeRef.current) {
-      drawStrokePath(currentStrokeRef.current);
-    }
+  const renderAllStrokes = (_includeCurrent = true) => {
+    // Legacy canvas renderer kept as inert stub; no-op now that Excalidraw is used.
+    return;
   };
 
   // History handling
@@ -1477,9 +1403,9 @@ export default function HSCGeneratorPage() {
   };
 
   const submitPdfPair = async () => {
-    if (!examImageFiles.length && !criteriaPdfFile) {
+    if (!examPdfFile && !criteriaPdfFile) {
       setPdfStatus('error');
-      setPdfMessage('Please select exam images or a criteria PDF.');
+      setPdfMessage('Please select an exam PDF and/or a criteria PDF.');
       return;
     }
 
@@ -1502,22 +1428,23 @@ export default function HSCGeneratorPage() {
       if (!response.ok) {
         throw new Error(data?.error || `Failed to upload ${label}`);
       }
-      if (data?.chatgpt) {
-        setPdfChatGptResponse((prev) => (prev ? `${prev}\n\n${data.chatgpt}` : data.chatgpt));
+      const modelOutput = data?.modelOutput || data?.chatgpt;
+      if (modelOutput) {
+        setPdfChatGptResponse((prev) => (prev ? `${prev}\n\n${modelOutput}` : modelOutput));
       }
       return data;
     };
 
     try {
       setPdfChatGptResponse('');
-      if (examImageFiles.length && criteriaPdfFile) {
+      if (examPdfFile && criteriaPdfFile) {
         const examData = new FormData();
-        examImageFiles.forEach((file) => examData.append('examImages', file));
+        examData.append('exam', examPdfFile);
         examData.append('grade', pdfGrade);
         examData.append('year', pdfYear);
         examData.append('subject', pdfSubject);
         examData.append('overwrite', pdfOverwrite ? 'true' : 'false');
-        await sendPdf(examData, 'exam images');
+        await sendPdf(examData, 'exam PDF');
 
         const criteriaData = new FormData();
         criteriaData.append('criteria', criteriaPdfFile);
@@ -1533,7 +1460,9 @@ export default function HSCGeneratorPage() {
       }
 
       const singleData = new FormData();
-      examImageFiles.forEach((file) => singleData.append('examImages', file));
+      if (examPdfFile) {
+        singleData.append('exam', examPdfFile);
+      }
       if (criteriaPdfFile) {
         singleData.append('criteria', criteriaPdfFile);
       }
@@ -1542,7 +1471,7 @@ export default function HSCGeneratorPage() {
       singleData.append('subject', pdfSubject);
       singleData.append('overwrite', pdfOverwrite ? 'true' : 'false');
 
-      const data = await sendPdf(singleData, examImageFiles.length ? 'exam images' : 'criteria PDF');
+      const data = await sendPdf(singleData, examPdfFile ? 'exam PDF' : 'criteria PDF');
       setPdfStatus('ready');
       setPdfMessage(data?.message || 'Files received.');
     } catch (err) {
@@ -2035,12 +1964,52 @@ export default function HSCGeneratorPage() {
 
     let imageDataUrl: string;
     try {
-      if (uploadedFile) {
+      // Prefer the current Excalidraw scene over any previously uploaded image
+      if (excalidrawSceneRef.current) {
+        const { elements, appState, files } = excalidrawSceneRef.current;
+        // Filter out any elements that Excalidraw has marked as deleted so
+        // erased strokes do not appear in the exported answer image.
+        const visibleElements = elements.filter(
+          (el) => !(el as ExcalidrawElement & { isDeleted?: boolean }).isDeleted
+        );
+        const { exportToBlob } = await import('@excalidraw/excalidraw');
+
+        const enhancedAppState = {
+          ...appState,
+          exportBackground: true,
+          viewBackgroundColor: '#ffffff',
+          // Slightly higher resolution export to improve legibility
+          exportScale: 2,
+        } as ExcalidrawAppState & {
+          exportBackground?: boolean;
+          viewBackgroundColor?: string;
+          exportScale?: number;
+        };
+
+        const blob = await exportToBlob({
+          elements: visibleElements,
+          appState: enhancedAppState,
+          files,
+          mimeType: 'image/png',
+        });
+
+        const reader = new FileReader();
+        const dataUrlPromise = new Promise<string>((resolve, reject) => {
+          reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+              resolve(reader.result);
+            } else {
+              reject(new Error('Failed to read Excalidraw export'));
+            }
+          };
+          reader.onerror = () => reject(new Error('Failed to read Excalidraw export'));
+        });
+        reader.readAsDataURL(blob);
+        imageDataUrl = await dataUrlPromise;
+      } else if (uploadedFile) {
         imageDataUrl = uploadedFile;
       } else {
-        const canvas = canvasRef.current;
-        if (!canvas) throw new Error('Canvas not found');
-        imageDataUrl = canvas.toDataURL('image/png');
+        throw new Error('No drawing found');
       }
     } catch {
       setError('Could not capture answer.');
@@ -2249,7 +2218,6 @@ export default function HSCGeneratorPage() {
     ctx.imageSmoothingQuality = 'high';
 
     ctxRef.current = ctx;
-    redrawBackground();
 
     strokesRef.current = [];
     currentStrokeRef.current = null;
@@ -2282,13 +2250,6 @@ export default function HSCGeneratorPage() {
     ctx.lineWidth = brushSize;
     ctx.strokeStyle = 'white';
     ctxRef.current = ctx;
-    redrawBackground();
-    renderAllStrokes(false);
-  };
-
-  const CANVAS_EXTEND_PX = 500;
-  const extendCanvas = () => {
-    setCanvasHeight((prev) => prev + CANVAS_EXTEND_PX);
   };
 
   const resetForQuestion = (nextQuestion: Question | null) => {
@@ -3533,57 +3494,9 @@ export default function HSCGeneratorPage() {
                     </span>
                   )}
                 </div>
-                {/* Toolbar: Undo, Redo, Clear, Eraser (icon-only, above box) */}
-                <div className="flex items-center gap-2 mb-2">
-                  <button
-                    onClick={undo}
-                    disabled={!canUndo}
-                    title="Undo"
-                    className="p-2.5 rounded-lg font-semibold transition text-sm disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Undo2 className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={redo}
-                    disabled={!canRedo}
-                    title="Redo"
-                    className="p-2.5 rounded-lg font-semibold transition text-sm disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Redo2 className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => setIsEraser((e) => !e)}
-                    title={isEraser ? 'Eraser (on)' : 'Eraser'}
-                    className="p-2.5 rounded-lg font-semibold transition text-sm cursor-pointer"
-                    style={{
-                      backgroundColor: isEraser ? 'var(--clr-primary-a20)' : 'var(--clr-surface-a20)',
-                      color: isEraser ? 'var(--clr-light-a0)' : 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Eraser className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={clearCanvas}
-                    title="Clear"
-                    className="p-2.5 rounded-lg font-semibold transition text-sm cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
-                <div 
-                  className="max-h-[420px] md:max-h-[600px] overflow-y-scroll overflow-x-hidden rounded-xl"
+                {/* Excalidraw answer area (toolbar and controls handled by Excalidraw itself) */}
+                <div
+                  className="rounded-xl"
                   style={{
                     backgroundColor: 'var(--clr-surface-a0)',
                     touchAction: 'none',
@@ -3594,40 +3507,27 @@ export default function HSCGeneratorPage() {
                     }
                   }}
                 >
-                  <canvas
-                    ref={canvasRef}
-                    className="w-full block"
+                  <div
                     style={{
-                      touchAction: 'none',
                       height: `${canvasHeight}px`,
-                      cursor: isEraser ? 'cell' : 'crosshair',
                     }}
-                    onPointerDown={handlePointerDown}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    onPointerLeave={handlePointerUp}
-                    onPointerCancel={handlePointerUp}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                    onTouchStart={handleTouchStart}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
-                    onTouchCancel={handleTouchEnd}
-                  />
+                  >
+                    <Excalidraw
+                      theme={'dark'}
+                      onChange={(
+                        elements: readonly ExcalidrawElement[],
+                        appState: ExcalidrawAppState,
+                        files: BinaryFiles
+                      ) => {
+                        excalidrawSceneRef.current = {
+                          elements,
+                          appState,
+                          files,
+                        };
+                      }}
+                    />
+                  </div>
                 </div>
-                <button
-                  onClick={extendCanvas}
-                  className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition text-sm cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  <ChevronRight className="w-4 h-4 rotate-90" />
-                  Add More Space
-                </button>
               </div>
             )}
 
@@ -4713,7 +4613,7 @@ export default function HSCGeneratorPage() {
                 >
                   <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>PDF Intake</h2>
                   <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
-                    Upload a folder of exam images (JPEG/PNG) or the marking criteria PDF. The response will be used to create new questions automatically.
+                    Upload the exam PDF and/or the marking criteria PDF. The response will be used to create new questions automatically.
                   </p>
 
                   <div className="space-y-4">
@@ -4777,13 +4677,11 @@ export default function HSCGeneratorPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Images Folder</label>
+                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam PDF</label>
                       <input
-                        ref={examFolderInputRef}
                         type="file"
-                        accept="image/jpeg,image/png"
-                        multiple
-                        onChange={(e) => setExamImageFiles(Array.from(e.target.files || []))}
+                        accept="application/pdf"
+                        onChange={(e) => setExamPdfFile(e.target.files?.[0] || null)}
                         className="mt-2 w-full px-4 py-2 rounded-lg border"
                         style={{
                           backgroundColor: 'var(--clr-surface-a0)',
@@ -4791,9 +4689,9 @@ export default function HSCGeneratorPage() {
                           color: 'var(--clr-primary-a50)',
                         }}
                       />
-                      {examImageFiles.length > 0 && (
+                      {examPdfFile && (
                         <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
-                          {examImageFiles.length} image{examImageFiles.length === 1 ? '' : 's'} selected
+                          Selected: {examPdfFile.name}
                         </p>
                       )}
                     </div>
@@ -4847,7 +4745,7 @@ export default function HSCGeneratorPage() {
                     {pdfChatGptResponse && (
                       <div className="mt-4">
                         <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
-                          ChatGPT Response
+                          Model Response
                         </label>
                         <textarea
                           readOnly

@@ -102,8 +102,10 @@ If the student's answer is correct or nearly correct, you can omit the numbered 
       };
     };
 
-    const primaryModel = process.env.GROK_MARK_MODEL || 'grok-4';
-    const fallbackModel = process.env.GROK_MARK_MODEL_FALLBACK || 'grok-4-latest';
+    const primaryModel =
+      process.env.GROK_MARK_MODEL || 'grok-4-1-fast-reasoning';
+    const fallbackModel =
+      process.env.GROK_MARK_MODEL_FALLBACK || 'grok-4-latest';
 
     let response;
     try {
