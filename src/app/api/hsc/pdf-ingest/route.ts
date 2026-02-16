@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db';
+import OpenAI from 'openai';
 
 export const runtime = 'nodejs';
 
@@ -75,11 +76,17 @@ const getTopicOptions = (grade: string, subject: string) => {
   return yearTopics[subjectKey] || TOPIC_LISTS['Year 12']['extension 1'];
 };
 
-const buildPdfPrompt = (topics: ReadonlyArray<string>) => `I have provided a LATEX file containing a HSC Mathematics exam paper with written-response questions.
-Your task is to convert every written question into clean, well-structured LaTeX code and provide a fully worked sample solution for each question.
-Do not include or process any multiple-choice questions (these are usually Questions 1–10). Only convert the written-response questions.
-Important question splitting rule: treat each lettered subpart as its own separate question. For example, 11 (a) is one question and 11 (b) is a separate question. However, do not split deeper subparts. Parts such as 11 (a) (i), 11 (a) (ii), and 11 (a) (iii) must remain grouped together under Question 11 (a) and must not be treated as separate questions. Split only by letters (a), (b), (c), not by roman numerals (i), (ii), (iii).
-For each question, you must follow this exact structure:
+const buildPdfPrompt = (topics: ReadonlyArray<string>) => `I have provided a LATEX file containing a HSC Mathematics exam paper.
+Your task is to convert every exam question (including multiple-choice and written-response questions) into clean, well-structured LaTeX code and provide a fully worked sample solution for each question.
+
+CRITICAL — Question splitting (follow exactly):
+- Split questions ONLY at lettered parts: (a), (b), (c), (d), etc. Each of these gets its own QUESTION_NUMBER block (e.g. 11 (a), 11 (b), 11 (c) are three separate questions).
+- NEVER create a separate question for Roman numerals. (i), (ii), (iii), (iv), (v), (vi), (vii), (viii), (ix), (x) must NEVER start a new QUESTION_NUMBER block. All content under e.g. "11 (a)" — including (i), (ii), (iii) — must stay in one question.
+- Do NOT split by (i), (ii), (iii). Do NOT split by I, II, III. Split ONLY by (a), (b), (c), (d).
+
+Image flag rule: If a question explicitly refers to or depends on an image/graph/diagram (e.g. "Use the diagram above"), set HAS_IMAGE to TRUE. Otherwise set HAS_IMAGE to FALSE. Do NOT output LaTeX for diagrams, crop images, or describe figures; images will be added manually later.
+
+For each NON-multiple-choice (written-response) question, you must follow this exact structure:
 
 QUESTION_NUMBER X
 NUM_MARKS X
@@ -91,6 +98,24 @@ QUESTION_CONTENT
 
 SAMPLE_ANSWER
 {fully worked solution written in LaTeX code...}
+
+For each MULTIPLE-CHOICE question you must follow this structure instead:
+
+QUESTION_NUMBER X
+NUM_MARKS X
+TOPIC X
+HAS_IMAGE {TRUE/FALSE}
+QUESTION_TYPE MULTIPLE_CHOICE
+
+QUESTION_CONTENT
+{question stem written in LaTeX code...}
+
+MCQ_OPTION_A {text for option A in LaTeX}
+MCQ_OPTION_B {text for option B in LaTeX}
+MCQ_OPTION_C {text for option C in LaTeX}
+MCQ_OPTION_D {text for option D in LaTeX}
+MCQ_CORRECT_ANSWER {A|B|C|D}
+MCQ_EXPLANATION {detailed LaTeX explanation: why the correct option is right, why the others are wrong; format in clear steps with blank lines between ideas so a student can follow easily}
 
 RENDER-SAFE LaTeX rules (strict):
 - Inline math must use $...$ only. Do NOT use \( \). 
@@ -108,19 +133,32 @@ Include one blank line between the header section and QUESTION_CONTENT.
 If a question contains internal parts such as (i) or (ii), separate them with blank lines but keep them within the same question.
 Leave one blank line between each completed question block.
 
-SAMPLE ANSWER REQUIREMENTS:
-Each solution must be fully worked out with all steps shown, clearly explained, easy to follow, and neatly formatted in LaTeX.
+SAMPLE ANSWER REQUIREMENTS (format so a student can follow easily):
+- Show every step of the working; do not skip steps. A student should be able to follow the logic from start to finish.
+- Put each major step on its own line or in a small block. Use blank lines between distinct steps so the solution is not a wall of text.
+- For algebraic manipulation: show one transformation per line (e.g. one line per "add 2 to both sides") where it helps clarity.
+- For multi-part questions (i), (ii), (iii): start each part on a new line and label clearly (e.g. "(i)" or "Part (i)") with a blank line before it.
+- After working, state the final answer clearly (e.g. "Therefore ..." or "Hence the answer is ...").
+- Use short, clear sentences. Prefer "We have" / "So" / "Thus" to connect steps.
+- Keep display math ($$...$$) for important equations; use inline math ($...$) for brief expressions in prose.
+- The solution should look like a model answer a teacher would write on the board: neat, well-spaced, and easy to read.
 
 For each question, choose the most suitable topic from this list:
 ${topics.join('\n')}
 
 Output raw text only. Do not add commentary, explanations, or extra formatting. Return only the converted LaTeX content.`;
 
-const buildExamImagePrompt = (topics: ReadonlyArray<string>) => `I have provided an image of a HSC Mathematics exam page with written-response questions.
-Your task is to extract every written-response question from the image and convert it into clean, well-structured LaTeX code with a fully worked sample solution for each question.
-Do not include or process any multiple-choice questions (these are usually Questions 1–10). Only convert the written-response questions.
-Important question splitting rule: treat each lettered subpart as its own separate question. For example, 11 (a) is one question and 11 (b) is a separate question. However, do not split deeper subparts. Parts such as 11 (a) (i), 11 (a) (ii), and 11 (a) (iii) must remain grouped together under Question 11 (a) and must not be treated as separate questions. Split only by letters (a), (b), (c), not by roman numerals (i), (ii), (iii).
-If a question has an image/graph/diagram, HAS_IMAGE should be set to true. For each question, you must follow this exact structure:
+const buildExamImagePrompt = (topics: ReadonlyArray<string>) => `I have provided an image of a HSC Mathematics exam page.
+Your task is to extract every exam question (including multiple-choice and written-response questions) from the image and convert it into clean, well-structured LaTeX code with a fully worked sample solution for each question.
+
+CRITICAL — Question splitting (follow exactly):
+- Split questions ONLY at lettered parts: (a), (b), (c), (d), etc. Each of these gets its own QUESTION_NUMBER block (e.g. 11 (a), 11 (b), 11 (c) are three separate questions).
+- NEVER create a separate question for Roman numerals. (i), (ii), (iii), (iv), (v), (vi), (vii), (viii), (ix), (x) must NEVER start a new QUESTION_NUMBER block. All content under e.g. "11 (a)" — including (i), (ii), (iii) — must stay in one question.
+- Do NOT split by (i), (ii), (iii). Do NOT split by I, II, III. Split ONLY by (a), (b), (c), (d).
+
+Image flag rule: If a question visibly includes or depends on an image/graph/diagram on the page, set HAS_IMAGE to TRUE. Do NOT crop, describe, or output LaTeX for diagrams; images will be added manually. Just set the flag.
+
+For each NON-multiple-choice (written-response) question, you must follow this exact structure:
 
 QUESTION_NUMBER X
 NUM_MARKS X
@@ -132,6 +170,24 @@ QUESTION_CONTENT
 
 SAMPLE_ANSWER
 {fully worked solution written in LaTeX code...}
+
+For each MULTIPLE-CHOICE question you must follow this structure instead:
+
+QUESTION_NUMBER X
+NUM_MARKS X
+TOPIC X
+HAS_IMAGE {TRUE/FALSE}
+QUESTION_TYPE MULTIPLE_CHOICE
+
+QUESTION_CONTENT
+{question stem written in LaTeX code...}
+
+MCQ_OPTION_A {text for option A in LaTeX}
+MCQ_OPTION_B {text for option B in LaTeX}
+MCQ_OPTION_C {text for option C in LaTeX}
+MCQ_OPTION_D {text for option D in LaTeX}
+MCQ_CORRECT_ANSWER {A|B|C|D}
+MCQ_EXPLANATION {detailed LaTeX explanation: why the correct option is right, why the others are wrong; format in clear steps with blank lines between ideas so a student can follow easily}
 
 RENDER-SAFE LaTeX rules (strict):
 - Inline math must use $...$ only. Do NOT use \( \). 
@@ -149,13 +205,23 @@ Include one blank line between the header section and QUESTION_CONTENT.
 If a question contains internal parts such as (i) or (ii), separate them with blank lines but keep them within the same question.
 Leave one blank line between each completed question block.
 
-SAMPLE ANSWER REQUIREMENTS:
-Each solution must be fully worked out with all steps shown, clearly explained, easy to follow, and neatly formatted in LaTeX.
+SAMPLE ANSWER REQUIREMENTS (format so a student can follow easily):
+- Show every step of the working; do not skip steps. A student should be able to follow the logic from start to finish.
+- Put each major step on its own line or in a small block. Use blank lines between distinct steps so the solution is not a wall of text.
+- For algebraic manipulation: show one transformation per line (e.g. one line per "add 2 to both sides") where it helps clarity.
+- For multi-part questions (i), (ii), (iii): start each part on a new line and label clearly (e.g. "(i)" or "Part (i)") with a blank line before it.
+- After working, state the final answer clearly (e.g. "Therefore ..." or "Hence the answer is ...").
+- Use short, clear sentences. Prefer "We have" / "So" / "Thus" to connect steps.
+- Keep display math ($$...$$) for important equations; use inline math ($...$) for brief expressions in prose.
+- The solution should look like a model answer a teacher would write on the board: neat, well-spaced, and easy to read.
 
 For each question, choose the most suitable topic from this list:
 ${topics.join('\n')}
 
 Output raw text only. Do not add commentary, explanations, or extra formatting. Return only the converted LaTeX content.`;
+
+
+
 
 const CRITERIA_PROMPT = `I have provided one PDF which is a HSC mathematics marking criteria.
 
@@ -183,6 +249,12 @@ const getHeaderValue = (line: string) => {
   return parts.join(' ').trim();
 };
 
+const stripOuterBraces = (s: string): string => {
+  const t = s.trim();
+  if (t.startsWith('{') && t.endsWith('}') && t.length >= 2) return t.slice(1, -1).trim();
+  return s;
+};
+
 type ParsedQuestion = {
   questionNumber: string | null;
   marks: number | null;
@@ -190,22 +262,46 @@ type ParsedQuestion = {
   hasImage: boolean;
   questionText: string;
   sampleAnswer: string;
+  questionType: 'written' | 'multiple_choice' | null;
+  mcqOptionA: string | null;
+  mcqOptionB: string | null;
+  mcqOptionC: string | null;
+  mcqOptionD: string | null;
+  mcqCorrectAnswer: 'A' | 'B' | 'C' | 'D' | null;
+  mcqExplanation: string | null;
 };
+
+const MCQ_HEADER_PREFIXES = [
+  'QUESTION_NUMBER', 'NUM_MARKS', 'TOPIC', 'HAS_IMAGE', 'QUESTION_TYPE',
+  'MCQ_OPTION_A', 'MCQ_OPTION_B', 'MCQ_OPTION_C', 'MCQ_OPTION_D',
+  'MCQ_CORRECT_ANSWER', 'MCQ_EXPLANATION', 'QUESTION_CONTENT', 'SAMPLE_ANSWER',
+];
 
 const parseQuestions = (content: string) => {
   const lines = content.split(/\r?\n/);
 
   const questions: ParsedQuestion[] = [];
   let current: ParsedQuestion | null = null;
-  let mode: 'question' | 'answer' | null = null;
+  let mode: 'question' | 'answer' | 'mcq_explanation' | null = null;
+  let pendingMcqOption: 'A' | 'B' | 'C' | 'D' | null = null;
 
   const pushCurrent = () => {
+    pendingMcqOption = null;
     if (!current) return;
     const trimmedQuestion = current.questionText.trim();
     const trimmedAnswer = current.sampleAnswer.trim();
     if (!trimmedQuestion) return;
+    const hasAllMcqOptions =
+      current.mcqOptionA != null &&
+      current.mcqOptionB != null &&
+      current.mcqOptionC != null &&
+      current.mcqOptionD != null &&
+      current.mcqCorrectAnswer != null;
+    const inferredType: ParsedQuestion['questionType'] =
+      current.questionType === 'multiple_choice' || hasAllMcqOptions ? 'multiple_choice' : current.questionType;
     questions.push({
       ...current,
+      questionType: inferredType,
       questionText: trimmedQuestion,
       sampleAnswer: trimmedAnswer,
     });
@@ -213,6 +309,21 @@ const parseQuestions = (content: string) => {
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
+
+    if (pendingMcqOption && current) {
+      const nextLine = rawLine.trim();
+      if (nextLine && !MCQ_HEADER_PREFIXES.some((p) => nextLine.startsWith(p))) {
+        const value = stripOuterBraces(nextLine);
+        if (pendingMcqOption === 'A') current.mcqOptionA = value;
+        else if (pendingMcqOption === 'B') current.mcqOptionB = value;
+        else if (pendingMcqOption === 'C') current.mcqOptionC = value;
+        else if (pendingMcqOption === 'D') current.mcqOptionD = value;
+        pendingMcqOption = null;
+        continue;
+      }
+      if (nextLine) pendingMcqOption = null;
+    }
+
     if (!line) continue;
 
     if (line.startsWith('QUESTION_NUMBER')) {
@@ -224,6 +335,13 @@ const parseQuestions = (content: string) => {
         hasImage: false,
         questionText: '',
         sampleAnswer: '',
+        questionType: null,
+        mcqOptionA: null,
+        mcqOptionB: null,
+        mcqOptionC: null,
+        mcqOptionD: null,
+        mcqCorrectAnswer: null,
+        mcqExplanation: null,
       };
       mode = null;
       continue;
@@ -249,6 +367,54 @@ const parseQuestions = (content: string) => {
       continue;
     }
 
+    if (line.toUpperCase().startsWith('QUESTION_TYPE')) {
+      const value = getHeaderValue(line).toLowerCase();
+      current.questionType = value.includes('multiple') ? 'multiple_choice' : 'written';
+      continue;
+    }
+
+    if (line.startsWith('MCQ_OPTION_A')) {
+      mode = null;
+      const v = stripOuterBraces(getHeaderValue(line).trim());
+      current.mcqOptionA = v || null;
+      if (!v) pendingMcqOption = 'A';
+      continue;
+    }
+    if (line.startsWith('MCQ_OPTION_B')) {
+      mode = null;
+      const v = stripOuterBraces(getHeaderValue(line).trim());
+      current.mcqOptionB = v || null;
+      if (!v) pendingMcqOption = 'B';
+      continue;
+    }
+    if (line.startsWith('MCQ_OPTION_C')) {
+      mode = null;
+      const v = stripOuterBraces(getHeaderValue(line).trim());
+      current.mcqOptionC = v || null;
+      if (!v) pendingMcqOption = 'C';
+      continue;
+    }
+    if (line.startsWith('MCQ_OPTION_D')) {
+      mode = null;
+      const v = stripOuterBraces(getHeaderValue(line).trim());
+      current.mcqOptionD = v || null;
+      if (!v) pendingMcqOption = 'D';
+      continue;
+    }
+    if (line.startsWith('MCQ_CORRECT_ANSWER')) {
+      mode = null;
+      const value = stripOuterBraces(getHeaderValue(line).trim()).toUpperCase();
+      current.mcqCorrectAnswer =
+        value === 'A' || value === 'B' || value === 'C' || value === 'D' ? (value as 'A' | 'B' | 'C' | 'D') : null;
+      continue;
+    }
+    if (line.startsWith('MCQ_EXPLANATION')) {
+      const sameLine = stripOuterBraces(getHeaderValue(line).trim());
+      current.mcqExplanation = sameLine || '';
+      mode = 'mcq_explanation';
+      continue;
+    }
+
     if (line.startsWith('QUESTION_CONTENT')) {
       mode = 'question';
       continue;
@@ -263,6 +429,8 @@ const parseQuestions = (content: string) => {
       current.questionText += `${current.questionText ? '\n' : ''}${rawLine}`;
     } else if (mode === 'answer') {
       current.sampleAnswer += `${current.sampleAnswer ? '\n' : ''}${rawLine}`;
+    } else if (mode === 'mcq_explanation') {
+      current.mcqExplanation = (current.mcqExplanation || '') + (current.mcqExplanation ? '\n' : '') + rawLine;
     }
   }
 
@@ -416,13 +584,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Criteria file must be a PDF' }, { status: 400 });
     }
 
-    const xaiApiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
-    if (!xaiApiKey) {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
       return NextResponse.json(
-        { error: 'Missing XAI_API_KEY (or GROK_API_KEY) server configuration' },
+        { error: 'Missing OPENAI_API_KEY server configuration' },
         { status: 500 }
       );
     }
+
+    const openai = new OpenAI({ apiKey: openaiApiKey });
 
     const contentParts: Array<{ source: 'exam' | 'criteria'; text: string }> = [];
 
@@ -483,55 +653,31 @@ export async function POST(request: Request) {
       temperature?: number;
       maxTokens?: number;
     }) => {
-      const send = async (body: Record<string, any>) => {
-        const res = await fetch('https://api.x.ai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${xaiApiKey}`,
-          },
-          body: JSON.stringify(body),
-        });
-
-        if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          const err = new Error(`xAI API error ${res.status}: ${text || res.statusText}`);
-          (err as any).status = res.status;
-          (err as any).body = text;
-          throw err;
-        }
-        return (await res.json()) as {
-          choices?: Array<{ message?: { content?: string } }>;
-        };
-      };
-
-      const baseBody: Record<string, any> = {
+      return await openai.chat.completions.create({
         model: args.model,
-        messages: args.messages,
-        max_tokens: typeof args.maxTokens === 'number' ? args.maxTokens : 2000,
-      };
-
-      // Some reasoning models may reject unsupported params. We'll try with temperature,
-      // and if that fails with a 400-level error, retry without it.
-      if (typeof args.temperature === 'number') {
-        try {
-          return await send({ ...baseBody, temperature: args.temperature });
-        } catch (err) {
-          const status = (err as any)?.status;
-          if (status && status >= 400 && status < 500) {
-            return await send(baseBody);
-          }
-          throw err;
-        }
-      }
-
-      return await send(baseBody);
+        // We intentionally keep messages as any[] here to support both
+        // plain-text and multimodal (image_url) payloads without over-constraining
+        // the type definition.
+        messages: args.messages as any,
+        // Omit temperature: this model only supports the default (1); sending 0 or 0.7 returns 400.
+        max_completion_tokens: typeof args.maxTokens === 'number' ? args.maxTokens : 2000,
+      });
     };
 
-    const examTextModel = process.env.GROK_PDF_EXAM_MODEL || 'grok-4-1-fast-reasoning';
+    const extractMessageContent = (content: unknown): string => {
+      if (content == null) return '';
+      if (typeof content === 'string') return content;
+      if (Array.isArray(content)) {
+        const textPart = content.find((p: any) => p?.type === 'text');
+        return (textPart?.text != null ? String(textPart.text) : '') || '';
+      }
+      return String(content);
+    };
+
+    const examTextModel = process.env.OPENAI_PDF_EXAM_MODEL || 'gpt-4o';
     const criteriaTextModel =
-      process.env.GROK_PDF_CRITERIA_MODEL || 'grok-4-1-fast-reasoning';
-    const examVisionModel = process.env.GROK_PDF_VISION_MODEL || 'grok-4';
+      process.env.OPENAI_PDF_CRITERIA_MODEL || 'gpt-4o';
+    const examVisionModel = process.env.OPENAI_PDF_VISION_MODEL || 'gpt-4o';
 
     const chunkResponses: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
     const refusals: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
@@ -576,7 +722,6 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
         const response = await createChatCompletion({
           model,
           messages,
-          temperature: 0.7,
           maxTokens: 2000,
         });
 
@@ -586,7 +731,6 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
           const retryResponse = await createChatCompletion({
             model,
             messages,
-            temperature: 0.2,
             maxTokens: 2000,
           });
           chunkContent = retryResponse.choices?.[0]?.message?.content || '';
@@ -600,74 +744,10 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
       }
     }
 
-    if (examImageFiles.length) {
-      for (let index = 0; index < examImageFiles.length; index += 1) {
-        const imageFile = examImageFiles[index];
-        const imageBuffer = Buffer.from(await imageFile.arrayBuffer());
-        const imageBase64 = imageBuffer.toString('base64');
-        const imageMime = imageFile.type || 'image/jpeg';
-        const imageUrl = `data:${imageMime};base64,${imageBase64}`;
-
-        const messages = [
-          {
-            role: 'system',
-            content:
-              'You are given user-provided content (an exam image) and are allowed to transform it. Comply with the requested format.',
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `${buildExamImagePrompt(topicOptions)}\n\nIMAGE ${index + 1} of ${examImageFiles.length}`,
-              },
-              {
-                type: 'image_url',
-                image_url: { url: imageUrl, detail: 'high' },
-              },
-            ],
-          },
-        ];
-
-        const response = await createChatCompletion({
-          model: examVisionModel,
-          messages,
-          temperature: 0.7,
-          maxTokens: 2000,
-        });
-
-        let chunkContent = response.choices?.[0]?.message?.content || '';
-
-        if (chunkContent.trim() && isRefusal(chunkContent)) {
-          const retryResponse = await createChatCompletion({
-            model: examVisionModel,
-            messages,
-            temperature: 0.2,
-            maxTokens: 2000,
-          });
-          chunkContent = retryResponse.choices?.[0]?.message?.content || '';
-        }
-
-        if (chunkContent.trim() && !isRefusal(chunkContent)) {
-          chunkResponses.push({ source: 'exam', index: index + 1, content: chunkContent });
-        } else if (chunkContent.trim()) {
-          refusals.push({ source: 'exam', index: index + 1, content: chunkContent });
-        }
-      }
-    }
-
-    const combinedContent = chunkResponses
-      .sort((a, b) => a.source.localeCompare(b.source) || a.index - b.index)
-      .map((item) => item.content)
-      .join('\n\n');
-
-    if (!combinedContent.trim()) {
-      return NextResponse.json({ error: 'No content returned from the model' }, { status: 500 });
-    }
-
     const createdQuestions: any[] = [];
     let updatedCriteriaCount = 0;
     const missingCriteria: string[] = [];
+    const imageResponseBodies: string[] = [];
 
     if (examFile || examImageFiles.length) {
       if (overwrite) {
@@ -685,45 +765,177 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
         }
       }
 
-      const examContent = chunkResponses
-        .filter((item) => item.source === 'exam')
-        .sort((a, b) => a.index - b.index)
-        .map((item) => item.content)
-        .join('\n\n');
+      // If examFile is provided (PDF / LaTeX), use the existing text-based pipeline.
+      if (examFile) {
+        const examContent = chunkResponses
+          .filter((item) => item.source === 'exam')
+          .sort((a, b) => a.index - b.index)
+          .map((item) => item.content)
+          .join('\n\n');
 
-      const { questions } = parseQuestions(examContent);
+        const { questions } = parseQuestions(examContent);
 
-      if (!questions.length) {
-        return NextResponse.json({ error: 'No questions parsed from ChatGPT response' }, { status: 500 });
+        if (!questions.length) {
+          return NextResponse.json({ error: 'No questions parsed from ChatGPT response' }, { status: 500 });
+        }
+
+        const insertPayload = questions.map((question) => {
+          const topic = question.topic || 'Unspecified';
+          const isMcq = question.questionType === 'multiple_choice';
+
+          return {
+            grade,
+            year,
+            subject,
+            topic,
+            marks: question.marks || 0,
+            question_number: question.questionNumber || null,
+            question_text: question.questionText,
+            question_type: isMcq ? 'multiple_choice' : 'written',
+            marking_criteria: isMcq ? null : null,
+            sample_answer: isMcq ? null : (question.sampleAnswer || null),
+            mcq_option_a: isMcq ? (question.mcqOptionA ?? null) : null,
+            mcq_option_b: isMcq ? (question.mcqOptionB ?? null) : null,
+            mcq_option_c: isMcq ? (question.mcqOptionC ?? null) : null,
+            mcq_option_d: isMcq ? (question.mcqOptionD ?? null) : null,
+            mcq_option_a_image: null,
+            mcq_option_b_image: null,
+            mcq_option_c_image: null,
+            mcq_option_d_image: null,
+            mcq_correct_answer: isMcq ? (question.mcqCorrectAnswer ?? null) : null,
+            mcq_explanation: isMcq ? (question.mcqExplanation ?? null) : null,
+            graph_image_data: null,
+            graph_image_size: 'medium',
+          };
+        });
+
+        const { data, error } = await supabaseAdmin
+          .from('hsc_questions')
+          .insert(insertPayload)
+          .select();
+
+        if (error) {
+          console.error('Database error:', error);
+          return NextResponse.json({ error: 'Failed to create questions: ' + error.message }, { status: 500 });
+        }
+
+        if (Array.isArray(data)) {
+          createdQuestions.push(...data);
+        }
       }
 
-      const insertPayload = questions.map((question) => ({
-        grade,
-        year,
-        subject,
-        topic: question.topic || 'Unspecified',
-        marks: question.marks || 0,
-        question_number: question.questionNumber || null,
-        question_text: question.questionText,
-        question_type: 'written',
-        marking_criteria: null,
-        sample_answer: question.sampleAnswer || null,
-        graph_image_data: null,
-        graph_image_size: question.hasImage ? 'missing' : 'medium',
-      }));
+      // If JPEGs are provided, process each image independently and attach its image data
+      // to every question parsed from that image.
+      if (examImageFiles.length) {
+        for (let index = 0; index < examImageFiles.length; index += 1) {
+          const imageFile = examImageFiles[index];
+          const imageBuffer = Buffer.from(await imageFile.arrayBuffer());
+          const imageBase64 = imageBuffer.toString('base64');
+          const imageMime = imageFile.type || 'image/jpeg';
+          const imageUrl = `data:${imageMime};base64,${imageBase64}`;
 
-      const { data, error } = await supabaseAdmin
-        .from('hsc_questions')
-        .insert(insertPayload)
-        .select();
+          const messages = [
+            {
+              role: 'system',
+              content:
+                'You are given user-provided content (an exam image) and are allowed to transform it. Comply with the requested format.',
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `${buildExamImagePrompt(topicOptions)}\n\nIMAGE ${index + 1} of ${examImageFiles.length}`,
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url: imageUrl, detail: 'high' },
+                },
+              ],
+            },
+          ];
 
-      if (error) {
-        console.error('Database error:', error);
-        return NextResponse.json({ error: 'Failed to create questions: ' + error.message }, { status: 500 });
-      }
+          const response = await createChatCompletion({
+            model: examVisionModel,
+            messages,
+            maxTokens: 2000,
+          });
 
-      if (Array.isArray(data)) {
-        createdQuestions.push(...data);
+          let chunkContent = extractMessageContent(response.choices?.[0]?.message?.content ?? '');
+
+          if (chunkContent.trim() && isRefusal(chunkContent)) {
+            const retryResponse = await createChatCompletion({
+              model: examVisionModel,
+              messages,
+              maxTokens: 2000,
+            });
+            chunkContent = extractMessageContent(retryResponse.choices?.[0]?.message?.content ?? '');
+          }
+
+          const imageLabel = `--- Image ${index + 1} of ${examImageFiles.length} ---`;
+          if (chunkContent.trim() && !isRefusal(chunkContent)) {
+            imageResponseBodies.push(`${imageLabel}\n\n${chunkContent}`);
+          } else {
+            imageResponseBodies.push(
+              chunkContent.trim()
+                ? `${imageLabel}\n\n(Content was skipped: refusal or invalid.)\n\n${chunkContent}`
+                : `${imageLabel}\n\n(No text returned from the model for this image.)`
+            );
+          }
+
+          if (!chunkContent.trim() || isRefusal(chunkContent)) {
+            continue;
+          }
+
+          const { questions } = parseQuestions(chunkContent);
+          if (!questions.length) {
+            continue;
+          }
+
+          const insertPayload = questions.map((question) => {
+            const topic = question.topic || 'Unspecified';
+            const isMcq = question.questionType === 'multiple_choice';
+
+            return {
+              grade,
+              year,
+              subject,
+              topic,
+              marks: question.marks || 0,
+              question_number: question.questionNumber || null,
+              question_text: question.questionText,
+              question_type: isMcq ? 'multiple_choice' : 'written',
+              marking_criteria: null,
+              sample_answer: isMcq ? null : (question.sampleAnswer || null),
+              mcq_option_a: isMcq ? (question.mcqOptionA ?? null) : null,
+              mcq_option_b: isMcq ? (question.mcqOptionB ?? null) : null,
+              mcq_option_c: isMcq ? (question.mcqOptionC ?? null) : null,
+              mcq_option_d: isMcq ? (question.mcqOptionD ?? null) : null,
+              mcq_option_a_image: null,
+              mcq_option_b_image: null,
+              mcq_option_c_image: null,
+              mcq_option_d_image: null,
+              mcq_correct_answer: isMcq ? (question.mcqCorrectAnswer ?? null) : null,
+              mcq_explanation: isMcq ? (question.mcqExplanation ?? null) : null,
+              graph_image_data: null,
+              graph_image_size: question.hasImage ? 'medium' : 'medium',
+            };
+          });
+
+          const { data, error } = await supabaseAdmin
+            .from('hsc_questions')
+            .insert(insertPayload)
+            .select();
+
+          if (error) {
+            console.error('Database error (image ingest):', error);
+            return NextResponse.json({ error: 'Failed to create questions from images: ' + error.message }, { status: 500 });
+          }
+
+          if (Array.isArray(data)) {
+            createdQuestions.push(...data);
+          }
+        }
       }
     }
 
@@ -809,6 +1021,13 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
       }
     }
 
+    const fromChunks = chunkResponses
+      .sort((a, b) => a.source.localeCompare(b.source) || a.index - b.index)
+      .map((c) => c.content)
+      .join('\n\n');
+    const fromImages = imageResponseBodies.join('\n\n');
+    const combinedModelOutput = [fromChunks, fromImages].filter(Boolean).join('\n\n') || null;
+
     return NextResponse.json({
       success: true,
       message: `Created ${createdQuestions.length} questions. Updated ${updatedCriteriaCount} marking criteria.`,
@@ -829,10 +1048,8 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
       missingCriteria,
       chunks: chunkResponses,
       refusals,
-      // Backwards-compatible field name (used by the frontend today)
-      chatgpt: combinedContent,
-      // Preferred field name going forward
-      modelOutput: combinedContent,
+      chatgpt: combinedModelOutput,
+      modelOutput: combinedModelOutput,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to process PDFs';

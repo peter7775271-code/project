@@ -9,6 +9,13 @@ declare module '@excalidraw/excalidraw' {
       files: Record<string, any>
     ) => void;
     excalidrawAPI?: (api: any) => void;
+     initialData?: {
+       appState?: any;
+       elements?: any[];
+       scrollToContent?: boolean;
+       libraryItems?: any[];
+       files?: Record<string, any>;
+     };
   }
 
   export const Excalidraw: ComponentType<ExcalidrawProps>;

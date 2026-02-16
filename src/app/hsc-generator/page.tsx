@@ -38,6 +38,7 @@ import type {
   AppState as ExcalidrawAppState,
   BinaryFiles,
   ExcalidrawElement,
+  ExcalidrawImperativeAPI,
 } from '@excalidraw/excalidraw';
 
 const Excalidraw = dynamic(
@@ -48,6 +49,12 @@ const Excalidraw = dynamic(
   { ssr: false }
 );
 // TikzRenderer no longer used in this page
+
+function stripOuterBraces(s: string): string {
+  const t = s.trim();
+  if (t.startsWith('{') && t.endsWith('}') && t.length >= 2) return t.slice(1, -1).trim();
+  return s;
+}
 
 // LaTeX and TikZ renderer component
 function LatexText({ text }: { text: string }) {
@@ -555,6 +562,10 @@ export default function HSCGeneratorPage() {
     mcq_option_b?: string | null;
     mcq_option_c?: string | null;
     mcq_option_d?: string | null;
+    mcq_option_a_image?: string | null;
+    mcq_option_b_image?: string | null;
+    mcq_option_c_image?: string | null;
+    mcq_option_d_image?: string | null;
     mcq_correct_answer?: 'A' | 'B' | 'C' | 'D' | null;
     mcq_explanation?: string | null;
   };
@@ -600,6 +611,7 @@ export default function HSCGeneratorPage() {
   const [isUpdatingQuestion, setIsUpdatingQuestion] = useState(false);
   const [examPdfFile, setExamPdfFile] = useState<File | null>(null);
   const [criteriaPdfFile, setCriteriaPdfFile] = useState<File | null>(null);
+  const [examImageFiles, setExamImageFiles] = useState<File[]>([]);
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'uploading' | 'ready' | 'error'>('idle');
   const [pdfMessage, setPdfMessage] = useState<string>('');
   const [pdfChatGptResponse, setPdfChatGptResponse] = useState<string>('');
@@ -607,6 +619,8 @@ export default function HSCGeneratorPage() {
   const [pdfYear, setPdfYear] = useState<string>(new Date().getFullYear().toString());
   const [pdfSubject, setPdfSubject] = useState<string>('Mathematics Advanced');
   const [pdfOverwrite, setPdfOverwrite] = useState(false);
+  const pdfYearRef = useRef(pdfYear);
+  pdfYearRef.current = pdfYear;
   const [viewMode, setViewMode] = useState<'generator' | 'saved' | 'settings' | 'dev-questions' | 'papers' | 'paper'>('generator');
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
@@ -629,6 +643,7 @@ export default function HSCGeneratorPage() {
     appState: ExcalidrawAppState;
     files: BinaryFiles;
   } | null>(null);
+  const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
 
   // Dev mode state
   const [isDevMode, setIsDevMode] = useState(false);
@@ -666,6 +681,10 @@ export default function HSCGeneratorPage() {
     mcqOptionB: '',
     mcqOptionC: '',
     mcqOptionD: '',
+    mcqOptionAImage: '',
+    mcqOptionBImage: '',
+    mcqOptionCImage: '',
+    mcqOptionDImage: '',
     mcqCorrectAnswer: 'A',
     mcqExplanation: '',
     graphImageData: '',
@@ -686,6 +705,10 @@ export default function HSCGeneratorPage() {
     mcqOptionB: '',
     mcqOptionC: '',
     mcqOptionD: '',
+    mcqOptionAImage: '',
+    mcqOptionBImage: '',
+    mcqOptionCImage: '',
+    mcqOptionDImage: '',
     mcqCorrectAnswer: 'A',
     mcqExplanation: '',
     graphImageData: '',
@@ -758,6 +781,17 @@ export default function HSCGeneratorPage() {
     if (gradeValue !== 'Year 11' && gradeValue !== 'Year 12') return [];
     return TOPICS_BY_YEAR_SUBJECT[gradeValue]?.[subjectValue] || [];
   };
+
+  const ALL_TOPICS = useMemo(() => {
+    const set = new Set<string>();
+    (Object.keys(TOPICS_BY_YEAR_SUBJECT) as Array<'Year 11' | 'Year 12'>).forEach((grade) => {
+      const subjectMap = TOPICS_BY_YEAR_SUBJECT[grade];
+      Object.keys(subjectMap || {}).forEach((subject) => {
+        (subjectMap![subject] || []).forEach((t) => set.add(t));
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, []);
 
   const parseQuestionNumberForSort = (value: string | null | undefined) => {
     const raw = String(value || '').toLowerCase().trim();
@@ -1326,6 +1360,10 @@ export default function HSCGeneratorPage() {
           mcqOptionB: '',
           mcqOptionC: '',
           mcqOptionD: '',
+          mcqOptionAImage: '',
+          mcqOptionBImage: '',
+          mcqOptionCImage: '',
+          mcqOptionDImage: '',
           mcqCorrectAnswer: 'A',
           mcqExplanation: '',
           graphImageData: '',
@@ -1361,6 +1399,10 @@ export default function HSCGeneratorPage() {
       mcqOptionB: q.mcq_option_b || '',
       mcqOptionC: q.mcq_option_c || '',
       mcqOptionD: q.mcq_option_d || '',
+      mcqOptionAImage: q.mcq_option_a_image || '',
+      mcqOptionBImage: q.mcq_option_b_image || '',
+      mcqOptionCImage: q.mcq_option_c_image || '',
+      mcqOptionDImage: q.mcq_option_d_image || '',
       mcqCorrectAnswer: q.mcq_correct_answer || 'A',
       mcqExplanation: q.mcq_explanation || '',
       graphImageData: q.graph_image_data || '',
@@ -1403,13 +1445,15 @@ export default function HSCGeneratorPage() {
   };
 
   const submitPdfPair = async () => {
-    if (!examPdfFile && !criteriaPdfFile) {
+    if (!examPdfFile && !criteriaPdfFile && !examImageFiles.length) {
       setPdfStatus('error');
-      setPdfMessage('Please select an exam PDF and/or a criteria PDF.');
+      setPdfMessage('Please select an exam PDF, criteria PDF, or one or more exam images.');
       return;
     }
 
-    if (!pdfYear || !pdfSubject) {
+    const yearSelect = typeof document !== 'undefined' ? document.getElementById('pdf-intake-year') as HTMLSelectElement | null : null;
+    const yearToSend = (yearSelect?.value ?? pdfYearRef.current ?? pdfYear) || '';
+    if (!yearToSend || !pdfSubject) {
       setPdfStatus('error');
       setPdfMessage('Please select a year and subject.');
       return;
@@ -1441,7 +1485,7 @@ export default function HSCGeneratorPage() {
         const examData = new FormData();
         examData.append('exam', examPdfFile);
         examData.append('grade', pdfGrade);
-        examData.append('year', pdfYear);
+        examData.append('year', yearToSend);
         examData.append('subject', pdfSubject);
         examData.append('overwrite', pdfOverwrite ? 'true' : 'false');
         await sendPdf(examData, 'exam PDF');
@@ -1449,7 +1493,7 @@ export default function HSCGeneratorPage() {
         const criteriaData = new FormData();
         criteriaData.append('criteria', criteriaPdfFile);
         criteriaData.append('grade', pdfGrade);
-        criteriaData.append('year', pdfYear);
+        criteriaData.append('year', yearToSend);
         criteriaData.append('subject', pdfSubject);
         criteriaData.append('overwrite', pdfOverwrite ? 'true' : 'false');
         const criteriaResponse = await sendPdf(criteriaData, 'criteria PDF');
@@ -1466,12 +1510,22 @@ export default function HSCGeneratorPage() {
       if (criteriaPdfFile) {
         singleData.append('criteria', criteriaPdfFile);
       }
+      if (examImageFiles.length) {
+        examImageFiles.forEach((file) => singleData.append('examImages', file));
+      }
       singleData.append('grade', pdfGrade);
-      singleData.append('year', pdfYear);
+      singleData.append('year', yearToSend);
       singleData.append('subject', pdfSubject);
       singleData.append('overwrite', pdfOverwrite ? 'true' : 'false');
 
-      const data = await sendPdf(singleData, examPdfFile ? 'exam PDF' : 'criteria PDF');
+      const label =
+        examPdfFile || criteriaPdfFile
+          ? examPdfFile
+            ? 'exam PDF'
+            : 'criteria PDF'
+          : 'exam images';
+
+      const data = await sendPdf(singleData, label);
       setPdfStatus('ready');
       setPdfMessage(data?.message || 'Files received.');
     } catch (err) {
@@ -1865,6 +1919,10 @@ export default function HSCGeneratorPage() {
           mcqOptionB: manageQuestionDraft.mcq_option_b,
           mcqOptionC: manageQuestionDraft.mcq_option_c,
           mcqOptionD: manageQuestionDraft.mcq_option_d,
+          mcqOptionAImage: manageQuestionDraft.mcq_option_a_image,
+          mcqOptionBImage: manageQuestionDraft.mcq_option_b_image,
+          mcqOptionCImage: manageQuestionDraft.mcq_option_c_image,
+          mcqOptionDImage: manageQuestionDraft.mcq_option_d_image,
           mcqCorrectAnswer: manageQuestionDraft.mcq_correct_answer,
           mcqExplanation: manageQuestionDraft.mcq_explanation,
         }),
@@ -2153,7 +2211,6 @@ export default function HSCGeneratorPage() {
     setIsGenerating(true);
     setError(null);
     setShowAnswer(false);
-    setCanvasHeight(400);
     setAppState('idle');
     setFeedback(null);
     setUploadedFile(null);
@@ -2261,7 +2318,6 @@ export default function HSCGeneratorPage() {
     setUploadedFile(null);
     setSubmittedAnswer(null);
     setSelectedMcqAnswer(null);
-    setCanvasHeight(400);
     setIsEraser(false);
     setTimeout(() => resetCanvas(400), 0);
 
@@ -2851,7 +2907,7 @@ export default function HSCGeneratorPage() {
                           <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a40)' }}>
                             {isMcq ? (
                               revFeedback.mcq_explanation ? (
-                                <LatexText text={revFeedback.mcq_explanation} />
+                                <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} />
                               ) : (
                                 <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>
                               )
@@ -2925,8 +2981,8 @@ export default function HSCGeneratorPage() {
                         </div>
                       )}
 
-                      {/* Sample Solution */}
-                      {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) && (
+                      {/* Sample Solution (written only; MCQ explanation is shown above) */}
+                      {!isMcq && (revFeedback?.sample_answer ?? revQuestion?.sample_answer) && (
                         <div
                           className="p-8 border-t space-y-4"
                           style={{
@@ -2936,17 +2992,13 @@ export default function HSCGeneratorPage() {
                         >
                           <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}>
                             <BookOpen className="w-5 h-5" />
-                            {isMcq ? 'Answer Explanation' : 'Sample Solution'}
+                            Sample Solution
                           </h3>
                           <div
                             className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2"
                             style={{ color: 'var(--clr-light-a0)', borderColor: 'var(--clr-success-a10)' }}
                           >
-                            {isMcq && revFeedback?.mcq_explanation ? (
-                              <LatexText text={revFeedback.mcq_explanation} />
-                            ) : (
-                              <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
-                            )}
+                            <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
                           </div>
                         </div>
                       )}
@@ -3368,37 +3420,6 @@ export default function HSCGeneratorPage() {
                           />
                         </div>
                       )}
-                      {question.question_type === 'multiple_choice' && (
-                        <div className="mt-6 space-y-3">
-                          {([
-                            { label: 'A', text: question.mcq_option_a },
-                            { label: 'B', text: question.mcq_option_b },
-                            { label: 'C', text: question.mcq_option_c },
-                            { label: 'D', text: question.mcq_option_d },
-                          ]).map((option) => (
-                            <div
-                              key={option.label}
-                              className="rounded-lg border px-4 py-3"
-                              style={{
-                                backgroundColor: 'var(--clr-surface-a0)',
-                                borderColor: 'var(--clr-surface-tonal-a20)',
-                              }}
-                            >
-                              <div className="flex items-start gap-3">
-                                <span
-                                  className="font-bold text-sm"
-                                  style={{ color: 'var(--clr-primary-a50)' }}
-                                >
-                                  {option.label}.
-                                </span>
-                                <div className="flex-1 font-serif" style={{ color: 'var(--clr-light-a0)' }}>
-                                  <LatexText text={option.text || ''} />
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </>
                 ) : (
@@ -3424,15 +3445,15 @@ export default function HSCGeneratorPage() {
                 >Answer Options</label>
                 <div className="space-y-3">
                   {([
-                    { label: 'A', text: question.mcq_option_a },
-                    { label: 'B', text: question.mcq_option_b },
-                    { label: 'C', text: question.mcq_option_c },
-                    { label: 'D', text: question.mcq_option_d },
+                    { label: 'A' as const, text: stripOuterBraces(question.mcq_option_a || ''), image: question.mcq_option_a_image || null },
+                    { label: 'B' as const, text: stripOuterBraces(question.mcq_option_b || ''), image: question.mcq_option_b_image || null },
+                    { label: 'C' as const, text: stripOuterBraces(question.mcq_option_c || ''), image: question.mcq_option_c_image || null },
+                    { label: 'D' as const, text: stripOuterBraces(question.mcq_option_d || ''), image: question.mcq_option_d_image || null },
                   ]).map((option) => (
                     <button
                       key={option.label}
                       type="button"
-                      onClick={() => setSelectedMcqAnswer(option.label as 'A' | 'B' | 'C' | 'D')}
+                      onClick={() => setSelectedMcqAnswer(option.label)}
                       className="w-full text-left rounded-xl border px-4 py-3 transition-all cursor-pointer"
                       style={{
                         backgroundColor: selectedMcqAnswer === option.label
@@ -3448,8 +3469,12 @@ export default function HSCGeneratorPage() {
                     >
                       <div className="flex items-start gap-3">
                         <span className="font-bold text-sm">{option.label}.</span>
-                        <div className="flex-1 font-serif">
-                          <LatexText text={option.text || ''} />
+                        <div className="flex-1 font-serif min-w-0">
+                          {option.image ? (
+                            <img src={option.image} alt={`Option ${option.label}`} className="max-h-32 max-w-full object-contain rounded" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }} />
+                          ) : (
+                            <LatexText text={option.text || ''} />
+                          )}
                         </div>
                       </div>
                     </button>
@@ -3514,6 +3539,14 @@ export default function HSCGeneratorPage() {
                   >
                     <Excalidraw
                       theme={'dark'}
+                      initialData={{
+                        appState: {
+                          currentItemStrokeWidth: 1,
+                        },
+                      }}
+                      excalidrawAPI={(api) => {
+                        excalidrawApiRef.current = api;
+                      }}
                       onChange={(
                         elements: readonly ExcalidrawElement[],
                         appState: ExcalidrawAppState,
@@ -3655,7 +3688,7 @@ export default function HSCGeneratorPage() {
                         <p className="font-semibold">Correct Answer: {question.mcq_correct_answer}</p>
                       )}
                       {question.mcq_explanation ? (
-                        <LatexText text={question.mcq_explanation} />
+                        <LatexText text={stripOuterBraces(question.mcq_explanation)} />
                       ) : (
                         <p className="text-sm italic" style={{ color: 'var(--clr-surface-a40)' }}>
                           Explanation not available.
@@ -3765,7 +3798,7 @@ export default function HSCGeneratorPage() {
                         >
                             {isMultipleChoiceReview ? (
                               feedback?.mcq_explanation ? (
-                                <LatexText text={feedback.mcq_explanation} />
+                                <LatexText text={stripOuterBraces(feedback.mcq_explanation)} />
                               ) : (
                                 <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>
                               )
@@ -3876,40 +3909,33 @@ export default function HSCGeneratorPage() {
                       </div>
                     )}
 
-                    {/* Sample Answer / Explanation Section */}
-                    <div 
-                      className="p-8 border-t space-y-4"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                      }}
-                    >
-                        <h3 
-                          className="font-bold text-lg flex items-center gap-2"
-                          style={{ color: 'var(--clr-success-a20)' }}
-                        >
-                            <BookOpen className="w-5 h-5" />
-                            {isMultipleChoiceReview ? 'Answer Explanation' : 'Sample Solution'}
-                        </h3>
-                        
-                        <div 
-                          className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2"
-                          style={{
-                            color: 'var(--clr-light-a0)',
-                            borderColor: 'var(--clr-success-a10)',
-                          }}
-                        >
-                            {isMultipleChoiceReview ? (
-                              feedback?.mcq_explanation ? (
-                                <LatexText text={feedback.mcq_explanation} />
-                              ) : (
-                                <p style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>
-                              )
-                            ) : (
-                              <LatexText text={feedback.sample_answer} />
-                            )}
-                        </div>
-                    </div>
+                    {/* Sample Solution Section (written questions only; MCQ explanation is shown above) */}
+                    {!isMultipleChoiceReview && (
+                      <div 
+                        className="p-8 border-t space-y-4"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a0)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                        }}
+                      >
+                          <h3 
+                            className="font-bold text-lg flex items-center gap-2"
+                            style={{ color: 'var(--clr-success-a20)' }}
+                          >
+                              <BookOpen className="w-5 h-5" />
+                              Sample Solution
+                          </h3>
+                          <div 
+                            className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2"
+                            style={{
+                              color: 'var(--clr-light-a0)',
+                              borderColor: 'var(--clr-success-a10)',
+                            }}
+                          >
+                            <LatexText text={feedback.sample_answer} />
+                          </div>
+                      </div>
+                    )}
 
                     {/* Submitted Answer Section */}
                     {submittedAnswer && (
@@ -4177,7 +4203,7 @@ export default function HSCGeneratorPage() {
                                       <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                         <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}><TrendingUp className="w-4 h-4" />{isMcq ? 'Answer Explanation' : 'AI Feedback'}</h4>
                                         <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a40)' }}>
-                                          {isMcq ? (revFeedback.mcq_explanation ? <LatexText text={revFeedback.mcq_explanation} /> : <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>) : revFeedback.ai_evaluation ? <LatexText text={revFeedback.ai_evaluation} /> : revFeedback._error ? <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed.</p> : <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>AI evaluation is being processed...</p>}
+                                          {isMcq ? (revFeedback.mcq_explanation ? <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} /> : <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>) : revFeedback.ai_evaluation ? <LatexText text={revFeedback.ai_evaluation} /> : revFeedback._error ? <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed.</p> : <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>AI evaluation is being processed...</p>}
                                         </div>
                                       </div>
                                     )}
@@ -4215,7 +4241,7 @@ export default function HSCGeneratorPage() {
                                       <div className="p-8 border-t space-y-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                         <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}><BookOpen className="w-5 h-5" />{isMcq ? 'Answer Explanation' : 'Sample Solution'}</h3>
                                         <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2" style={{ color: 'var(--clr-light-a0)', borderColor: 'var(--clr-success-a10)' }}>
-                                          {isMcq && revFeedback?.mcq_explanation ? <LatexText text={revFeedback.mcq_explanation} /> : <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />}
+                                          {isMcq && revFeedback?.mcq_explanation ? <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} /> : <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />}
                                         </div>
                                       </div>
                                     )}
@@ -4356,7 +4382,7 @@ export default function HSCGeneratorPage() {
                             className="space-y-2"
                             style={{ color: 'var(--clr-primary-a40)' }}
                           >
-                            <LatexText text={selectedAttempt.feedback.ai_evaluation || selectedAttempt.feedback.mcq_explanation} />
+                            <LatexText text={selectedAttempt.feedback.ai_evaluation || stripOuterBraces(selectedAttempt.feedback.mcq_explanation || '')} />
                           </div>
                         </div>
                       )}
@@ -4534,7 +4560,7 @@ export default function HSCGeneratorPage() {
                                   {(attempt.feedback?.ai_evaluation || attempt.feedback?.mcq_explanation) && (
                                     <div className="pt-2">
                                       <p className="text-xs text-zinc-500 line-clamp-1">
-                                        {(attempt.feedback.ai_evaluation || attempt.feedback.mcq_explanation).split('\n')[0]}
+                                        {stripOuterBraces(attempt.feedback.ai_evaluation || attempt.feedback.mcq_explanation || '').split('\n')[0]}
                                       </p>
                                     </div>
                                   )}
@@ -4644,8 +4670,13 @@ export default function HSCGeneratorPage() {
                       <div>
                         <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Year</label>
                         <select
+                          id="pdf-intake-year"
                           value={pdfYear}
-                          onChange={(e) => setPdfYear(e.target.value)}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            pdfYearRef.current = v;
+                            setPdfYear(v);
+                          }}
                           className="mt-2 w-full px-4 py-2 rounded-lg border"
                           style={{
                             backgroundColor: 'var(--clr-surface-a0)',
@@ -4677,7 +4708,7 @@ export default function HSCGeneratorPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam PDF</label>
+                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam PDF (optional)</label>
                       <input
                         type="file"
                         accept="application/pdf"
@@ -4697,7 +4728,7 @@ export default function HSCGeneratorPage() {
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria PDF</label>
+                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria PDF (optional)</label>
                       <input
                         type="file"
                         accept="application/pdf"
@@ -4710,6 +4741,31 @@ export default function HSCGeneratorPage() {
                         }}
                       />
                     </div>
+                  </div>
+                  <div className="mt-4">
+                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                      Exam Images (JPEG/PNG) – alternative to Exam PDF
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        setExamImageFiles(files);
+                      }}
+                      className="mt-2 w-full px-4 py-2 rounded-lg border"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a0)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                        color: 'var(--clr-primary-a50)',
+                      }}
+                    />
+                    {examImageFiles.length > 0 && (
+                      <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
+                        Selected {examImageFiles.length} image{examImageFiles.length > 1 ? 's' : ''}.
+                      </p>
+                    )}
 
                     <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
                       <input
@@ -4925,9 +4981,11 @@ export default function HSCGeneratorPage() {
                         color: 'var(--clr-primary-a50)',
                       }}
                     >
-                      {getTopics(newQuestion.grade, newQuestion.subject).map((topic) => (
-                        <option key={topic} value={topic}>{topic}</option>
-                      ))}
+                      {(() => {
+                        const current = newQuestion.topic?.trim();
+                        const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
+                        return options.map((topic) => <option key={topic} value={topic}>{topic}</option>);
+                      })()}
                     </select>
                   </div>
 
@@ -4965,62 +5023,30 @@ export default function HSCGeneratorPage() {
 
                   {newQuestion.questionType === 'multiple_choice' ? (
                     <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Option A</label>
-                          <input
-                            type="text"
-                            value={newQuestion.mcqOptionA}
-                            onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionA: e.target.value })}
-                            className="w-full px-4 py-2 rounded-lg border"
-                            style={{
-                              backgroundColor: 'var(--clr-surface-a0)',
-                              borderColor: 'var(--clr-surface-tonal-a20)',
-                              color: 'var(--clr-primary-a50)',
-                            }}
-                          />
+                      <div className="space-y-4">
+                        <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option A</label>
+                          <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionA} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionA: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL (shows image instead of text)</label>
+                          <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionAImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionAImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Option B</label>
-                          <input
-                            type="text"
-                            value={newQuestion.mcqOptionB}
-                            onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionB: e.target.value })}
-                            className="w-full px-4 py-2 rounded-lg border"
-                            style={{
-                              backgroundColor: 'var(--clr-surface-a0)',
-                              borderColor: 'var(--clr-surface-tonal-a20)',
-                              color: 'var(--clr-primary-a50)',
-                            }}
-                          />
+                        <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option B</label>
+                          <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionB} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionB: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                          <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionBImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionBImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Option C</label>
-                          <input
-                            type="text"
-                            value={newQuestion.mcqOptionC}
-                            onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionC: e.target.value })}
-                            className="w-full px-4 py-2 rounded-lg border"
-                            style={{
-                              backgroundColor: 'var(--clr-surface-a0)',
-                              borderColor: 'var(--clr-surface-tonal-a20)',
-                              color: 'var(--clr-primary-a50)',
-                            }}
-                          />
+                        <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option C</label>
+                          <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionC} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionC: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                          <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionCImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionCImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Option D</label>
-                          <input
-                            type="text"
-                            value={newQuestion.mcqOptionD}
-                            onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionD: e.target.value })}
-                            className="w-full px-4 py-2 rounded-lg border"
-                            style={{
-                              backgroundColor: 'var(--clr-surface-a0)',
-                              borderColor: 'var(--clr-surface-tonal-a20)',
-                              color: 'var(--clr-primary-a50)',
-                            }}
-                          />
+                        <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option D</label>
+                          <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionD} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionD: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                          <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionDImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionDImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
                         </div>
                       </div>
 
@@ -5474,6 +5500,40 @@ export default function HSCGeneratorPage() {
                                 )}
                               </div>
 
+                              {manageQuestionDraft.question_type === 'multiple_choice' && (
+                                <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Answer Options</h4>
+                                  <div className="space-y-3">
+                                    {[
+                                      { label: 'A', text: stripOuterBraces(manageQuestionDraft.mcq_option_a || ''), image: manageQuestionDraft.mcq_option_a_image || null },
+                                      { label: 'B', text: stripOuterBraces(manageQuestionDraft.mcq_option_b || ''), image: manageQuestionDraft.mcq_option_b_image || null },
+                                      { label: 'C', text: stripOuterBraces(manageQuestionDraft.mcq_option_c || ''), image: manageQuestionDraft.mcq_option_c_image || null },
+                                      { label: 'D', text: stripOuterBraces(manageQuestionDraft.mcq_option_d || ''), image: manageQuestionDraft.mcq_option_d_image || null },
+                                    ].map((opt) => (
+                                      <div key={opt.label} className="flex items-start gap-3 rounded-lg border px-4 py-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <span className="font-bold text-sm" style={{ color: 'var(--clr-primary-a50)' }}>{opt.label}.</span>
+                                        <div className="flex-1 font-serif min-w-0" style={{ color: 'var(--clr-light-a0)' }}>
+                                          {opt.image ? (
+                                            <img src={opt.image} alt={`Option ${opt.label}`} className="max-h-28 max-w-full object-contain rounded" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }} />
+                                          ) : (
+                                            <LatexText text={opt.text || ''} />
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                    {manageQuestionDraft.mcq_correct_answer && (
+                                      <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>Correct: <strong>{manageQuestionDraft.mcq_correct_answer}</strong></p>
+                                    )}
+                                    {manageQuestionDraft.mcq_explanation && (
+                                      <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <h5 className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Explanation</h5>
+                                        <LatexText text={stripOuterBraces(manageQuestionDraft.mcq_explanation)} />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
                               {manageQuestionDraft.marking_criteria && (
                                 <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                   <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marking Criteria</h4>
@@ -5519,7 +5579,24 @@ export default function HSCGeneratorPage() {
 
                               {manageQuestionEditMode && (
                                 <div className="mt-4">
-                                  <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Question (LaTeX)</label>
+                                  <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Topic (any year level)</label>
+                                  <select
+                                    value={manageQuestionDraft.topic || ''}
+                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, topic: e.target.value })}
+                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  >
+                                    {(() => {
+                                      const current = manageQuestionDraft.topic?.trim();
+                                      const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
+                                      return options.map((t) => <option key={t} value={t}>{t}</option>);
+                                    })()}
+                                  </select>
+                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Question (LaTeX)</label>
                                   <textarea
                                     value={manageQuestionDraft.question_text || ''}
                                     onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, question_text: e.target.value })}
@@ -5591,6 +5668,36 @@ export default function HSCGeneratorPage() {
                                     <option value="large">Large</option>
                                     <option value="missing">Missing</option>
                                   </select>
+
+                                  {manageQuestionDraft.question_type === 'multiple_choice' && (
+                                    <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                      <h5 className="text-sm font-bold mb-3" style={{ color: 'var(--clr-surface-a50)' }}>MCQ Options (text or image URL)</h5>
+                                      <div className="space-y-4">
+                                        {[
+                                          { key: 'A', text: 'mcq_option_a', image: 'mcq_option_a_image' },
+                                          { key: 'B', text: 'mcq_option_b', image: 'mcq_option_b_image' },
+                                          { key: 'C', text: 'mcq_option_c', image: 'mcq_option_c_image' },
+                                          { key: 'D', text: 'mcq_option_d', image: 'mcq_option_d_image' },
+                                        ].map(({ key, text, image }) => (
+                                          <div key={key} className="p-3 rounded border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                                            <label className="block text-xs font-medium mb-1">Option {key}</label>
+                                            <input type="text" placeholder="Text (LaTeX)" value={manageQuestionDraft[text] || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, [text]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                            <input type="url" placeholder="Or image URL" value={manageQuestionDraft[image] || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, [image]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                          </div>
+                                        ))}
+                                        <div>
+                                          <label className="block text-xs font-medium mb-1">Correct Answer</label>
+                                          <select value={manageQuestionDraft.mcq_correct_answer || 'A'} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, mcq_correct_answer: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}>
+                                            <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium mb-1">Explanation (LaTeX)</label>
+                                          <textarea value={manageQuestionDraft.mcq_explanation || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, mcq_explanation: e.target.value })} rows={3} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -5716,9 +5823,11 @@ export default function HSCGeneratorPage() {
                     color: 'var(--clr-primary-a50)',
                   }}
                 >
-                  {getTopics(editQuestion.grade, editQuestion.subject).map((topic) => (
-                    <option key={topic} value={topic}>{topic}</option>
-                  ))}
+                  {(() => {
+                    const current = editQuestion.topic?.trim();
+                    const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
+                    return options.map((topic) => <option key={topic} value={topic}>{topic}</option>);
+                  })()}
                 </select>
               </div>
               <div>
@@ -5770,62 +5879,30 @@ export default function HSCGeneratorPage() {
 
             {editQuestion.questionType === 'multiple_choice' ? (
               <>
-                <div className="mt-4 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Option A</label>
-                    <input
-                      type="text"
-                      value={editQuestion.mcqOptionA}
-                      onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionA: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
+                <div className="mt-4 space-y-4">
+                  <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                    <label className="block text-sm font-medium mb-1">Option A</label>
+                    <input type="text" placeholder="Text (LaTeX)" value={editQuestion.mcqOptionA} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionA: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL (shows image instead of text)</label>
+                    <input type="url" placeholder="https://... or data:image/..." value={editQuestion.mcqOptionAImage} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionAImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Option B</label>
-                    <input
-                      type="text"
-                      value={editQuestion.mcqOptionB}
-                      onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionB: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
+                  <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                    <label className="block text-sm font-medium mb-1">Option B</label>
+                    <input type="text" placeholder="Text (LaTeX)" value={editQuestion.mcqOptionB} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionB: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                    <input type="url" placeholder="https://... or data:image/..." value={editQuestion.mcqOptionBImage} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionBImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Option C</label>
-                    <input
-                      type="text"
-                      value={editQuestion.mcqOptionC}
-                      onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionC: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
+                  <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                    <label className="block text-sm font-medium mb-1">Option C</label>
+                    <input type="text" placeholder="Text (LaTeX)" value={editQuestion.mcqOptionC} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionC: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                    <input type="url" placeholder="https://... or data:image/..." value={editQuestion.mcqOptionCImage} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionCImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Option D</label>
-                    <input
-                      type="text"
-                      value={editQuestion.mcqOptionD}
-                      onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionD: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
+                  <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                    <label className="block text-sm font-medium mb-1">Option D</label>
+                    <input type="text" placeholder="Text (LaTeX)" value={editQuestion.mcqOptionD} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionD: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                    <input type="url" placeholder="https://... or data:image/..." value={editQuestion.mcqOptionDImage} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionDImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
                   </div>
                 </div>
 

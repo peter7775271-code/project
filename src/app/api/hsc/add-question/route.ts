@@ -21,6 +21,10 @@ export async function POST(request: Request) {
       mcqOptionB,
       mcqOptionC,
       mcqOptionD,
+      mcqOptionAImage,
+      mcqOptionBImage,
+      mcqOptionCImage,
+      mcqOptionDImage,
       mcqCorrectAnswer,
       mcqExplanation,
     } = body;
@@ -36,9 +40,17 @@ export async function POST(request: Request) {
     const resolvedQuestionType = questionType || 'written';
 
     if (resolvedQuestionType === 'multiple_choice') {
-      if (!mcqOptionA || !mcqOptionB || !mcqOptionC || !mcqOptionD || !mcqCorrectAnswer || !mcqExplanation) {
+      const hasOption = (t: string | undefined, img: string | undefined) => (t && t.trim()) || (img && img.trim());
+      if (
+        !hasOption(mcqOptionA, mcqOptionAImage) ||
+        !hasOption(mcqOptionB, mcqOptionBImage) ||
+        !hasOption(mcqOptionC, mcqOptionCImage) ||
+        !hasOption(mcqOptionD, mcqOptionDImage) ||
+        !mcqCorrectAnswer ||
+        !mcqExplanation
+      ) {
         return Response.json(
-          { error: 'Missing required multiple choice fields' },
+          { error: 'Each MCQ option must have either text or image; correct answer and explanation required' },
           { status: 400 }
         );
       }
@@ -59,10 +71,14 @@ export async function POST(request: Request) {
           question_type: resolvedQuestionType,
           marking_criteria: resolvedQuestionType === 'multiple_choice' ? null : (markingCriteria || null),
           sample_answer: resolvedQuestionType === 'multiple_choice' ? null : (sampleAnswer || null),
-          mcq_option_a: resolvedQuestionType === 'multiple_choice' ? mcqOptionA : null,
-          mcq_option_b: resolvedQuestionType === 'multiple_choice' ? mcqOptionB : null,
-          mcq_option_c: resolvedQuestionType === 'multiple_choice' ? mcqOptionC : null,
-          mcq_option_d: resolvedQuestionType === 'multiple_choice' ? mcqOptionD : null,
+          mcq_option_a: resolvedQuestionType === 'multiple_choice' ? (mcqOptionA || null) : null,
+          mcq_option_b: resolvedQuestionType === 'multiple_choice' ? (mcqOptionB || null) : null,
+          mcq_option_c: resolvedQuestionType === 'multiple_choice' ? (mcqOptionC || null) : null,
+          mcq_option_d: resolvedQuestionType === 'multiple_choice' ? (mcqOptionD || null) : null,
+          mcq_option_a_image: resolvedQuestionType === 'multiple_choice' ? (mcqOptionAImage || null) : null,
+          mcq_option_b_image: resolvedQuestionType === 'multiple_choice' ? (mcqOptionBImage || null) : null,
+          mcq_option_c_image: resolvedQuestionType === 'multiple_choice' ? (mcqOptionCImage || null) : null,
+          mcq_option_d_image: resolvedQuestionType === 'multiple_choice' ? (mcqOptionDImage || null) : null,
           mcq_correct_answer: resolvedQuestionType === 'multiple_choice' ? String(mcqCorrectAnswer).toUpperCase() : null,
           mcq_explanation: resolvedQuestionType === 'multiple_choice' ? mcqExplanation : null,
           graph_image_data: graphImageData || null,

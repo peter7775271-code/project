@@ -33,6 +33,10 @@ export async function GET(request: NextRequest) {
           mcq_option_b,
           mcq_option_c,
           mcq_option_d,
+          mcq_option_a_image,
+          mcq_option_b_image,
+          mcq_option_c_image,
+          mcq_option_d_image,
           mcq_correct_answer,
           mcq_explanation
         )
