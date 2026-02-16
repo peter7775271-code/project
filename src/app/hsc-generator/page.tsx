@@ -56,6 +56,64 @@ function stripOuterBraces(s: string): string {
   return s;
 }
 
+// Placeholder for merged question part dividers (rendered as a real page element)
+const PART_DIVIDER_REGEX = /\[\[PART_DIVIDER:([^\]]+)\]\]/g;
+function formatPartDividerPlaceholder(label: string) {
+  return `[[PART_DIVIDER:${label.replace(/\]\]/g, '')}]]`;
+}
+/** Extract just the roman part for display, e.g. "13 (d)(ii)" -> "(ii)", "13 (d)(i)" -> "(i)". */
+function getRomanPart(questionNumber: string | null | undefined): string {
+  const raw = String(questionNumber ?? '').trim();
+  const m = raw.match(/\(((?:i|ii|iii|iv|v|vi|vii|viii|ix|x))\)\s*$/i);
+  return m ? `(${m[1].toLowerCase()})` : '';
+}
+
+// Renders question text that may contain [[PART_DIVIDER:label]] placeholders; label is inline with the following content
+function QuestionTextWithDividers({ text }: { text: string }) {
+  const blocks = useMemo(() => {
+    const tokens = text.split(/(\[\[PART_DIVIDER:[^\]]+\]\])/g);
+    const result: Array<{ label: string; content: string }> = [];
+    for (let i = 1; i < tokens.length; i += 2) {
+      const labelMatch = tokens[i]?.match(/^\[\[PART_DIVIDER:([^\]]*)\]\]$/);
+      const label = labelMatch ? labelMatch[1].trim() || 'Part' : 'Part';
+      const content = tokens[i + 1]?.trim() ?? '';
+      if (label || content) result.push({ label, content });
+    }
+    return result;
+  }, [text]);
+
+  if (blocks.length === 0) {
+    return <LatexText text={text} />;
+  }
+
+  return (
+    <div className="question-text-with-dividers space-y-4">
+      {blocks.map((block, i) => (
+        <div key={i}>
+          {i > 0 && (
+            <hr className="my-4 border-t-2" style={{ borderColor: 'var(--clr-surface-tonal-a30)' }} />
+          )}
+          <div className="flex gap-3 items-baseline">
+            <span
+              className="shrink-0 px-2 py-0.5 rounded text-sm font-semibold"
+              style={{
+                backgroundColor: 'var(--clr-surface-a20)',
+                color: 'var(--clr-primary-a50)',
+                border: '1px solid var(--clr-surface-tonal-a30)',
+              }}
+            >
+              {block.label}
+            </span>
+            <div className="flex-1 min-w-0">
+              <LatexText text={block.content} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // LaTeX and TikZ renderer component
 function LatexText({ text }: { text: string }) {
   const segments = useMemo(() => {
@@ -353,8 +411,148 @@ function HtmlSegment({ html }: { html: string }) {
         return input.replace(/\\textbf\{([^}]*)\}/g, '<strong>$1</strong>');
       };
 
-      const processedWithTables = applyTextFormatting(
-        convertItemizeToHtml(convertEnumerateToHtml(convertTabularToHtml(normalizeSpacedLetters(html))))
+      // Wrap standalone \text{...} in $ $ so KaTeX can render it ( \text is math-mode only )
+      const wrapStandaloneText = (input: string) => {
+        let out = '';
+        let i = 0;
+        const len = input.length;
+        while (i < len) {
+          const rest = input.slice(i);
+          const textMatch = rest.match(/^\s*\\text\s*\{/);
+          if (textMatch && !rest.match(/^\s*\$/)) {
+            const matchLen = textMatch[0].length;
+            const start = i + matchLen;
+            let depth = 1;
+            let j = start;
+            while (j < len && depth > 0) {
+              if (input[j] === '\\' && input[j + 1] === '{') {
+                j += 2;
+                depth++;
+                continue;
+              }
+              if (input[j] === '\\' && input[j + 1] === '}') {
+                j += 2;
+                depth--;
+                continue;
+              }
+              if (input[j] === '{') {
+                j++;
+                depth++;
+                continue;
+              }
+              if (input[j] === '}') {
+                j++;
+                depth--;
+                continue;
+              }
+              j++;
+            }
+            const leadingWs = input.slice(i, i + matchLen).match(/^\s*/)?.[0] ?? '';
+            if (leadingWs) out += leadingWs;
+            out += '$\\text{';
+            i = i + matchLen;
+            const end = j - 1;
+            out += input.slice(i, end);
+            out += '}$';
+            i = end + 1;
+            continue;
+          }
+          out += input[i];
+          i++;
+        }
+        return out;
+      };
+
+      // Wrap standalone \vec{...} in $ $ so KaTeX can render it
+      const wrapStandaloneVec = (input: string) => {
+        let out = '';
+        let i = 0;
+        const len = input.length;
+        while (i < len) {
+          const rest = input.slice(i);
+          const vecMatch = rest.match(/^\s*\\vec\s*\{/);
+          if (vecMatch && !rest.match(/^\s*\$/)) {
+            const matchLen = vecMatch[0].length;
+            const start = i + matchLen;
+            let depth = 1;
+            let j = start;
+            while (j < len && depth > 0) {
+              if (input[j] === '\\' && input[j + 1] === '{') {
+                j += 2;
+                depth++;
+                continue;
+              }
+              if (input[j] === '\\' && input[j + 1] === '}') {
+                j += 2;
+                depth--;
+                continue;
+              }
+              if (input[j] === '{') {
+                j++;
+                depth++;
+                continue;
+              }
+              if (input[j] === '}') {
+                j++;
+                depth--;
+                continue;
+              }
+              j++;
+            }
+            const leadingWs = input.slice(i, i + matchLen).match(/^\s*/)?.[0] ?? '';
+            if (leadingWs) out += leadingWs;
+            out += '$\\vec{';
+            i = i + matchLen;
+            const end = j - 1;
+            out += input.slice(i, end);
+            out += '}$';
+            i = end + 1;
+            continue;
+          }
+          out += input[i];
+          i++;
+        }
+        return out;
+      };
+
+      // Convert \[ ... \] to $$ ... $$ first so display math never relies on backslash-bracket (avoids parsing issues)
+      const normalizeDisplayMath = (input: string) => {
+        return input.replace(/\\\[([\s\S]*?)\\\]/g, (_, inner) => {
+          const collapsed = inner.replace(/\s+/g, ' ').trim();
+          return `$$${collapsed}$$`;
+        });
+      };
+
+      // Wrap standalone \begin{pmatrix}...\end{pmatrix} (and bmatrix, etc.) in $ $ only when NOT already inside \( \)
+      const wrapStandaloneMatrix = (input: string) => {
+        const MATH_PLACEHOLDER = '\u200B\u200BMATH_BLOCK\u200B\u200B';
+        const blocks: string[] = [];
+        let protectedInput = input.replace(/\\\([\s\S]*?\\\)/g, (m) => {
+          blocks.push(m);
+          return `${MATH_PLACEHOLDER}${blocks.length - 1}\u200B\u200B`;
+        });
+        const envNames = ['pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'matrix', 'array'];
+        let result = protectedInput;
+        for (const env of envNames) {
+          const re = new RegExp(
+            `(^|[^$\\\\])\\\\begin\\{${env}\\}([\\s\\S]*?)\\\\end\\{${env}\\}`,
+            'g'
+          );
+          result = result.replace(re, (_, before, body) => {
+            if (before === '$') return _ + `\\begin{${env}}${body}\\end{${env}}`;
+            return `${before}$\\begin{${env}}${body}\\end{${env}}$`;
+          });
+        }
+        blocks.forEach((block, i) => {
+          result = result.replace(`${MATH_PLACEHOLDER}${i}\u200B\u200B`, block);
+        });
+        return result;
+      };
+
+      const processedWithTables = wrapStandaloneMatrix(
+        normalizeDisplayMath(wrapStandaloneVec(wrapStandaloneText(applyTextFormatting(
+          convertItemizeToHtml(convertEnumerateToHtml(convertTabularToHtml(normalizeSpacedLetters(html))))
+        ))))
       );
 
       // Extract list/table blocks BEFORE math split so \[...\] inside list items doesn't break HTML
@@ -374,12 +572,18 @@ function HtmlSegment({ html }: { html: string }) {
         return `${HTML_BLOCK_PREFIX}${htmlBlocks.length - 1}\u200B\u200B`;
       });
 
+      // Convert short display math $$...$$ to inline $...$ so variable definitions don't each get a full line
+      preProcessed = preProcessed.replace(/\$\$([\s\S]*?)\$\$/g, (_, inner) => {
+        const trimmed = inner.trim();
+        const isShort = trimmed.length <= 120 && !/\n/.test(trimmed) && !/\\begin\{/.test(trimmed);
+        return isShort ? `$${trimmed}$` : `$$${trimmed}$$`;
+      });
+
       const normalizedMath = preProcessed
         .replace(/\\\(/g, '$')
         .replace(/\\\)/g, '$')
-        .replace(/(\$\$[\s\S]*?\$\$)/g, '\n$1\n')
-        .replace(/(\\\[[\s\S]*?\\\])/g, '\n$1\n');
-      const parts = normalizedMath.split(/((?<!\\)\$\$[\s\S]*?(?<!\\)\$\$|\\\[[\s\S]*?\\\]|(?<!\\)\$[^\$]*?(?<!\\)\$)/g);
+        .replace(/(\$\$[\s\S]*?\$\$)/g, '\n$1\n');
+      const parts = normalizedMath.split(/((?<!\\)\$\$[\s\S]*?(?<!\\)\$\$|(?<!\\)\$[^\$]*?(?<!\\)\$)/g);
       const wrapBareLatexCommands = (value: string) => {
         return value.replace(/\\+(leq|geq|le|ge|neq|approx|times)\b/g, '$\\$1$');
       };
@@ -805,6 +1009,74 @@ export default function HSCGeneratorPage() {
     const romanMap: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
     const subpart = roman ? (romanMap[roman] || 0) : 0;
     return { number, part, subpart, raw };
+  };
+
+  /** Display base for grouping: e.g. "11 (a)(i)" and "11 (a)(ii)" both yield "11 (a)". */
+  const getQuestionDisplayBase = (qNumber: string | null | undefined): string => {
+    const raw = String(qNumber ?? '').trim();
+    const withRoman = raw.match(/^(\d+)\s*\(?([a-z])\)?(?:\s*\(?(?:i|ii|iii|iv|v|vi|vii|viii|ix|x)\)?)?$/i);
+    if (withRoman) return `${withRoman[1]} (${withRoman[2]})`;
+    const letterOnly = raw.match(/^(\d+)\s*\(?([a-z])\)?/i);
+    if (letterOnly) return `${letterOnly[1]} (${letterOnly[2]})`;
+    const numOnly = raw.match(/^(\d+)/);
+    if (numOnly) return numOnly[1];
+    return raw;
+  };
+
+  /** Contiguous group of questions sharing the same display base that contains the given index. */
+  const getDisplayGroupAt = (questions: Question[], index: number): { group: Question[]; startIndex: number; endIndex: number } => {
+    if (index < 0 || index >= questions.length) {
+      return { group: [], startIndex: index, endIndex: index };
+    }
+    const base = getQuestionDisplayBase(questions[index].question_number);
+    let startIndex = index;
+    while (startIndex > 0 && getQuestionDisplayBase(questions[startIndex - 1].question_number) === base) {
+      startIndex--;
+    }
+    let endIndex = index + 1;
+    while (endIndex < questions.length && getQuestionDisplayBase(questions[endIndex].question_number) === base) {
+      endIndex++;
+    }
+    return {
+      group: questions.slice(startIndex, endIndex),
+      startIndex,
+      endIndex,
+    };
+  };
+
+  /** Merge a group of questions (e.g. 11(a)(i), 11(a)(ii)) into one display question with dividers. */
+  const mergeGroupForDisplay = (group: Question[]): Question => {
+    if (group.length === 0) {
+      return null as unknown as Question;
+    }
+    if (group.length === 1) {
+      return group[0];
+    }
+    const first = group[0];
+    const displayBase = getQuestionDisplayBase(first.question_number);
+    const questionText = group
+      .map((q) => {
+        const roman = getRomanPart(q.question_number);
+        const label = roman || (q.question_number ?? 'Part');
+        return `${formatPartDividerPlaceholder(label)}\n\n${q.question_text}`;
+      })
+      .join('');
+    const markingCriteria = group
+      .map((q, i) => (i === 0 ? (q.marking_criteria ?? '') : `\n\n--- ${q.question_number ?? 'Part'} ---\n\n${q.marking_criteria ?? ''}`))
+      .join('');
+    const sampleAnswer = group
+      .map((q, i) => (i === 0 ? (q.sample_answer ?? '') : `\n\n--- ${q.question_number ?? 'Part'} ---\n\n${q.sample_answer ?? ''}`))
+      .join('');
+    const totalMarks = group.reduce((sum, q) => sum + (q.marks ?? 0), 0);
+    return {
+      ...first,
+      id: first.id,
+      question_number: displayBase,
+      question_text: questionText,
+      marking_criteria: markingCriteria || first.marking_criteria,
+      sample_answer: sampleAnswer || first.sample_answer,
+      marks: totalMarks,
+    };
   };
 
   const manageFilterOptions = useMemo(() => {
@@ -1969,7 +2241,7 @@ export default function HSCGeneratorPage() {
   const submitAnswer = async (endExamMode?: boolean) => {
     if (!question) return;
 
-    const isLastQuestion = endExamMode ? false : (isPaperMode && paperIndex >= paperQuestions.length - 1);
+    const isLastQuestion = endExamMode ? false : (isPaperMode && paperQuestions.length > 0 && getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length);
 
     if (question.question_type === 'multiple_choice') {
       if (!selectedMcqAnswer) {
@@ -2002,7 +2274,8 @@ export default function HSCGeneratorPage() {
         if (isLastQuestion) {
           setShowFinishExamPrompt(true);
         } else {
-          goToPaperQuestion(paperIndex + 1);
+          const { endIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
+          goToPaperQuestion(endIndex);
         }
         return;
       }
@@ -2086,7 +2359,8 @@ export default function HSCGeneratorPage() {
         if (isLastQuestion) {
           setShowFinishExamPrompt(true);
         } else {
-          goToPaperQuestion(paperIndex + 1);
+          const { endIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
+          goToPaperQuestion(endIndex);
         }
       }
       // Mark in background and update examAttempts when done
@@ -2394,16 +2668,19 @@ export default function HSCGeneratorPage() {
     }
 
     setActivePaper(paper);
-    setPaperQuestions(matching as Question[]);
+    const questions = matching as Question[];
+    setPaperQuestions(questions);
     setPaperIndex(0);
     setViewMode('paper');
-    resetForQuestion(matching[0] as Question);
+    const initialGroup = getDisplayGroupAt(questions, 0);
+    resetForQuestion(mergeGroupForDisplay(initialGroup.group));
   };
 
   const goToPaperQuestion = (nextIndex: number) => {
     if (nextIndex < 0 || nextIndex >= paperQuestions.length) return;
     setPaperIndex(nextIndex);
-    resetForQuestion(paperQuestions[nextIndex]);
+    const { group } = getDisplayGroupAt(paperQuestions, nextIndex);
+    resetForQuestion(mergeGroupForDisplay(group));
   };
 
   // Initial load
@@ -2888,7 +3165,7 @@ export default function HSCGeneratorPage() {
                       {/* Question */}
                       <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
                         <h4 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
-                        <div className="font-serif" style={{ color: 'var(--clr-primary-a50)' }}><LatexText text={revQuestion?.question_text || ''} /></div>
+                        <div className="font-serif" style={{ color: 'var(--clr-primary-a50)' }}><QuestionTextWithDividers text={revQuestion?.question_text || ''} /></div>
                       </div>
 
                       {/* AI Feedback / MCQ Explanation */}
@@ -3256,7 +3533,10 @@ export default function HSCGeneratorPage() {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <button
-                    onClick={() => goToPaperQuestion(paperIndex - 1)}
+                    onClick={() => {
+                      const { startIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
+                      goToPaperQuestion(startIndex - 1);
+                    }}
                     disabled={paperIndex === 0}
                     className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     style={{
@@ -3266,8 +3546,11 @@ export default function HSCGeneratorPage() {
                     }}
                   >Previous Question</button>
                   <button
-                    onClick={() => goToPaperQuestion(paperIndex + 1)}
-                    disabled={paperIndex >= paperQuestions.length - 1}
+                    onClick={() => {
+                      const { endIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
+                      goToPaperQuestion(endIndex);
+                    }}
+                    disabled={paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length}
                     className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     style={{
                       backgroundColor: 'var(--clr-primary-a0)',
@@ -3409,7 +3692,7 @@ export default function HSCGeneratorPage() {
                       className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap"
                       style={{ color: 'var(--clr-light-a0)' }}
                     >
-                      <LatexText text={question.question_text} />
+                      <QuestionTextWithDividers text={question.question_text} />
                       {question.graph_image_data && (
                         <div className="my-4">
                           <img
@@ -3975,8 +4258,8 @@ export default function HSCGeneratorPage() {
                       style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
                     >
                         <button
-                            onClick={() => (isPaperMode ? goToPaperQuestion(paperIndex + 1) : generateQuestion())}
-                            disabled={isPaperMode && paperIndex >= paperQuestions.length - 1}
+                            onClick={() => (isPaperMode ? goToPaperQuestion(getDisplayGroupAt(paperQuestions, paperIndex).endIndex) : generateQuestion())}
+                            disabled={isPaperMode && (paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length)}
                             className="flex-1 px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                             style={{
                               backgroundColor: 'var(--clr-primary-a0)',
@@ -4197,7 +4480,7 @@ export default function HSCGeneratorPage() {
                                     </div>
                                     <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                       <h4 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
-                                      <div className="font-serif" style={{ color: 'var(--clr-primary-a50)' }}><LatexText text={revQuestion?.question_text || ''} /></div>
+                                      <div className="font-serif" style={{ color: 'var(--clr-primary-a50)' }}><QuestionTextWithDividers text={revQuestion?.question_text || ''} /></div>
                                     </div>
                                     {revFeedback && (
                                       <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
@@ -5487,7 +5770,7 @@ export default function HSCGeneratorPage() {
                               </div>
 
                               <div className="text-lg leading-relaxed space-y-4 font-serif" style={{ color: 'var(--clr-light-a0)' }}>
-                                <LatexText text={manageQuestionDraft.question_text || ''} />
+                                <QuestionTextWithDividers text={manageQuestionDraft.question_text || ''} />
                                 {manageQuestionDraft.graph_image_data && (
                                   <div className="my-4">
                                     <img

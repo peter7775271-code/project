@@ -80,9 +80,10 @@ const buildPdfPrompt = (topics: ReadonlyArray<string>) => `I have provided a LAT
 Your task is to convert every exam question (including multiple-choice and written-response questions) into clean, well-structured LaTeX code and provide a fully worked sample solution for each question.
 
 CRITICAL — Question splitting (follow exactly):
-- Split questions ONLY at lettered parts: (a), (b), (c), (d), etc. Each of these gets its own QUESTION_NUMBER block (e.g. 11 (a), 11 (b), 11 (c) are three separate questions).
-- NEVER create a separate question for Roman numerals. (i), (ii), (iii), (iv), (v), (vi), (vii), (viii), (ix), (x) must NEVER start a new QUESTION_NUMBER block. All content under e.g. "11 (a)" — including (i), (ii), (iii) — must stay in one question.
-- Do NOT split by (i), (ii), (iii). Do NOT split by I, II, III. Split ONLY by (a), (b), (c), (d).
+- Split at BOTH lettered parts and Roman numeral subparts. Each of these gets its own QUESTION_NUMBER block.
+- Lettered parts: (a), (b), (c), (d), etc. — e.g. 11 (a), 11 (b) are separate questions.
+- Roman numeral subparts: (i), (ii), (iii), (iv), (v), (vi), (vii), (viii), (ix), (x) — e.g. 11 (a) (i) and 11 (a) (ii) are two separate questions. Use QUESTION_NUMBER like "11 (a)(i)" and "11 (a)(ii)".
+- So "Question 11 (a)" with parts (i) and (ii) becomes two blocks: QUESTION_NUMBER 11 (a)(i) and QUESTION_NUMBER 11 (a)(ii), each with its own QUESTION_CONTENT and SAMPLE_ANSWER.
 
 Image flag rule: If a question explicitly refers to or depends on an image/graph/diagram (e.g. "Use the diagram above"), set HAS_IMAGE to TRUE. Otherwise set HAS_IMAGE to FALSE. Do NOT output LaTeX for diagrams, crop images, or describe figures; images will be added manually later.
 
@@ -117,30 +118,27 @@ MCQ_OPTION_D {text for option D in LaTeX}
 MCQ_CORRECT_ANSWER {A|B|C|D}
 MCQ_EXPLANATION {detailed LaTeX explanation: why the correct option is right, why the others are wrong; format in clear steps with blank lines between ideas so a student can follow easily}
 
-RENDER-SAFE LaTeX rules (strict):
-- Inline math must use $...$ only. Do NOT use \( \). 
-- Display math must use $$...$$ only. Do NOT use \[ \]. 
-- Do NOT use \begin{align} or \begin{align*}. Use $$\begin{aligned}...\end{aligned}$$ instead.
-- Escape currency and percent as \\\$ and \\\% in plain text. 
-- Never output stray or unmatched $ symbols. 
-- Never insert line breaks inside words; keep sentences on one line. 
-- Tables must be only \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}. Do not use other environments. 
+RENDER-SAFE LaTeX rules (follow so output renders correctly):
+- Inline math: use $...$ for short expressions in prose (e.g. $x = 5$, $\\frac{1}{2}$). You may also use \\( ... \\).
+- Display math (equation on its own line): use $$...$$ or \\[ ... \\]. Both are supported. Use \\[ ... \\] when you want an equation or expression to appear on a new line without extra spacing issues.
+- For multi-line aligned equations use \\[ \\begin{aligned} ... \\end{aligned} \\] or $$\\begin{aligned}...\\end{aligned}$$. Do NOT use \\begin{align} or \\begin{align*}.
+- Escape currency and percent in plain text as \\$ and \\%.
+- Never output stray or unmatched $ or unmatched \\( \\) or \\[ \\].
+- Do not insert line breaks in the middle of words; keep each sentence on one line.
+- Tables: use only \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}.
 - Use \\text{...} for words inside math.
 
 READABILITY RULES:
-Add newlines where appropriate to improve readability.
-Include one blank line between the header section and QUESTION_CONTENT.
-If a question contains internal parts such as (i) or (ii), separate them with blank lines but keep them within the same question.
-Leave one blank line between each completed question block.
+Add newlines where appropriate. Include one blank line between the header section and QUESTION_CONTENT and one blank line between each completed question block.
 
 SAMPLE ANSWER REQUIREMENTS (format so a student can follow easily):
 - Show every step of the working; do not skip steps. A student should be able to follow the logic from start to finish.
 - Put each major step on its own line or in a small block. Use blank lines between distinct steps so the solution is not a wall of text.
 - For algebraic manipulation: show one transformation per line (e.g. one line per "add 2 to both sides") where it helps clarity.
-- For multi-part questions (i), (ii), (iii): start each part on a new line and label clearly (e.g. "(i)" or "Part (i)") with a blank line before it.
+- Label the answer clearly (e.g. "(i)" or "Part (i)" if the question number includes a roman part) with a blank line before it where helpful.
 - After working, state the final answer clearly (e.g. "Therefore ..." or "Hence the answer is ...").
 - Use short, clear sentences. Prefer "We have" / "So" / "Thus" to connect steps.
-- Keep display math ($$...$$) for important equations; use inline math ($...$) for brief expressions in prose.
+- Use display math ($$...$$ or \\[ ... \\]) for important equations on their own line; use inline math ($...$) for brief expressions in prose.
 - The solution should look like a model answer a teacher would write on the board: neat, well-spaced, and easy to read.
 
 For each question, choose the most suitable topic from this list:
@@ -152,9 +150,10 @@ const buildExamImagePrompt = (topics: ReadonlyArray<string>) => `I have provided
 Your task is to extract every exam question (including multiple-choice and written-response questions) from the image and convert it into clean, well-structured LaTeX code with a fully worked sample solution for each question.
 
 CRITICAL — Question splitting (follow exactly):
-- Split questions ONLY at lettered parts: (a), (b), (c), (d), etc. Each of these gets its own QUESTION_NUMBER block (e.g. 11 (a), 11 (b), 11 (c) are three separate questions).
-- NEVER create a separate question for Roman numerals. (i), (ii), (iii), (iv), (v), (vi), (vii), (viii), (ix), (x) must NEVER start a new QUESTION_NUMBER block. All content under e.g. "11 (a)" — including (i), (ii), (iii) — must stay in one question.
-- Do NOT split by (i), (ii), (iii). Do NOT split by I, II, III. Split ONLY by (a), (b), (c), (d).
+- Split at BOTH lettered parts and Roman numeral subparts. Each of these gets its own QUESTION_NUMBER block.
+- Lettered parts: (a), (b), (c), (d), etc. — e.g. 11 (a), 11 (b) are separate questions.
+- Roman numeral subparts: (i), (ii), (iii), (iv), (v), (vi), (vii), (viii), (ix), (x) — e.g. 11 (a) (i) and 11 (a) (ii) are two separate questions. Use QUESTION_NUMBER like "11 (a)(i)" and "11 (a)(ii)".
+- So "Question 11 (a)" with parts (i) and (ii) becomes two blocks: QUESTION_NUMBER 11 (a)(i) and QUESTION_NUMBER 11 (a)(ii), each with its own QUESTION_CONTENT and SAMPLE_ANSWER.
 
 Image flag rule: If a question visibly includes or depends on an image/graph/diagram on the page, set HAS_IMAGE to TRUE. Do NOT crop, describe, or output LaTeX for diagrams; images will be added manually. Just set the flag.
 
@@ -189,30 +188,27 @@ MCQ_OPTION_D {text for option D in LaTeX}
 MCQ_CORRECT_ANSWER {A|B|C|D}
 MCQ_EXPLANATION {detailed LaTeX explanation: why the correct option is right, why the others are wrong; format in clear steps with blank lines between ideas so a student can follow easily}
 
-RENDER-SAFE LaTeX rules (strict):
-- Inline math must use $...$ only. Do NOT use \( \). 
-- Display math must use $$...$$ only. Do NOT use \[ \]. 
-- Do NOT use \begin{align} or \begin{align*}. Use $$\begin{aligned}...\end{aligned}$$ instead.
-- Escape currency and percent as \\$ and \\% in plain text. 
-- Never output stray or unmatched $ symbols. 
-- Never insert line breaks inside words; keep sentences on one line. 
-- Tables must be only \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}. Do not use other environments. 
+RENDER-SAFE LaTeX rules (follow so output renders correctly):
+- Inline math: use $...$ for short expressions in prose (e.g. $x = 5$, $\\frac{1}{2}$). You may also use \\( ... \\).
+- Display math (equation on its own line): use $$...$$ or \\[ ... \\]. Both are supported. Use \\[ ... \\] when you want an equation or expression to appear on a new line without extra spacing issues.
+- For multi-line aligned equations use \\[ \\begin{aligned} ... \\end{aligned} \\] or $$\\begin{aligned}...\\end{aligned}$$. Do NOT use \\begin{align} or \\begin{align*}.
+- Escape currency and percent in plain text as \\$ and \\%.
+- Never output stray or unmatched $ or unmatched \\( \\) or \\[ \\].
+- Do not insert line breaks in the middle of words; keep each sentence on one line.
+- Tables: use only \\begin{tabular}...\\end{tabular} or \\begin{array}...\\end{array}.
 - Use \\text{...} for words inside math.
 
 READABILITY RULES:
-Add newlines where appropriate to improve readability.
-Include one blank line between the header section and QUESTION_CONTENT.
-If a question contains internal parts such as (i) or (ii), separate them with blank lines but keep them within the same question.
-Leave one blank line between each completed question block.
+Add newlines where appropriate. Include one blank line between the header section and QUESTION_CONTENT and one blank line between each completed question block.
 
 SAMPLE ANSWER REQUIREMENTS (format so a student can follow easily):
 - Show every step of the working; do not skip steps. A student should be able to follow the logic from start to finish.
 - Put each major step on its own line or in a small block. Use blank lines between distinct steps so the solution is not a wall of text.
 - For algebraic manipulation: show one transformation per line (e.g. one line per "add 2 to both sides") where it helps clarity.
-- For multi-part questions (i), (ii), (iii): start each part on a new line and label clearly (e.g. "(i)" or "Part (i)") with a blank line before it.
+- Label the answer clearly (e.g. "(i)" or "Part (i)" if the question number includes a roman part) with a blank line before it where helpful.
 - After working, state the final answer clearly (e.g. "Therefore ..." or "Hence the answer is ...").
 - Use short, clear sentences. Prefer "We have" / "So" / "Thus" to connect steps.
-- Keep display math ($$...$$) for important equations; use inline math ($...$) for brief expressions in prose.
+- Use display math ($$...$$ or \\[ ... \\]) for important equations on their own line; use inline math ($...$) for brief expressions in prose.
 - The solution should look like a model answer a teacher would write on the board: neat, well-spaced, and easy to read.
 
 For each question, choose the most suitable topic from this list:
