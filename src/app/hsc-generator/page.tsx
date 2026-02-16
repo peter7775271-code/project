@@ -4341,7 +4341,7 @@ export default function HSCGeneratorPage() {
           className={`
             fixed inset-y-0 left-0 z-40 border-r border-neutral-100 flex flex-col bg-white
             transition-all duration-250 ease-out
-            ${mobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64'}
+            ${mobileMenuOpen ? 'translate-x-0 w-20' : '-translate-x-full w-20'}
             ${sidebarHovered ? 'lg:translate-x-0 lg:w-64 lg:opacity-100' : 'lg:translate-x-0 lg:w-16 lg:opacity-90'}
             lg:pointer-events-auto
           `}
@@ -4359,40 +4359,42 @@ export default function HSCGeneratorPage() {
             }, 150);
           }}
         >
-          <div className={`p-6 mb-4 flex-shrink-0 flex items-center gap-3 overflow-hidden ${sidebarHovered ? 'lg:gap-3' : 'lg:justify-center lg:px-0'}`}>
+          <div className={`p-6 mb-4 flex-shrink-0 flex items-center gap-3 overflow-hidden justify-center px-0 lg:px-6 ${sidebarHovered ? 'lg:gap-3' : 'lg:justify-center lg:px-0'}`}>
             <div className="w-8 h-8 shrink-0 bg-neutral-900 rounded-lg flex items-center justify-center text-white font-serif italic text-xl">∑</div>
-            <span className={`font-bold text-lg tracking-tight text-neutral-800 whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[200px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>HSC <span className="text-neutral-400 font-light">Forge</span></span>
+            <span className={`hidden lg:inline font-bold text-lg tracking-tight text-neutral-800 whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[200px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>
+              HSC <span className="text-neutral-400 font-light">Forge</span>
+            </span>
           </div>
 
           <nav className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar space-y-0">
-            <button onClick={() => { setViewMode('dashboard'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'dashboard' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+            <button onClick={() => { setViewMode('dashboard'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'dashboard' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
               <LayoutDashboard size={18} className="shrink-0" />
-              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Dashboard</span>
+              <span className={`hidden lg:inline text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Dashboard</span>
             </button>
-            <button onClick={() => { setViewMode('browse'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'browse' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+            <button onClick={() => { setViewMode('browse'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'browse' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
               <BookOpen size={18} className="shrink-0" />
-              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Browse Bank</span>
+              <span className={`hidden lg:inline text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Browse Bank</span>
             </button>
-            <button onClick={() => { setViewMode('analytics'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'analytics' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+            <button onClick={() => { setViewMode('analytics'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'analytics' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
               <LineChart size={18} className="shrink-0" />
-              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Analytics Hub</span>
+              <span className={`hidden lg:inline text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Analytics Hub</span>
             </button>
-            <button onClick={() => { setViewMode('builder'); clearPaperState(); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'builder' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+            <button onClick={() => { setViewMode('builder'); clearPaperState(); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'builder' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
               <PlusCircle size={18} className="shrink-0" />
-              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Exam Architect</span>
+              <span className={`hidden lg:inline text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Exam Architect</span>
             </button>
-            <button onClick={() => { setViewMode('formulas'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'formulas' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+            <button onClick={() => { setViewMode('formulas'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'formulas' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
               <Sigma size={18} className="shrink-0" />
-              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Formula Vault</span>
+              <span className={`hidden lg:inline text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Formula Vault</span>
             </button>
-            <button onClick={() => { loadSavedAttempts(); setViewMode('saved'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'saved' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+            <button onClick={() => { loadSavedAttempts(); setViewMode('saved'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'saved' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
               <Bookmark size={18} className="shrink-0" />
-              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Saved Content</span>
+              <span className={`hidden lg:inline text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Saved Content</span>
               {savedAttempts.length > 0 && sidebarHovered && <span className="text-xs text-neutral-400">({savedAttempts.length})</span>}
             </button>
-            <button onClick={() => { setViewMode('history'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'history' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+            <button onClick={() => { setViewMode('history'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'history' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
               <History size={18} className="shrink-0" />
-              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>My History</span>
+              <span className={`hidden lg:inline text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>My History</span>
             </button>
             {viewMode === 'saved' && savedAttempts.length > 0 && sidebarHovered && (
               <div className="space-y-0 px-2 pb-2">
@@ -4407,14 +4409,14 @@ export default function HSCGeneratorPage() {
             )}
             <div className="mt-auto border-t border-neutral-100">
               {isDevMode && (
-                <button onClick={() => setViewMode('dev-questions')} className={`w-full flex items-center space-x-3 px-6 py-4 text-left cursor-pointer text-amber-700 bg-amber-50 hover:bg-amber-100 font-medium text-sm shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'}`}>
+                <button onClick={() => setViewMode('dev-questions')} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 text-left cursor-pointer text-amber-700 bg-amber-50 hover:bg-amber-100 font-medium text-sm shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'}`}>
                   <FileText size={18} className="shrink-0" />
-                  <span className={`text-sm whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[120px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Dev Mode ON</span>
+                  <span className={`hidden lg:inline text-sm whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[120px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Dev Mode ON</span>
                 </button>
               )}
-              <button onClick={() => setViewMode('settings')} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'settings' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <button onClick={() => setViewMode('settings')} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'settings' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
                 <Settings size={18} className="shrink-0" />
-                <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Settings</span>
+                <span className={`hidden lg:inline text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Settings</span>
               </button>
             </div>
           </nav>

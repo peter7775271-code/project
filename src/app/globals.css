@@ -83,6 +83,77 @@ body {
   scroll-behavior: smooth;
 }
 
+/* Homepage palette + typography */
+.home-shell {
+  --home-accent: #93c5fd;
+  --home-accent-strong: #a5b4fc;
+  --home-ink: #0f172a;
+  --home-muted: #64748b;
+  --home-bg: #f8fafc;
+  --home-surface: rgba(255, 255, 255, 0.9);
+  --home-border: rgba(15, 23, 42, 0.12);
+  background: radial-gradient(circle at 10% -10%, rgba(147, 197, 253, 0.22), transparent 45%),
+    radial-gradient(circle at 90% 0%, rgba(165, 180, 252, 0.22), transparent 42%),
+    var(--home-bg);
+  color: var(--home-ink);
+  font-family: 'Inter', sans-serif;
+}
+
+.home-shell.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+.home-shell #progress {
+  background: linear-gradient(90deg, var(--home-accent), var(--home-accent-strong));
+}
+
+.home-shell .glass {
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+}
+
+.home-shell .glass:hover {
+  border-color: rgba(147, 197, 253, 0.6);
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.12);
+}
+
+.home-shell .btn-primary {
+  background: linear-gradient(135deg, var(--home-accent), var(--home-accent-strong));
+  color: #1f1307;
+  box-shadow: 0 12px 30px rgba(147, 197, 253, 0.25);
+}
+
+.home-shell .btn-primary:hover {
+  transform: translateY(-1px) scale(1.01);
+  box-shadow: 0 18px 36px rgba(165, 180, 252, 0.3);
+}
+
+.home-shell .gold-shimmer {
+  background: linear-gradient(90deg, #a5b4fc 0%, #93c5fd 50%, #a5b4fc 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.home-shell .scanner-line {
+  background: linear-gradient(90deg, transparent, var(--home-accent), transparent);
+  box-shadow: 0 0 18px rgba(147, 197, 253, 0.5);
+}
+
+.home-shell .handwritten-container {
+  color: var(--home-accent);
+  background-image: radial-gradient(rgba(15, 23, 42, 0.08) 1px, transparent 1px);
+}
+
+.home-shell .hero-gradient {
+  background: radial-gradient(circle at 35% -20%, rgba(147, 197, 253, 0.24) 0%, transparent 45%),
+    radial-gradient(circle at 70% -5%, rgba(165, 180, 252, 0.26) 0%, transparent 55%),
+    transparent;
+}
+
 /* Mock design utilities */
 .glass-card {
   background: rgba(255, 255, 255, 0.7);
