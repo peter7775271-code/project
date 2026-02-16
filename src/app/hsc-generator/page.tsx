@@ -4994,7 +4994,7 @@ export default function HSCGeneratorPage() {
                       </div>
                     )}
                     <button
-                      onClick={examConditionsActive ? handleEndExam : startExamSimulation}
+                      onClick={examConditionsActive ? handleEndExam : () => startExamSimulation()}
                       className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shadow-sm whitespace-nowrap cursor-pointer hover:opacity-90"
                       style={{
                         backgroundColor: examConditionsActive ? 'var(--clr-btn-danger)' : 'var(--clr-btn-primary)',
