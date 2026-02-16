@@ -2216,7 +2216,7 @@ export default function HSCGeneratorPage() {
 
     if (!latest) return 0;
     let streak = 0;
-    let cursor = latest;
+    let cursor = new Date(latest);
     while (true) {
       const key = toLocalDateKey(cursor);
       const count = activityMap.get(key)?.count ?? 0;
