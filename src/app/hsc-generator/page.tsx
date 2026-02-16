@@ -2833,7 +2833,6 @@ export default function HSCGeneratorPage() {
       markingCriteria: q.marking_criteria,
       sampleAnswer: q.sample_answer,
       sampleAnswerImage: q.sample_answer_image || '',
-      sampleAnswerImage: q.sample_answer_image || '',
       mcqOptionA: q.mcq_option_a || '',
       mcqOptionB: q.mcq_option_b || '',
       mcqOptionC: q.mcq_option_c || '',
@@ -7536,6 +7535,19 @@ export default function HSCGeneratorPage() {
 
                               {manageQuestionEditMode && (
                                 <div className="mt-4">
+                                  <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Question Number</label>
+                                  <input
+                                    type="text"
+                                    value={manageQuestionDraft.question_number || ''}
+                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, question_number: e.target.value })}
+                                    placeholder="e.g., 11 (a)"
+                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  />
                                   <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Topic (any year level)</label>
                                   <select
                                     value={manageQuestionDraft.topic || ''}
