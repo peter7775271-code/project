@@ -28,10 +28,24 @@ import {
   XCircle,
   TrendingUp,
   Edit2,
-  PanelLeftClose,
-  PanelLeftOpen,
   Timer,
   Eraser,
+  Search,
+  Zap,
+  LayoutDashboard,
+  LineChart,
+  PlusCircle,
+  Sigma,
+  History,
+  SlidersHorizontal,
+  Brain,
+  Trophy,
+  Target,
+  Sparkles,
+  Layers,
+  ArrowRight,
+  GraduationCap,
+  FileText,
 } from 'lucide-react';
 import { getStroke } from 'perfect-freehand';
 import type {
@@ -91,16 +105,11 @@ function QuestionTextWithDividers({ text }: { text: string }) {
       {blocks.map((block, i) => (
         <div key={i}>
           {i > 0 && (
-            <hr className="my-4 border-t-2" style={{ borderColor: 'var(--clr-surface-tonal-a30)' }} />
+            <hr className="my-4 border-t-2 border-neutral-200" />
           )}
           <div className="flex gap-3 items-baseline">
             <span
-              className="shrink-0 px-2 py-0.5 rounded text-sm font-semibold"
-              style={{
-                backgroundColor: 'var(--clr-surface-a20)',
-                color: 'var(--clr-primary-a50)',
-                border: '1px solid var(--clr-surface-tonal-a30)',
-              }}
+              className="shrink-0 px-2 py-0.5 rounded text-sm font-semibold bg-[var(--clr-primary-light)] text-[var(--clr-primary)] border border-[var(--clr-primary)]/30"
             >
               {block.label}
             </span>
@@ -263,9 +272,31 @@ function HtmlSegment({ html }: { html: string }) {
           match.replace(/\\\[/g, '').replace(/\\\]/g, '')
         );
 
+      // Helper to split rows by \\ but preserve \\[...] spacing commands
+      const splitRows = (text: string): string[] => {
+        // Protect \\[...] spacing commands (e.g., \\[8pt], \\[1em]) by replacing with placeholder
+        const SPACING_PLACEHOLDER = '\u200B\u200BSPACING\u200B\u200B';
+        const spacingMatches: string[] = [];
+        // Match \\[ followed by optional content and closing ]
+        let protectedText = text.replace(/\\\[[^\]]*\]/g, (match) => {
+          spacingMatches.push(match);
+          return `${SPACING_PLACEHOLDER}${spacingMatches.length - 1}\u200B\u200B`;
+        });
+        // Now split on \\ (row separator) - this won't break spacing commands since they're protected
+        const rows = protectedText.split('\\\\');
+        // Restore spacing commands in each row
+        return rows.map((row) => {
+          let restored = row;
+          spacingMatches.forEach((spacing, i) => {
+            const placeholder = `${SPACING_PLACEHOLDER}${i}\u200B\u200B`;
+            restored = restored.replace(placeholder, spacing);
+          });
+          return restored;
+        });
+      };
+
       output = output.replace(/\\begin\{tabular\}\{[^}]*\}([\s\S]*?)\\end\{tabular\}/g, (_match, body) => {
-        const rows = body
-          .split('\\\\')
+        const rows = splitRows(body)
           .map((row: string) => row.replace(/\\hline/g, '').trim())
           .filter((row: string) => row.length > 0);
 
@@ -281,8 +312,7 @@ function HtmlSegment({ html }: { html: string }) {
       });
 
       output = output.replace(/\\begin\{array\}\{[^}]*\}([\s\S]*?)\\end\{array\}/g, (_match, body) => {
-        const rows = body
-          .split('\\\\')
+        const rows = splitRows(body)
           .map((row: string) => row.replace(/\\hline/g, '').trim())
           .filter((row: string) => row.length > 0);
 
@@ -411,115 +441,132 @@ function HtmlSegment({ html }: { html: string }) {
         return input.replace(/\\textbf\{([^}]*)\}/g, '<strong>$1</strong>');
       };
 
-      // Wrap standalone \text{...} in $ $ so KaTeX can render it ( \text is math-mode only )
-      const wrapStandaloneText = (input: string) => {
+      const wrapStandaloneCommandOutsideMath = (input: string, command: 'text' | 'vec') => {
         let out = '';
         let i = 0;
+        let mode: 'none' | 'inlineDollar' | 'displayDollar' | 'inlineParen' | 'displayBracket' = 'none';
         const len = input.length;
+        const cmdRe = new RegExp(`^\\s*\\\\${command}\\s*\\{`);
+        const isEscaped = (idx: number) => idx > 0 && input[idx - 1] === '\\';
+
         while (i < len) {
-          const rest = input.slice(i);
-          const textMatch = rest.match(/^\s*\\text\s*\{/);
-          if (textMatch && !rest.match(/^\s*\$/)) {
-            const matchLen = textMatch[0].length;
-            const start = i + matchLen;
-            let depth = 1;
-            let j = start;
-            while (j < len && depth > 0) {
-              if (input[j] === '\\' && input[j + 1] === '{') {
-                j += 2;
-                depth++;
-                continue;
-              }
-              if (input[j] === '\\' && input[j + 1] === '}') {
-                j += 2;
-                depth--;
-                continue;
-              }
-              if (input[j] === '{') {
-                j++;
-                depth++;
-                continue;
-              }
-              if (input[j] === '}') {
-                j++;
-                depth--;
-                continue;
-              }
-              j++;
+          if (mode === 'none') {
+            if (input.startsWith('\\[', i)) {
+              mode = 'displayBracket';
+              out += '\\[';
+              i += 2;
+              continue;
             }
-            const leadingWs = input.slice(i, i + matchLen).match(/^\s*/)?.[0] ?? '';
-            if (leadingWs) out += leadingWs;
-            out += '$\\text{';
-            i = i + matchLen;
-            const end = j - 1;
-            out += input.slice(i, end);
-            out += '}$';
-            i = end + 1;
+            if (input.startsWith('\\(', i)) {
+              mode = 'inlineParen';
+              out += '\\(';
+              i += 2;
+              continue;
+            }
+            if (input[i] === '$' && !isEscaped(i)) {
+              if (input[i + 1] === '$') {
+                mode = 'displayDollar';
+                out += '$$';
+                i += 2;
+                continue;
+              }
+              mode = 'inlineDollar';
+              out += '$';
+              i += 1;
+              continue;
+            }
+
+            const rest = input.slice(i);
+            const match = rest.match(cmdRe);
+            if (match) {
+              const matchLen = match[0].length;
+              const start = i + matchLen;
+              let depth = 1;
+              let j = start;
+              while (j < len && depth > 0) {
+                if (input[j] === '\\' && input[j + 1] === '{') {
+                  j += 2;
+                  depth++;
+                  continue;
+                }
+                if (input[j] === '\\' && input[j + 1] === '}') {
+                  j += 2;
+                  depth--;
+                  continue;
+                }
+                if (input[j] === '{') {
+                  j++;
+                  depth++;
+                  continue;
+                }
+                if (input[j] === '}') {
+                  j++;
+                  depth--;
+                  continue;
+                }
+                j++;
+              }
+              const leadingWs = input.slice(i, i + matchLen).match(/^\s*/)?.[0] ?? '';
+              if (leadingWs) out += leadingWs;
+              out += `$\\${command}{`;
+              i = i + matchLen;
+              const end = j - 1;
+              out += input.slice(i, end);
+              out += '}$';
+              i = end + 1;
+              continue;
+            }
+
+            out += input[i];
+            i++;
             continue;
           }
+
+          if (mode === 'displayBracket' && input.startsWith('\\]', i)) {
+            mode = 'none';
+            out += '\\]';
+            i += 2;
+            continue;
+          }
+          if (mode === 'inlineParen' && input.startsWith('\\)', i)) {
+            mode = 'none';
+            out += '\\)';
+            i += 2;
+            continue;
+          }
+          if (mode === 'displayDollar' && input[i] === '$' && input[i + 1] === '$' && !isEscaped(i)) {
+            mode = 'none';
+            out += '$$';
+            i += 2;
+            continue;
+          }
+          if (mode === 'inlineDollar' && input[i] === '$' && !isEscaped(i)) {
+            mode = 'none';
+            out += '$';
+            i += 1;
+            continue;
+          }
+
           out += input[i];
           i++;
         }
+
         return out;
       };
 
+      // Wrap standalone \text{...} in $ $ so KaTeX can render it ( \text is math-mode only )
+      const wrapStandaloneText = (input: string) => wrapStandaloneCommandOutsideMath(input, 'text');
+
       // Wrap standalone \vec{...} in $ $ so KaTeX can render it
-      const wrapStandaloneVec = (input: string) => {
-        let out = '';
-        let i = 0;
-        const len = input.length;
-        while (i < len) {
-          const rest = input.slice(i);
-          const vecMatch = rest.match(/^\s*\\vec\s*\{/);
-          if (vecMatch && !rest.match(/^\s*\$/)) {
-            const matchLen = vecMatch[0].length;
-            const start = i + matchLen;
-            let depth = 1;
-            let j = start;
-            while (j < len && depth > 0) {
-              if (input[j] === '\\' && input[j + 1] === '{') {
-                j += 2;
-                depth++;
-                continue;
-              }
-              if (input[j] === '\\' && input[j + 1] === '}') {
-                j += 2;
-                depth--;
-                continue;
-              }
-              if (input[j] === '{') {
-                j++;
-                depth++;
-                continue;
-              }
-              if (input[j] === '}') {
-                j++;
-                depth--;
-                continue;
-              }
-              j++;
-            }
-            const leadingWs = input.slice(i, i + matchLen).match(/^\s*/)?.[0] ?? '';
-            if (leadingWs) out += leadingWs;
-            out += '$\\vec{';
-            i = i + matchLen;
-            const end = j - 1;
-            out += input.slice(i, end);
-            out += '}$';
-            i = end + 1;
-            continue;
-          }
-          out += input[i];
-          i++;
-        }
-        return out;
-      };
+      const wrapStandaloneVec = (input: string) => wrapStandaloneCommandOutsideMath(input, 'vec');
 
       // Convert \[ ... \] to $$ ... $$ first so display math never relies on backslash-bracket (avoids parsing issues)
       const normalizeDisplayMath = (input: string) => {
         return input.replace(/\\\[([\s\S]*?)\\\]/g, (_, inner) => {
-          const collapsed = inner.replace(/\s+/g, ' ').trim();
-          return `$$${collapsed}$$`;
+          // Trim leading/trailing whitespace but preserve internal structure
+          // Don't collapse whitespace that might be part of LaTeX formatting (like \\ in matrices)
+          const trimmed = inner.trim();
+          return `$$${trimmed}$$`;
         });
       };
 
@@ -583,7 +630,10 @@ function HtmlSegment({ html }: { html: string }) {
         .replace(/\\\(/g, '$')
         .replace(/\\\)/g, '$')
         .replace(/(\$\$[\s\S]*?\$\$)/g, '\n$1\n');
-      const parts = normalizedMath.split(/((?<!\\)\$\$[\s\S]*?(?<!\\)\$\$|(?<!\\)\$[^\$]*?(?<!\\)\$)/g);
+      // Split on display math ($$...$$) and inline math ($...$)
+      // Use regex that properly handles both types without conflicts
+      // Match $$...$$ first (display), then $...$ (inline, but not when followed by $)
+      const parts = normalizedMath.split(/((?<!\\)\$\$[\s\S]*?(?<!\\)\$\$|(?<!\\)\$(?:(?!\$\$)[\s\S])*?(?<!\\)\$(?!\$))/g);
       const wrapBareLatexCommands = (value: string) => {
         return value.replace(/\\+(leq|geq|le|ge|neq|approx|times)\b/g, '$\\$1$');
       };
@@ -727,6 +777,938 @@ const SUBJECTS: Subject[] = [
   { id: 'math-ext2', name: 'Mathematics Ext 2', icon: <Calculator className="w-5 h-5" /> },
 ];
 
+type SetViewMode = (m: 'dashboard' | 'analytics' | 'browse' | 'builder' | 'formulas' | 'saved' | 'history' | 'settings' | 'dev-questions' | 'papers' | 'paper') => void;
+
+type HeatmapCell = {
+  dateKey: string;
+  label: string;
+  count: number;
+  inMonth: boolean;
+};
+
+const pad2 = (value: number) => String(value).padStart(2, '0');
+
+const toLocalDateKey = (date: Date) => {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+};
+
+const addDays = (date: Date, delta: number) => {
+  const next = new Date(date);
+  next.setDate(date.getDate() + delta);
+  return next;
+};
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function DashboardView({
+  setViewMode,
+  heatmapCells,
+  studyStreak,
+  studentName,
+  heatmapMonth,
+  heatmapYear,
+  onHeatmapMonthChange,
+}: {
+  setViewMode: SetViewMode;
+  heatmapCells: HeatmapCell[];
+  studyStreak: number;
+  studentName: string;
+  heatmapMonth: number;
+  heatmapYear: number;
+  onHeatmapMonthChange: (month: number) => void;
+}) {
+  return (
+    <div className="max-w-6xl mx-auto space-y-10">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-6">
+        <div>
+          <h1 className="text-4xl font-light mb-2">
+            Welcome back, <span className="font-semibold italic">{studentName || 'Student'}</span>
+          </h1>
+          <p className="text-neutral-500 text-lg">Your cognitive endurance is up <span className="text-[#b5a45d] font-bold">14%</span> this week. Keep going.</p>
+        </div>
+        <div className="flex space-x-3">
+          <button type="button" onClick={() => setViewMode('analytics')} className="bg-white border border-neutral-200 px-6 py-3 rounded-full flex items-center space-x-2 hover:bg-neutral-50 transition-all text-sm font-medium text-neutral-800">
+            <LineChart size={18} />
+            <span>Analytics</span>
+          </button>
+          <button type="button" onClick={() => setViewMode('builder')} className="bg-neutral-900 text-white px-6 py-3 rounded-full flex items-center space-x-2 hover:bg-neutral-800 transition-all shadow-lg text-sm font-medium">
+            <PlusCircle size={18} />
+            <span>Build Exam</span>
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="glass-card p-6 rounded-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-3"><Target size={30} className="text-[#b5a45d] opacity-20" /></div>
+          <p className="text-neutral-400 text-[10px] font-bold uppercase tracking-widest mb-1">Expected Grade</p>
+          <h3 className="text-3xl font-bold text-[#b5a45d]">A+ <span className="text-xs font-normal text-neutral-400">(84%)</span></h3>
+          <div className="mt-3 w-full h-1 bg-neutral-100 rounded-full overflow-hidden">
+            <div className="bg-[#b5a45d] h-full w-[84%]" />
+          </div>
+        </div>
+        <div className="glass-card p-6 rounded-2xl">
+          <p className="text-neutral-400 text-[10px] font-bold uppercase tracking-widest mb-1">Response Speed</p>
+          <h3 className="text-3xl font-bold italic">2.4m <span className="text-sm font-normal text-neutral-400 tracking-tighter italic">/ avg</span></h3>
+          <p className="text-[10px] text-green-600 mt-2 font-bold flex items-center"><Sparkles size={10} className="mr-1"/> Optimal for Calculus</p>
+        </div>
+        <div className="glass-card p-6 rounded-2xl">
+          <p className="text-neutral-400 text-[10px] font-bold uppercase tracking-widest mb-1">Study Streak</p>
+          <h3 className="text-3xl font-bold">
+            {studyStreak}{' '}
+            <span className="text-sm font-normal text-neutral-400 tracking-tighter italic">
+              {studyStreak === 1 ? 'day' : 'days'}
+            </span>
+          </h3>
+          <p className="text-[10px] text-neutral-400 mt-2 font-medium">
+            {studyStreak > 0 ? 'Keep the streak alive.' : 'Complete a question to start a streak.'}
+          </p>
+        </div>
+        <div className="glass-card p-6 rounded-2xl bg-neutral-900 text-white border-none shadow-xl">
+          <p className="text-[#b5a45d] text-[10px] font-bold uppercase tracking-widest mb-1">Formula Mastery</p>
+          <h3 className="text-3xl font-bold">18/24</h3>
+          <p className="text-[10px] text-neutral-500 mt-2">Active in vault</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex justify-between items-center">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold text-neutral-900">Cognitive Heatmap</h2>
+              <p className="text-xs text-neutral-400">{MONTH_LABELS[heatmapMonth]} {heatmapYear}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={heatmapMonth}
+                onChange={(e) => onHeatmapMonthChange(parseInt(e.target.value, 10))}
+                className="text-xs font-semibold border border-neutral-200 rounded-full px-3 py-1.5 bg-white"
+              >
+                {MONTH_LABELS.map((label, idx) => (
+                  <option key={label} value={idx}>{label}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setViewMode('analytics')} className="text-xs text-[#b5a45d] font-bold tracking-widest">EXPLORE HUB</button>
+            </div>
+          </div>
+          <div className="p-8 bg-neutral-50 border border-neutral-100 rounded-3xl grid grid-cols-7 gap-3">
+            {heatmapCells.map((day) => {
+              const intensity =
+                day.count >= 6 ? 'bg-[#b5a45d]' :
+                day.count >= 3 ? 'bg-[#b5a45d]/70' :
+                day.count > 0 ? 'bg-[#b5a45d]/40' :
+                day.inMonth ? 'bg-white border border-neutral-100' : 'bg-transparent border-transparent';
+              const title = day.inMonth
+                ? (day.count > 0
+                  ? `${day.label}: ${day.count} question${day.count === 1 ? '' : 's'}`
+                  : `${day.label}: no questions`)
+                : '';
+              return (
+                <div
+                  key={day.dateKey}
+                  className={`aspect-square rounded border border-neutral-100 transition-all cursor-help ${intensity}`}
+                  title={title}
+                />
+              );
+            })}
+          </div>
+        </div>
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-neutral-900">Pressure Simulation</h2>
+          <div className="glass-card rounded-2xl p-6 bg-amber-50/20 border-amber-200/40">
+            <div className="flex items-center space-x-3 mb-4">
+              <Timer className="text-amber-600" size={20} />
+              <h3 className="font-bold text-amber-900">Next Simulation</h3>
+            </div>
+            <p className="text-xs text-amber-800/60 mb-6 leading-relaxed">Your scheduled mock exam for <span className="font-bold text-amber-900">Physics P2</span> starts in 14 hours. Review your formulas first.</p>
+            <button type="button" onClick={() => setViewMode('builder')} className="w-full py-3 bg-amber-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-amber-700 transition-all shadow-lg shadow-amber-600/20">Enter Simulator</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsHubView({
+  topicStats,
+  analyticsSummary,
+  analyticsLoading,
+  analyticsError,
+  onGenerateSummary,
+  onSelectTopic,
+  selectedTopic,
+  onCloseTopic,
+}: {
+  topicStats: TopicStat[];
+  analyticsSummary: string;
+  analyticsLoading: boolean;
+  analyticsError: string | null;
+  onGenerateSummary: () => void;
+  onSelectTopic: (topic: string) => void;
+  selectedTopic: string | null;
+  onCloseTopic: () => void;
+}) {
+  const hasStats = topicStats.length > 0;
+  return (
+    <div className="max-w-6xl mx-auto space-y-12">
+      <div className="flex justify-between items-end border-b border-neutral-100 pb-8">
+        <div>
+          <h1 className="text-4xl font-light mb-2 text-neutral-900">Analytics <span className="font-bold italic">Hub</span></h1>
+          <p className="text-neutral-500">Mastery metrics and predictive learning insights.</p>
+        </div>
+        <div className="flex p-1 bg-neutral-50 rounded-xl border border-neutral-100">
+          <button type="button" className="px-4 py-2 text-[10px] font-bold bg-white rounded-lg shadow-sm uppercase tracking-widest text-neutral-800">Weekly</button>
+          <button type="button" className="px-4 py-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">All Time</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-neutral-900">Topic performance</h3>
+            <button
+              type="button"
+              onClick={onGenerateSummary}
+              disabled={analyticsLoading}
+              className="px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
+            >
+              {analyticsLoading ? 'Analyzing...' : 'Generate AI overview'}
+            </button>
+          </div>
+
+          {!hasStats ? (
+            <div className="rounded-3xl border border-neutral-100 bg-neutral-50/60 p-8">
+              <p className="text-sm text-neutral-500">No attempts recorded yet. Complete a few questions to unlock topic analytics.</p>
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-neutral-100 overflow-hidden">
+              <div className="grid grid-cols-[1fr_120px_120px_120px] px-6 py-4 bg-neutral-50 text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+                <span>Topic</span>
+                <span className="text-right">Attempts</span>
+                <span className="text-right">Accuracy</span>
+                <span className="text-right">Marks</span>
+              </div>
+              <div className="divide-y divide-neutral-100">
+                {topicStats.map((stat) => {
+                  const accuracyLabel = stat.accuracy == null ? 'Pending' : `${stat.accuracy}%`;
+                  return (
+                    <button
+                      key={stat.topic}
+                      type="button"
+                      onClick={() => onSelectTopic(stat.topic)}
+                      className="w-full text-left grid grid-cols-[1fr_120px_120px_120px] px-6 py-4 text-sm hover:bg-neutral-50 transition-colors"
+                    >
+                      <span className="font-semibold text-neutral-800">{stat.topic}</span>
+                      <span className="text-right text-neutral-500">{stat.attempts}</span>
+                      <span className="text-right text-neutral-700">{accuracyLabel}</span>
+                      <span className="text-right text-neutral-500">
+                        {stat.scoredAttempts > 0 ? `${stat.earnedMarks}/${stat.totalMarks}` : '—'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {analyticsError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+              {analyticsError}
+            </div>
+          )}
+
+          <div className="rounded-3xl border border-neutral-100 p-6 bg-white">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-neutral-900">AI overview</h4>
+              <span className="text-[10px] uppercase tracking-widest text-neutral-400">Insights</span>
+            </div>
+            <div className="text-sm text-neutral-600 whitespace-pre-wrap">
+              {analyticsSummary || 'Run the AI overview to receive improvement recommendations based on your topic accuracy.'}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-dashed border-neutral-200 p-6 bg-neutral-50/60">
+            <h4 className="text-sm font-semibold text-neutral-700 mb-2">Subtopic precision (coming soon)</h4>
+            <p className="text-xs text-neutral-500">Future updates will show fine-grained subtopic performance so you can pinpoint gaps with more precision.</p>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-neutral-900 rounded-3xl p-10 text-white relative overflow-hidden flex flex-col items-center justify-center text-center shadow-2xl">
+            <Brain size={48} className="text-[#b5a45d] mb-6" />
+            <h3 className="text-[10px] font-bold text-[#b5a45d] uppercase tracking-[0.3em] mb-2">Predictive Performance</h3>
+            <div className="text-7xl font-bold mb-4 tracking-tighter italic">86.4%</div>
+            <p className="text-neutral-400 text-sm max-w-xs mx-auto mb-8 font-light italic">Your current trend suggests a <span className="text-white font-bold underline decoration-[#b5a45d] underline-offset-4">Grade 9</span> outcome for the end-of-year boards.</p>
+            <div className="flex space-x-3">
+              <div className="px-4 py-2 bg-white/5 rounded-full text-[10px] font-bold border border-white/10 flex items-center"><Trophy size={14} className="mr-2 text-[#b5a45d]"/> Top 1%</div>
+              <div className="px-4 py-2 bg-white/5 rounded-full text-[10px] font-bold border border-white/10 flex items-center"><History size={14} className="mr-2 text-[#b5a45d]"/> 1.2k Reps</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-1 gap-10">
+        <div className="space-y-6">
+          <h3 className="text-xl font-medium flex items-center space-x-2 text-neutral-900">
+            <Timer size={20} className="text-[#b5a45d]" />
+            <span>Efficiency Breakdown</span>
+          </h3>
+          <div className="space-y-6 bg-neutral-50 p-8 rounded-3xl border border-neutral-100">
+            {[{ label: 'Algebraic Structures', time: '1m 20s', val: 35, trend: '-12s' }, { label: 'Integral Calculus', time: '4m 05s', val: 95, trend: '+30s' }, { label: 'Trigonometric Identities', time: '2m 15s', val: 60, trend: '-5s' }, { label: 'Vector Spaces', time: '1m 50s', val: 50, trend: '-18s' }].map((item) => (
+              <div key={item.label} className="space-y-2">
+                <div className="flex justify-between text-xs font-semibold uppercase tracking-widest text-neutral-400">
+                  <span>{item.label}</span>
+                  <span className="text-neutral-800 font-mono italic">{item.time}</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="flex-1 h-2 bg-neutral-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#b5a45d]" style={{ width: `${item.val}%` }} />
+                  </div>
+                  <span className={`text-[10px] font-bold ${item.trend.startsWith('-') ? 'text-green-600' : 'text-amber-500'}`}>{item.trend}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {selectedTopic && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={onCloseTopic} />
+          <div className="relative w-full max-w-xl rounded-3xl bg-white p-8 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-neutral-900">{selectedTopic} syllabus</h3>
+              <button
+                type="button"
+                onClick={onCloseTopic}
+                className="px-3 py-1.5 rounded-full border border-neutral-200 text-xs font-semibold text-neutral-600"
+              >
+                Close
+              </button>
+            </div>
+            <div className="rounded-2xl border border-neutral-100 bg-neutral-50/80 p-5 text-sm text-neutral-600">
+              NSW syllabus content will appear here soon. This placeholder will link to the official syllabus summary for this topic.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BROWSE_SUBJECTS: { label: string; value: string }[] = [
+  { label: 'Maths 7-10', value: 'Mathematics' },
+  { label: 'Mathematics Advanced', value: 'Mathematics Advanced' },
+  { label: 'Mathematics Extension 1', value: 'Mathematics Extension 1' },
+  { label: 'Mathematics Extension 2', value: 'Mathematics Extension 2' },
+];
+
+const BROWSE_YEARS = ['2020', '2021', '2022', '2023', '2024', '2025'];
+const BROWSE_GRADES_SENIOR = ['Year 11', 'Year 12'] as const;
+const BROWSE_GRADES_JUNIOR = ['Year 7', 'Year 8', 'Year 9', 'Year 10'] as const;
+
+const SUBJECTS_BY_YEAR: Record<'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12', string[]> = {
+  'Year 7': ['Mathematics'],
+  'Year 8': ['Mathematics'],
+  'Year 9': ['Mathematics'],
+  'Year 10': ['Mathematics'],
+  'Year 11': ['Mathematics Advanced', 'Mathematics Extension 1'],
+  'Year 12': ['Mathematics Advanced', 'Mathematics Extension 1', 'Mathematics Extension 2'],
+};
+
+const TOPICS_BY_YEAR_SUBJECT: Record<
+  'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12',
+  Record<string, string[]>
+> = {
+  'Year 7': {
+    Mathematics: [
+      'Computation with integers',
+      'Fractions, decimals and percentages',
+      'Ratios and rates',
+      'Algebraic techniques',
+      'Indices',
+      'Equations',
+      'Linear relationships',
+      'Length',
+      "Right-angled triangles (Pythagoras' theorem)",
+      'Area',
+      'Volume',
+      'Angle relationships',
+      'Properties of geometrical figures',
+      'Data classification and visualisation',
+      'Data analysis',
+      'Probability',
+    ],
+  },
+  'Year 8': {
+    Mathematics: [
+      'Computation with integers',
+      'Fractions, decimals and percentages',
+      'Ratios and rates',
+      'Algebraic techniques',
+      'Indices',
+      'Equations',
+      'Linear relationships',
+      'Length',
+      "Right-angled triangles (Pythagoras' theorem)",
+      'Area',
+      'Volume',
+      'Angle relationships',
+      'Properties of geometrical figures',
+      'Data classification and visualisation',
+      'Data analysis',
+      'Probability',
+    ],
+  },
+  'Year 9': {
+    Mathematics: [
+      'Financial mathematics',
+      'Algebraic techniques',
+      'Indices',
+      'Equations',
+      'Linear relationships',
+      'Non-linear relationships',
+      'Numbers of any magnitude',
+      'Trigonometry',
+      'Area and surface area',
+      'Volume',
+      'Properties of geometrical figures',
+      'Data analysis',
+      'Probability',
+      'Variation and rates of change',
+      'Polynomials',
+      'Logarithms',
+      'Functions and other graphs',
+      'Circle geometry',
+      'Introduction to networks',
+    ],
+  },
+  'Year 10': {
+    Mathematics: [
+      'Financial mathematics',
+      'Algebraic techniques',
+      'Indices',
+      'Equations',
+      'Linear relationships',
+      'Non-linear relationships',
+      'Numbers of any magnitude',
+      'Trigonometry',
+      'Area and surface area',
+      'Volume',
+      'Properties of geometrical figures',
+      'Data analysis',
+      'Probability',
+      'Variation and rates of change',
+      'Polynomials',
+      'Logarithms',
+      'Functions and other graphs',
+      'Circle geometry',
+      'Introduction to networks',
+    ],
+  },
+  'Year 12': {
+    'Mathematics Advanced': [
+      'Further graph transformations',
+      'Sequences and series',
+      'Differential calculus',
+      'Integral calculus',
+      'Applications of calculus',
+      'Random variables',
+      'Financial mathematics',
+    ],
+    'Mathematics Extension 1': [
+      'Proof by mathematical induction',
+      'Vectors',
+      'Inverse trigonometric functions',
+      'Further calculus skills',
+      'Further applications of calculus',
+      'The binomial distribution and sampling distribution of the mean',
+    ],
+    'Mathematics Extension 2': [
+      'The nature of proof',
+      'Further work with vectors',
+      'Introduction to complex numbers',
+      'Further integration',
+      'Applications of calculus to mechanics',
+    ],
+  },
+  'Year 11': {
+    'Mathematics Advanced': [
+      'Working with functions',
+      'Trigonometry and measure of angles',
+      'Trigonometric identities and equations',
+      'Differentiation',
+      'Exponential and logarithmic functions',
+      'Graph transformations',
+      'Probability and data',
+    ],
+    'Mathematics Extension 1': [
+      'Further work with functions',
+      'Polynomials',
+      'Further trigonometry',
+      'Permutations and combinations',
+      'The binomial theorem',
+    ],
+  },
+};
+
+const getTopics = (gradeValue: string, subjectValue: string) => {
+  const gradeKey = gradeValue as keyof typeof TOPICS_BY_YEAR_SUBJECT;
+  return TOPICS_BY_YEAR_SUBJECT[gradeKey]?.[subjectValue] || [];
+};
+
+function BrowseView({
+  setViewMode,
+  availablePapers,
+  loadingQuestions,
+  startPaperAttempt,
+}: {
+  setViewMode: SetViewMode;
+  availablePapers: { year: string; subject: string; grade: string; school: string; count: number }[];
+  loadingQuestions: boolean;
+  startPaperAttempt: (paper: { year: string; subject: string; grade: string; school: string; count: number }) => void;
+}) {
+  const [selectedSubject, setSelectedSubject] = useState<{ label: string; value: string } | null>(null);
+  const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<string | null>(null);
+
+  const gradeOptions = useMemo(() => {
+    if (!selectedSubject) return [] as readonly string[];
+    if (selectedSubject.label === 'Maths 7-10') {
+      return BROWSE_GRADES_JUNIOR;
+    }
+    return BROWSE_GRADES_SENIOR;
+  }, [selectedSubject]);
+
+  const filteredPapers = useMemo(() => {
+    if (!selectedSubject || !selectedGrade || !selectedYear) return [];
+    return availablePapers.filter(
+      (p) =>
+        String(p.subject) === selectedSubject.value &&
+        String(p.grade) === selectedGrade &&
+        String(p.year) === selectedYear
+    );
+  }, [availablePapers, selectedSubject, selectedGrade, selectedYear]);
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-10">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-neutral-100 pb-8">
+        <div>
+          <h1 className="text-3xl font-light mb-2 text-neutral-900">Browse <span className="font-bold italic">Bank</span></h1>
+          <p className="text-neutral-500">Choose a subject, then grade and year to see available exams.</p>
+        </div>
+      </div>
+
+      {!selectedSubject ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {BROWSE_SUBJECTS.map((sub) => (
+            <button
+              key={sub.value}
+              type="button"
+              onClick={() => setSelectedSubject(sub)}
+              className="glass-card p-10 rounded-[2.5rem] group cursor-pointer border-neutral-50 text-left"
+            >
+              <div className="w-16 h-16 bg-neutral-50 rounded-3xl mb-8 group-hover:bg-[#b5a45d]/10 group-hover:scale-110 transition-all duration-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-neutral-200 border-t-[#b5a45d] group-hover:rotate-180 transition-transform duration-700" />
+              </div>
+              <h3 className="font-bold text-xl mb-1 text-neutral-900">{sub.label}</h3>
+              <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest">Available exams</p>
+              <div className="mt-6 flex items-center text-[#b5a45d] opacity-0 group-hover:opacity-100 transition-all">
+                <span className="text-[10px] font-bold uppercase tracking-widest mr-2">Select</span>
+                <ArrowRight size={14} />
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-8">
+          <div className="flex items-center gap-4 flex-wrap">
+            <button
+              type="button"
+              onClick={() => { setSelectedSubject(null); setSelectedGrade(null); setSelectedYear(null); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-full border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+            >
+              <ArrowLeft size={16} />
+              Back to subjects
+            </button>
+            <span className="text-neutral-400">|</span>
+            <span className="font-semibold text-neutral-800">{selectedSubject.label}</span>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-3">Grade</p>
+            <div className="flex flex-wrap gap-2">
+              {gradeOptions.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setSelectedGrade(g)}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedGrade === g ? 'bg-[#b5a45d] text-white' : 'bg-neutral-50 border border-neutral-100 text-neutral-600 hover:border-[#b5a45d]/50'}`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-3">Year</p>
+            <div className="flex flex-wrap gap-2">
+              {BROWSE_YEARS.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => setSelectedYear(y)}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedYear === y ? 'bg-[#b5a45d] text-white' : 'bg-neutral-50 border border-neutral-100 text-neutral-600 hover:border-[#b5a45d]/50'}`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selectedGrade && selectedYear && (
+            <div className="pt-4 border-t border-neutral-100">
+              {loadingQuestions ? (
+                <div className="flex items-center justify-center min-h-[120px]">
+                  <RefreshCw className="w-8 h-8 animate-spin text-neutral-400" />
+                </div>
+              ) : filteredPapers.length === 0 ? (
+                <div className="rounded-2xl border border-neutral-100 bg-neutral-50/50 p-8 text-center">
+                  <p className="text-neutral-600 font-medium">No exams for this subject, grade and year yet.</p>
+                  <p className="text-sm text-neutral-500 mt-1">Create a custom exam from Exam Architect.</p>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('builder')}
+                    className="mt-4 px-6 py-3 bg-neutral-900 text-white rounded-xl text-sm font-semibold hover:bg-neutral-800"
+                  >
+                    Create custom exam
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-neutral-600">Available exams</p>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('builder')}
+                      className="text-xs font-bold text-[#b5a45d] hover:underline uppercase tracking-widest"
+                    >
+                      Create custom exam
+                    </button>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredPapers.map((paper) => (
+                      <button
+                        key={`${paper.year}-${paper.grade}-${paper.subject}-${paper.school}`}
+                        type="button"
+                        onClick={() => startPaperAttempt(paper)}
+                        className="text-left border rounded-2xl p-6 transition-all hover:-translate-y-0.5 hover:shadow-lg cursor-pointer bg-white border-neutral-100 hover:border-[#b5a45d]/30"
+                      >
+                        <div className="text-xs font-bold uppercase tracking-widest text-neutral-400">{paper.year}</div>
+                        <div className="text-xl font-semibold mt-2 text-neutral-900">{paper.subject}</div>
+                        <div className="text-sm mt-1 text-neutral-500">{paper.grade}</div>
+                        <div className="text-xs mt-2 text-neutral-400">{paper.school || 'HSC'}</div>
+                        <div className="text-xs mt-4 text-neutral-400">{paper.count} question{paper.count === 1 ? '' : 's'}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type ExamBuilderParams = {
+  subject: string;
+  grade: 'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12';
+  intensity: number;
+  topics: string[];
+  cognitive: boolean;
+};
+
+type TopicStat = {
+  topic: string;
+  attempts: number;
+  scoredAttempts: number;
+  earnedMarks: number;
+  totalMarks: number;
+  accuracy: number | null;
+};
+
+function ExamBuilderView({
+  onInitializeExam,
+  isInitializing,
+}: {
+  onInitializeExam: (params: ExamBuilderParams) => Promise<{ ok: boolean; message?: string }>;
+  isInitializing: boolean;
+}) {
+  const [isSimMode, setIsSimMode] = useState(false);
+  const [subject, setSubject] = useState<string>('Mathematics Advanced');
+  const [grade, setGrade] = useState<'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12'>('Year 12');
+  const [intensity, setIntensity] = useState<number>(35);
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const subjectsForGrade = useMemo(() => SUBJECTS_BY_YEAR[grade] || [], [grade]);
+  const topicsForSelection = useMemo(() => {
+    return getTopics(grade, subject);
+  }, [grade, subject]);
+
+  useEffect(() => {
+    if (!subjectsForGrade.includes(subject)) {
+      const next = subjectsForGrade[0] || 'Mathematics Advanced';
+      setSubject(next);
+    }
+  }, [subjectsForGrade, subject]);
+
+  const allTopicsActive = selectedTopics.length === 0;
+  const toggleTopic = (value: string) => {
+    setSelectedTopics((prev) => (prev.includes(value) ? prev.filter((t) => t !== value) : [...prev, value]));
+  };
+
+  useEffect(() => {
+    setSelectedTopics((prev) => prev.filter((t) => topicsForSelection.includes(t)));
+  }, [topicsForSelection]);
+
+  const handleInitialize = async () => {
+    setError(null);
+    const result = await onInitializeExam({
+      subject,
+      grade,
+      intensity,
+      topics: selectedTopics,
+      cognitive: isSimMode,
+    });
+    if (!result.ok) {
+      setError(result.message || 'Unable to create exam.');
+    }
+  };
+  return (
+    <div className="max-w-4xl mx-auto space-y-10">
+      <div className="text-center space-y-3">
+        <h1 className="text-5xl font-light text-neutral-900">Exam <span className="font-bold italic">Architect</span></h1>
+        <p className="text-neutral-500 text-lg">Select your parameters to initiate an adaptive assessment.</p>
+      </div>
+      <div className={`glass-card rounded-[3rem] p-12 space-y-12 relative overflow-hidden transition-all duration-500 ${isSimMode ? 'border-amber-400/50 bg-amber-50/10' : ''}`}>
+        {isSimMode && <div className="absolute top-0 left-0 w-full h-1 bg-amber-400 animate-pulse" />}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+          <div className="space-y-4">
+            <label className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-400 flex items-center">
+              <BookOpen size={14} className="mr-2"/> Knowledge Area
+            </label>
+            <select
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full p-5 bg-neutral-50 border border-neutral-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-[#b5a45d] appearance-none font-medium text-neutral-800"
+            >
+              {subjectsForGrade.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-4">
+            <label className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-400 flex items-center">
+              <GraduationCap size={14} className="mr-2"/> Curriculum Level
+            </label>
+            <select
+              value={grade}
+              onChange={(e) => setGrade(e.target.value as typeof grade)}
+              className="w-full p-5 bg-neutral-50 border border-neutral-100 rounded-2xl focus:outline-none focus:ring-1 focus:ring-[#b5a45d] appearance-none font-medium text-neutral-800"
+            >
+              {Object.keys(SUBJECTS_BY_YEAR).map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <label className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-400">Intensity (Questions)</label>
+              <span className="text-sm font-bold text-[#b5a45d]">{intensity}</span>
+            </div>
+            <input
+              type="range"
+              min={10}
+              max={100}
+              step={5}
+              value={intensity}
+              onChange={(e) => setIntensity(Number(e.target.value))}
+              className="w-full accent-[#b5a45d] h-1.5 bg-neutral-100 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+          <div className="space-y-4">
+            <label className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-400">Topic Focus</label>
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setSelectedTopics([])}
+                className={`w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
+                  allTopicsActive ? 'bg-neutral-900 text-white' : 'bg-neutral-50 border border-neutral-100 text-neutral-500'
+                }`}
+              >
+                All topics
+              </button>
+              {topicsForSelection.length === 0 ? (
+                <div className="text-xs text-neutral-400">No topics available for this subject yet.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {topicsForSelection.map((t) => {
+                    const active = selectedTopics.includes(t);
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => toggleTopic(t)}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                          active ? 'bg-[#b5a45d] text-white' : 'bg-neutral-50 border border-neutral-100 text-neutral-600'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <label className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-400">Cognitive Environment</label>
+            <button type="button" onClick={() => setIsSimMode(!isSimMode)} className={`w-full flex items-center justify-between p-5 rounded-2xl border cursor-pointer transition-all text-left ${isSimMode ? 'bg-neutral-900 border-neutral-900 text-white shadow-2xl' : 'bg-neutral-50 border-neutral-100 text-neutral-400'}`}>
+              <div className="flex items-center space-x-3">
+                <Timer size={18} className={isSimMode ? 'text-[#b5a45d]' : ''} />
+                <span className="text-sm font-bold uppercase tracking-widest">Pressure Chamber</span>
+              </div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors ${isSimMode ? 'bg-[#b5a45d]' : 'bg-neutral-200'}`}>
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${isSimMode ? 'left-6' : 'left-0.5'}`} />
+              </div>
+            </button>
+          </div>
+        </div>
+        {isSimMode && (
+          <div className="p-6 bg-amber-50 rounded-2xl border border-amber-200/50 flex items-start space-x-4">
+            <div className="p-2 bg-white rounded-xl text-amber-600"><Zap size={20}/></div>
+            <div>
+              <h4 className="text-xs font-bold text-amber-900 uppercase tracking-widest mb-1">Simulator Active</h4>
+              <p className="text-xs text-amber-800/70">Calculators disabled (unless required), strictly timed intervals, and 10-second penalty for window refocusing.</p>
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="p-4 rounded-2xl border" style={{ backgroundColor: 'var(--clr-danger-a0)', borderColor: 'var(--clr-danger-a20)', color: 'var(--clr-light-a0)' }}>
+            {error}
+          </div>
+        )}
+        <div className="pt-8 text-center">
+          <button
+            type="button"
+            onClick={handleInitialize}
+            disabled={isInitializing}
+            className="w-full py-6 bg-neutral-900 text-white rounded-[1.5rem] font-bold tracking-[0.3em] uppercase hover:bg-neutral-800 transition-all flex items-center justify-center space-x-4 shadow-2xl shadow-neutral-900/20 group disabled:opacity-70"
+          >
+            <SlidersHorizontal size={20} className="group-hover:rotate-180 transition-transform duration-700" />
+            <span>{isInitializing ? 'Building Exam...' : 'Initialize Examination'}</span>
+          </button>
+          <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-[0.3em] mt-8">Adaptive Logic V4.2 Engaged</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const FORMULA_ITEMS = [
+  { title: 'Quadratic Formula', formula: 'x = (-b ± √(b² - 4ac)) / 2a', subject: 'Math', usage: '124' },
+  { title: "De Moivre's Theorem", formula: '(r(cos θ + i sin θ))ⁿ = rⁿ(cos nθ + i sin nθ)', subject: 'Math', usage: '42' },
+  { title: 'Schrödinger Equation', formula: 'iℏ ∂Ψ/∂t = ĤΨ', subject: 'Physics', usage: '18' },
+  { title: 'Standard Deviation', formula: 'σ = √(Σ(xᵢ - μ)² / N)', subject: 'Math', usage: '85' },
+  { title: 'Ideal Gas Law', formula: 'PV = nRT', subject: 'Physics', usage: '210' },
+  { title: 'Chain Rule', formula: 'dy/dx = (dy/du)(du/dx)', subject: 'Math', usage: '312' },
+];
+
+function FormulaVaultView({ setViewMode }: { setViewMode: SetViewMode }) {
+  return (
+    <div className="max-w-6xl mx-auto space-y-8">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-neutral-100 pb-8">
+        <div>
+          <h1 className="text-4xl font-light mb-2 text-neutral-900">Formula <span className="font-bold">Vault</span></h1>
+          <p className="text-neutral-500">Active reference library for your complex subjects.</p>
+        </div>
+        <div className="flex space-x-2">
+          {['Math', 'Physics', 'Chemistry'].map((cat) => (
+            <button key={cat} type="button" className="px-6 py-2 bg-neutral-50 border border-neutral-100 rounded-full text-[10px] font-bold uppercase tracking-widest text-neutral-500 hover:text-[#b5a45d] transition-all">{cat}</button>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {FORMULA_ITEMS.map((f) => (
+          <div key={f.title} className="glass-card p-8 rounded-3xl flex flex-col items-center text-center group cursor-pointer border-neutral-100">
+            <div className="flex justify-between w-full mb-6">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#b5a45d] px-2 py-0.5 bg-[#b5a45d]/5 rounded">{f.subject}</span>
+              <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest flex items-center"><Zap size={10} className="mr-1"/> {f.usage} Uses</span>
+            </div>
+            <h3 className="font-semibold text-lg mb-6 group-hover:text-[#b5a45d] transition-colors text-neutral-900">{f.title}</h3>
+            <div className="p-6 bg-neutral-50 rounded-2xl w-full border border-neutral-100 group-hover:bg-white group-hover:shadow-inner transition-all overflow-x-auto">
+              <code className="text-base font-mono text-neutral-800 whitespace-nowrap">{f.formula}</code>
+            </div>
+            <button type="button" onClick={() => setViewMode('browse')} className="mt-8 text-[10px] font-bold text-neutral-400 hover:text-neutral-800 transition-all flex items-center space-x-1 group-hover:underline decoration-[#b5a45d] underline-offset-4 uppercase tracking-[0.2em]">
+              <span>Practice Questions</span>
+              <ArrowRight size={12} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const MOCK_HISTORY = [
+  { id: 1, type: 'Exam', title: 'Calculus Fundamentals', date: '2 hours ago', score: '85%', subject: 'Math', time: '42m' },
+  { id: 2, type: 'Quiz', title: 'Organic Chemistry Intro', date: 'Yesterday', score: '92%', subject: 'Chemistry', time: '15m' },
+  { id: 3, type: 'Question', title: 'Newtonian Laws P3', date: 'Oct 24', score: 'Correct', subject: 'Physics', time: '4m' },
+];
+
+function HistoryView() {
+  return (
+    <div className="max-w-5xl mx-auto space-y-8">
+      <div className="flex justify-between items-end border-b border-neutral-100 pb-8">
+        <div>
+          <h1 className="text-3xl font-light italic text-neutral-900">My <span className="font-bold not-italic">Timeline</span></h1>
+          <p className="text-neutral-500">A historical log of your academic progression.</p>
+        </div>
+      </div>
+      <div className="bg-white border border-neutral-100 rounded-[2rem] overflow-hidden shadow-sm">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-neutral-50/50 border-b border-neutral-100">
+              <th className="px-8 py-5 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Assessment</th>
+              <th className="px-8 py-5 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Subject</th>
+              <th className="px-8 py-5 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Time</th>
+              <th className="px-8 py-5 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Mastery</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-50">
+            {MOCK_HISTORY.map((item) => (
+              <tr key={item.id} className="hover:bg-neutral-50/30 transition-colors group cursor-pointer">
+                <td className="px-8 py-6">
+                  <div className="flex items-center space-x-4">
+                    <div className={`w-3 h-3 rounded-full ${item.type === 'Exam' ? 'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.4)]' : 'bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.4)]'}`} />
+                    <span className="text-sm font-semibold text-neutral-800">{item.title}</span>
+                  </div>
+                </td>
+                <td className="px-8 py-6 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{item.subject}</td>
+                <td className="px-8 py-6 text-xs font-mono italic text-neutral-500">{item.time} elapsed</td>
+                <td className="px-8 py-6 text-right">
+                  <span className={`text-[10px] font-bold px-4 py-1.5 rounded-full ${item.score.includes('%') ? 'bg-green-50 text-green-700' : 'bg-neutral-100 text-neutral-500'}`}>{item.score}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function HSCGeneratorPage() {
   const router = useRouter();
   const dprRef = useRef(1);
@@ -754,12 +1736,15 @@ export default function HSCGeneratorPage() {
     year: number;
     subject: string;
     topic: string;
+    school_name?: string | null;
     marks: number;
     question_number?: string | null;
     question_text: string;
     question_type?: 'written' | 'multiple_choice' | null;
     marking_criteria?: string | null;
     sample_answer?: string | null;
+    sample_answer_image?: string | null;
+    sample_answer_image_size?: 'small' | 'medium' | 'large' | null;
     graph_image_data?: string | null;
     graph_image_size?: 'small' | 'medium' | 'large' | null;
     mcq_option_a?: string | null;
@@ -794,7 +1779,8 @@ export default function HSCGeneratorPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isSidebarHidden, setIsSidebarHidden] = useState(true);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const sidebarHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [appState, setAppState] = useState<'idle' | 'marking' | 'reviewed'>('idle');
   const [canvasHeight, setCanvasHeight] = useState(500);
   const [isEraser, setIsEraser] = useState(false);
@@ -806,6 +1792,7 @@ export default function HSCGeneratorPage() {
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [submittedAnswer, setSubmittedAnswer] = useState<string | null>(null);
   const [selectedMcqAnswer, setSelectedMcqAnswer] = useState<'A' | 'B' | 'C' | 'D' | null>(null);
+  const [mcqImageSize, setMcqImageSize] = useState<number>(128); // Default max-h-32 (128px)
   const [savedAttempts, setSavedAttempts] = useState<any[]>([]);
   const [showSavedAttempts, setShowSavedAttempts] = useState(false);
   const [selectedAttempt, setSelectedAttempt] = useState<any>(null);
@@ -819,19 +1806,25 @@ export default function HSCGeneratorPage() {
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'uploading' | 'ready' | 'error'>('idle');
   const [pdfMessage, setPdfMessage] = useState<string>('');
   const [pdfChatGptResponse, setPdfChatGptResponse] = useState<string>('');
-  const [pdfGrade, setPdfGrade] = useState<'Year 11' | 'Year 12'>('Year 12');
+  const [pdfRawInputs, setPdfRawInputs] = useState<string>('');
+  const [pdfGrade, setPdfGrade] = useState<'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12'>('Year 12');
   const [pdfYear, setPdfYear] = useState<string>(new Date().getFullYear().toString());
   const [pdfSubject, setPdfSubject] = useState<string>('Mathematics Advanced');
   const [pdfOverwrite, setPdfOverwrite] = useState(false);
+  const [pdfGenerateCriteria, setPdfGenerateCriteria] = useState(false);
+  const [pdfSchoolName, setPdfSchoolName] = useState('');
   const pdfYearRef = useRef(pdfYear);
   pdfYearRef.current = pdfYear;
-  const [viewMode, setViewMode] = useState<'generator' | 'saved' | 'settings' | 'dev-questions' | 'papers' | 'paper'>('generator');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'analytics' | 'browse' | 'builder' | 'formulas' | 'saved' | 'history' | 'settings' | 'dev-questions' | 'papers' | 'paper'>('dashboard');
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [userCreatedAt, setUserCreatedAt] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
+  const [userNameDraft, setUserNameDraft] = useState<string>('');
+  const [isSavingName, setIsSavingName] = useState(false);
   const [paperQuestions, setPaperQuestions] = useState<Question[]>([]);
   const [paperIndex, setPaperIndex] = useState(0);
-  const [activePaper, setActivePaper] = useState<{ year: string; subject: string; grade: string; count: number } | null>(null);
+  const [activePaper, setActivePaper] = useState<{ year: string; subject: string; grade: string; school: string; count: number } | null>(null);
   const [examEndsAt, setExamEndsAt] = useState<number | null>(null);
   const [examRemainingMs, setExamRemainingMs] = useState<number | null>(null);
   const [examConditionsActive, setExamConditionsActive] = useState(false);
@@ -842,6 +1835,13 @@ export default function HSCGeneratorPage() {
   const [examReviewIndex, setExamReviewIndex] = useState(0);
   const [savedExamReviewMode, setSavedExamReviewMode] = useState(false);
   const [savedExamReviewIndex, setSavedExamReviewIndex] = useState(0);
+  const [isInitializingExam, setIsInitializingExam] = useState(false);
+  const [analyticsSummary, setAnalyticsSummary] = useState<string>('');
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [syllabusTopic, setSyllabusTopic] = useState<string | null>(null);
+  const [heatmapMonth, setHeatmapMonth] = useState<number>(new Date().getMonth());
+  const [heatmapYear] = useState<number>(new Date().getFullYear());
   const excalidrawSceneRef = useRef<{
     elements: readonly ExcalidrawElement[];
     appState: ExcalidrawAppState;
@@ -851,7 +1851,7 @@ export default function HSCGeneratorPage() {
 
   // Dev mode state
   const [isDevMode, setIsDevMode] = useState(false);
-  const [devTab, setDevTab] = useState<'add' | 'manage'>('add');
+  const [devTab, setDevTab] = useState<'add' | 'manage' | 'review'>('add');
   const [allQuestions, setAllQuestions] = useState<any[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [questionsFetchError, setQuestionsFetchError] = useState<string | null>(null);
@@ -859,6 +1859,8 @@ export default function HSCGeneratorPage() {
   const [selectedManageQuestionId, setSelectedManageQuestionId] = useState<string | null>(null);
   const [manageQuestionDraft, setManageQuestionDraft] = useState<any | null>(null);
   const [manageQuestionEditMode, setManageQuestionEditMode] = useState(false);
+  const [inlineEditDraft, setInlineEditDraft] = useState<any | null>(null);
+  const [inlineEditSaving, setInlineEditSaving] = useState(false);
   const [selectedManageQuestionIds, setSelectedManageQuestionIds] = useState<string[]>([]);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [manageMissingImagesOnly, setManageMissingImagesOnly] = useState(false);
@@ -867,8 +1869,9 @@ export default function HSCGeneratorPage() {
   const [manageFilterYear, setManageFilterYear] = useState<string>('');
   const [manageFilterSubject, setManageFilterSubject] = useState<string>('');
   const [manageFilterTopic, setManageFilterTopic] = useState<string>('');
+  const [manageFilterSchool, setManageFilterSchool] = useState<string>('');
   const [manageFilterType, setManageFilterType] = useState<'all' | 'written' | 'multiple_choice'>('all');
-  const [manageSortKey, setManageSortKey] = useState<'question_number' | 'year' | 'subject' | 'grade' | 'marks' | 'topic'>('question_number');
+  const [manageSortKey, setManageSortKey] = useState<'question_number' | 'year' | 'subject' | 'grade' | 'marks' | 'topic' | 'school'>('question_number');
   const [manageSortDirection, setManageSortDirection] = useState<'asc' | 'desc'>('asc');
   const [newQuestion, setNewQuestion] = useState({
     grade: 'Year 12',
@@ -881,6 +1884,8 @@ export default function HSCGeneratorPage() {
     questionText: '',
     markingCriteria: '',
     sampleAnswer: '',
+    sampleAnswerImage: '',
+    sampleAnswerImageSize: 'medium' as 'small' | 'medium' | 'large',
     mcqOptionA: '',
     mcqOptionB: '',
     mcqOptionC: '',
@@ -905,6 +1910,8 @@ export default function HSCGeneratorPage() {
     questionText: '',
     markingCriteria: '',
     sampleAnswer: '',
+    sampleAnswerImage: '',
+    sampleAnswerImage: '',
     mcqOptionA: '',
     mcqOptionB: '',
     mcqOptionC: '',
@@ -929,66 +1936,9 @@ export default function HSCGeneratorPage() {
   // Available filter options
   const YEARS = ['2020', '2021', '2022', '2023', '2024', '2025'];
 
-  const SUBJECTS_BY_YEAR: Record<'Year 11' | 'Year 12', string[]> = {
-    'Year 11': ['Mathematics Advanced', 'Mathematics Extension 1'],
-    'Year 12': ['Mathematics Advanced', 'Mathematics Extension 1', 'Mathematics Extension 2'],
-  };
-
-  const TOPICS_BY_YEAR_SUBJECT: Record<'Year 11' | 'Year 12', Record<string, string[]>> = {
-    'Year 12': {
-      'Mathematics Advanced': [
-        'Further graph transformations',
-        'Sequences and series',
-        'Differential calculus',
-        'Integral calculus',
-        'Applications of calculus',
-        'Random variables',
-        'Financial mathematics',
-      ],
-      'Mathematics Extension 1': [
-        'Proof by mathematical induction',
-        'Vectors',
-        'Inverse trigonometric functions',
-        'Further calculus skills',
-        'Further applications of calculus',
-        'The binomial distribution and sampling distribution of the mean',
-      ],
-      'Mathematics Extension 2': [
-        'The nature of proof',
-        'Further work with vectors',
-        'Introduction to complex numbers',
-        'Further integration',
-        'Applications of calculus to mechanics',
-      ],
-    },
-    'Year 11': {
-      'Mathematics Advanced': [
-        'Working with functions',
-        'Trigonometry and measure of angles',
-        'Trigonometric identities and equations',
-        'Differentiation',
-        'Exponential and logarithmic functions',
-        'Graph transformations',
-        'Probability and data',
-      ],
-      'Mathematics Extension 1': [
-        'Further work with functions',
-        'Polynomials',
-        'Further trigonometry',
-        'Permutations and combinations',
-        'The binomial theorem',
-      ],
-    },
-  };
-
-  const getTopics = (gradeValue: string, subjectValue: string) => {
-    if (gradeValue !== 'Year 11' && gradeValue !== 'Year 12') return [];
-    return TOPICS_BY_YEAR_SUBJECT[gradeValue]?.[subjectValue] || [];
-  };
-
   const ALL_TOPICS = useMemo(() => {
     const set = new Set<string>();
-    (Object.keys(TOPICS_BY_YEAR_SUBJECT) as Array<'Year 11' | 'Year 12'>).forEach((grade) => {
+    (Object.keys(TOPICS_BY_YEAR_SUBJECT) as Array<keyof typeof TOPICS_BY_YEAR_SUBJECT>).forEach((grade) => {
       const subjectMap = TOPICS_BY_YEAR_SUBJECT[grade];
       Object.keys(subjectMap || {}).forEach((subject) => {
         (subjectMap![subject] || []).forEach((t) => set.add(t));
@@ -1054,20 +2004,39 @@ export default function HSCGeneratorPage() {
     }
     const first = group[0];
     const displayBase = getQuestionDisplayBase(first.question_number);
-    const questionText = group
-      .map((q) => {
-        const roman = getRomanPart(q.question_number);
-        const label = roman || (q.question_number ?? 'Part');
-        return `${formatPartDividerPlaceholder(label)}\n\n${q.question_text}`;
-      })
-      .join('');
-    const markingCriteria = group
-      .map((q, i) => (i === 0 ? (q.marking_criteria ?? '') : `\n\n--- ${q.question_number ?? 'Part'} ---\n\n${q.marking_criteria ?? ''}`))
-      .join('');
+    // If any record in the DB already contains our PART_DIVIDER placeholders, it means someone
+    // accidentally saved a merged display question back into the underlying sub-question.
+    // In that case, re-merging would duplicate content/criteria/marks. Prefer the already-merged
+    // text as the canonical display payload.
+    const mergedCarrier = group.find((q) => String(q.question_text || '').includes('[[PART_DIVIDER:'));
+
+    const questionText = mergedCarrier
+      ? String(mergedCarrier.question_text || '')
+      : group
+          .map((q) => {
+            const roman = getRomanPart(q.question_number);
+            const label = roman || (q.question_number ?? 'Part');
+            return `${formatPartDividerPlaceholder(label)}\n\n${q.question_text}`;
+          })
+          .join('');
+    // Marking criteria often already includes all subparts; concatenating per-part causes duplication.
+    // For multi-part display groups, dedupe criteria blocks and do NOT add dividers.
+    // If a mergedCarrier exists (corrupted-save case), prefer its criteria directly.
+    const markingCriteria = mergedCarrier?.marking_criteria
+      ? String(mergedCarrier.marking_criteria)
+      : Array.from(
+          new Set(
+            group
+              .map((q) => (q.marking_criteria ?? '').trim())
+              .filter(Boolean)
+          )
+        ).join('\n\n');
     const sampleAnswer = group
       .map((q, i) => (i === 0 ? (q.sample_answer ?? '') : `\n\n--- ${q.question_number ?? 'Part'} ---\n\n${q.sample_answer ?? ''}`))
       .join('');
-    const totalMarks = group.reduce((sum, q) => sum + (q.marks ?? 0), 0);
+    const totalMarks = mergedCarrier?.marks != null
+      ? mergedCarrier.marks
+      : group.reduce((sum, q) => sum + (q.marks ?? 0), 0);
     return {
       ...first,
       id: first.id,
@@ -1084,11 +2053,13 @@ export default function HSCGeneratorPage() {
     const years = new Set<string>();
     const subjects = new Set<string>();
     const topics = new Set<string>();
+    const schools = new Set<string>();
     allQuestions.forEach((q) => {
       if (q?.grade) grades.add(String(q.grade));
       if (q?.year) years.add(String(q.year));
       if (q?.subject) subjects.add(String(q.subject));
       if (q?.topic) topics.add(String(q.topic));
+      if (q?.school_name) schools.add(String(q.school_name));
     });
 
     const sortAlpha = (values: Set<string>) => Array.from(values).sort((a, b) => a.localeCompare(b));
@@ -1099,22 +2070,24 @@ export default function HSCGeneratorPage() {
       years: sortNumeric(years),
       subjects: sortAlpha(subjects),
       topics: sortAlpha(topics),
+      schools: sortAlpha(schools),
     };
   }, [allQuestions]);
 
   const availablePapers = useMemo(() => {
-    const map = new Map<string, { year: string; subject: string; grade: string; count: number }>();
+    const map = new Map<string, { year: string; subject: string; grade: string; school: string; count: number }>();
     allQuestions.forEach((q) => {
       if (!q?.year || !q?.subject || !q?.grade) return;
       const year = String(q.year);
       const subject = String(q.subject);
       const grade = String(q.grade);
-      const key = `${year}__${grade}__${subject}`;
+      const school = String(q.school_name || 'HSC');
+      const key = `${year}__${grade}__${subject}__${school}`;
       const existing = map.get(key);
       if (existing) {
         existing.count += 1;
       } else {
-        map.set(key, { year, subject, grade, count: 1 });
+        map.set(key, { year, subject, grade, school, count: 1 });
       }
     });
 
@@ -1123,9 +2096,137 @@ export default function HSCGeneratorPage() {
       if (yearCompare !== 0) return yearCompare;
       const gradeCompare = a.grade.localeCompare(b.grade);
       if (gradeCompare !== 0) return gradeCompare;
-      return a.subject.localeCompare(b.subject);
+      const subjectCompare = a.subject.localeCompare(b.subject);
+      if (subjectCompare !== 0) return subjectCompare;
+      return a.school.localeCompare(b.school);
     });
   }, [allQuestions]);
+
+  const topicStats = useMemo<TopicStat[]>(() => {
+    const map = new Map<string, { attempts: number; scoredAttempts: number; earnedMarks: number; totalMarks: number }>();
+
+    const record = (topicValue: string | null | undefined, marksValue: unknown, scoreValue: unknown) => {
+      const topic = String(topicValue || 'Unspecified');
+      const marks = typeof marksValue === 'number' ? marksValue : Number(marksValue || 0);
+      const score = typeof scoreValue === 'number' ? scoreValue : Number.NaN;
+
+      if (!map.has(topic)) {
+        map.set(topic, { attempts: 0, scoredAttempts: 0, earnedMarks: 0, totalMarks: 0 });
+      }
+      const entry = map.get(topic)!;
+      entry.attempts += 1;
+      if (Number.isFinite(marks) && marks > 0 && Number.isFinite(score)) {
+        entry.scoredAttempts += 1;
+        entry.totalMarks += marks;
+        entry.earnedMarks += Math.max(0, score);
+      }
+    };
+
+    savedAttempts.forEach((attempt) => {
+      if (!attempt) return;
+      if (attempt.type === 'exam' && Array.isArray(attempt.examAttempts)) {
+        attempt.examAttempts.forEach((examAttempt: any) => {
+          record(examAttempt?.question?.topic, examAttempt?.question?.marks, examAttempt?.feedback?.score);
+        });
+        return;
+      }
+      record(attempt.topic ?? attempt?.question?.topic, attempt.marks ?? attempt?.question?.marks, attempt.feedback?.score);
+    });
+
+    return Array.from(map.entries())
+      .map(([topic, entry]) => {
+        const accuracy = entry.totalMarks > 0 ? Math.round((entry.earnedMarks / entry.totalMarks) * 100) : null;
+        return { topic, ...entry, accuracy };
+      })
+      .sort((a, b) => a.topic.localeCompare(b.topic));
+  }, [savedAttempts]);
+
+  const activityMap = useMemo(() => {
+    const map = new Map<string, { count: number; date: Date }>();
+
+    const record = (date: Date, count: number) => {
+      const dayKey = toLocalDateKey(date);
+      const dayDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const existing = map.get(dayKey);
+      map.set(dayKey, {
+        count: (existing?.count ?? 0) + count,
+        date: dayDate,
+      });
+    };
+
+    savedAttempts.forEach((attempt) => {
+      const savedAt = attempt?.savedAt;
+      if (!savedAt) return;
+      const date = new Date(savedAt);
+      if (Number.isNaN(date.getTime())) return;
+      let increment = 1;
+      if (attempt?.type === 'exam' && Array.isArray(attempt.examAttempts)) {
+        increment = Math.max(1, attempt.examAttempts.length);
+      }
+      record(date, increment);
+    });
+
+    return map;
+  }, [savedAttempts]);
+
+  const heatmapCells = useMemo<HeatmapCell[]>(() => {
+    const firstDay = new Date(heatmapYear, heatmapMonth, 1);
+    const startWeekday = firstDay.getDay();
+    const daysInMonth = new Date(heatmapYear, heatmapMonth + 1, 0).getDate();
+    const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
+    const cells: HeatmapCell[] = [];
+
+    for (let i = 0; i < totalCells; i += 1) {
+      const dayNumber = i - startWeekday + 1;
+      const inMonth = dayNumber >= 1 && dayNumber <= daysInMonth;
+      if (!inMonth) {
+        cells.push({
+          dateKey: `empty-${heatmapYear}-${heatmapMonth}-${i}`,
+          label: '',
+          count: 0,
+          inMonth: false,
+        });
+        continue;
+      }
+      const date = new Date(heatmapYear, heatmapMonth, dayNumber);
+      const key = toLocalDateKey(date);
+      const count = activityMap.get(key)?.count ?? 0;
+      cells.push({
+        dateKey: key,
+        label: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+        count,
+        inMonth: true,
+      });
+    }
+
+    return cells;
+  }, [activityMap, heatmapMonth, heatmapYear]);
+
+  const studyStreak = useMemo(() => {
+    if (activityMap.size === 0) return 0;
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    let latest: Date | null = null;
+
+    activityMap.forEach((value) => {
+      if (value.date > todayStart) return;
+      if (!latest || value.date > latest) {
+        latest = value.date;
+      }
+    });
+
+    if (!latest) return 0;
+    let streak = 0;
+    let cursor = latest;
+    while (true) {
+      const key = toLocalDateKey(cursor);
+      const count = activityMap.get(key)?.count ?? 0;
+      if (count <= 0) break;
+      streak += 1;
+      cursor = addDays(cursor, -1);
+    }
+    return streak;
+  }, [activityMap]);
 
   const filteredManageQuestions = useMemo(() => {
     const search = manageSearchQuery.trim().toLowerCase();
@@ -1135,9 +2236,10 @@ export default function HSCGeneratorPage() {
       if (manageFilterYear && String(q.year) !== manageFilterYear) return false;
       if (manageFilterSubject && String(q.subject) !== manageFilterSubject) return false;
       if (manageFilterTopic && String(q.topic) !== manageFilterTopic) return false;
+      if (manageFilterSchool && String(q.school_name || '') !== manageFilterSchool) return false;
       if (manageFilterType !== 'all' && String(q.question_type) !== manageFilterType) return false;
       if (search) {
-        const haystack = [q.question_number, q.subject, q.topic, q.question_text, q.grade, q.year]
+        const haystack = [q.question_number, q.subject, q.topic, q.question_text, q.grade, q.year, q.school_name]
           .filter(Boolean)
           .join(' ')
           .toLowerCase();
@@ -1164,6 +2266,8 @@ export default function HSCGeneratorPage() {
         comparison = String(a.subject || '').localeCompare(String(b.subject || ''));
       } else if (manageSortKey === 'topic') {
         comparison = String(a.topic || '').localeCompare(String(b.topic || ''));
+      } else if (manageSortKey === 'school') {
+        comparison = String(a.school_name || '').localeCompare(String(b.school_name || ''));
       }
 
       return manageSortDirection === 'asc' ? comparison : -comparison;
@@ -1177,6 +2281,7 @@ export default function HSCGeneratorPage() {
     manageFilterYear,
     manageFilterSubject,
     manageFilterTopic,
+    manageFilterSchool,
     manageFilterType,
     manageSortKey,
     manageSortDirection,
@@ -1199,6 +2304,9 @@ export default function HSCGeneratorPage() {
       const normalizedEmail = String(user.email || '').toLowerCase();
       setUserEmail(user.email);
       setUserCreatedAt(user.created_at);
+      const nextName = String(user.name || '').trim();
+      setUserName(nextName);
+      setUserNameDraft(nextName);
 
       // Check if user is dev
       setIsDevMode(normalizedEmail === 'peter7775271@gmail.com');
@@ -1208,25 +2316,29 @@ export default function HSCGeneratorPage() {
   }, []);
 
   useEffect(() => {
+    setUserNameDraft(userName);
+  }, [userName]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     if (view === 'papers') {
       setViewMode('papers');
     } else if (view === 'generator') {
-      setViewMode('generator');
+      setViewMode('browse');
     }
   }, []);
 
-  // Fetch questions when entering dev mode
+  // Fetch questions when entering dev mode (manage or review tab)
   useEffect(() => {
-    if (viewMode === 'dev-questions' && devTab === 'manage') {
+    if (viewMode === 'dev-questions' && (devTab === 'manage' || devTab === 'review')) {
       fetchAllQuestions();
     }
   }, [viewMode, devTab]);
 
   useEffect(() => {
-    if (viewMode === 'papers' || viewMode === 'paper') {
+    if (viewMode === 'papers' || viewMode === 'paper' || viewMode === 'browse' || viewMode === 'builder') {
       if (!allQuestions.length && !loadingQuestions) {
         fetchAllQuestions();
       }
@@ -1522,6 +2634,23 @@ export default function HSCGeneratorPage() {
     setCanUndo(true);
   };
 
+  const handleSaveName = () => {
+    if (typeof window === 'undefined') return;
+    const trimmed = userNameDraft.trim();
+    setIsSavingName(true);
+    try {
+      const userJson = localStorage.getItem('user');
+      const user = userJson ? JSON.parse(userJson) : {};
+      const nextUser = { ...user, name: trimmed };
+      localStorage.setItem('user', JSON.stringify(nextUser));
+      setUserName(trimmed);
+    } catch (err) {
+      console.error('Failed to save name:', err);
+    } finally {
+      setTimeout(() => setIsSavingName(false), 400);
+    }
+  };
+
   const saveAttempt = async () => {
     if (!question || !feedback) return;
     
@@ -1573,6 +2702,41 @@ export default function HSCGeneratorPage() {
       setSavedExamReviewMode(false);
     } catch (err) {
       console.error('Error loading attempts:', err);
+    }
+  };
+
+  const requestAnalyticsSummary = async () => {
+    if (!topicStats.length) {
+      setAnalyticsSummary('No attempts recorded yet. Complete a few questions to unlock insights.');
+      return;
+    }
+    setAnalyticsLoading(true);
+    setAnalyticsError(null);
+    try {
+      const response = await fetch('/api/hsc/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topics: topicStats.map((t) => ({
+            topic: t.topic,
+            attempts: t.attempts,
+            scoredAttempts: t.scoredAttempts,
+            earnedMarks: t.earnedMarks,
+            totalMarks: t.totalMarks,
+            accuracy: t.accuracy,
+          })),
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to generate analytics summary');
+      }
+      setAnalyticsSummary(data?.summary || '');
+    } catch (err) {
+      setAnalyticsError(err instanceof Error ? err.message : 'Failed to generate analytics summary');
+    } finally {
+      setAnalyticsLoading(false);
     }
   };
 
@@ -1628,6 +2792,8 @@ export default function HSCGeneratorPage() {
           questionText: '',
           markingCriteria: '',
           sampleAnswer: '',
+          sampleAnswerImage: '',
+          sampleAnswerImageSize: 'medium',
           mcqOptionA: '',
           mcqOptionB: '',
           mcqOptionC: '',
@@ -1667,6 +2833,8 @@ export default function HSCGeneratorPage() {
       questionText: q.question_text,
       markingCriteria: q.marking_criteria,
       sampleAnswer: q.sample_answer,
+      sampleAnswerImage: q.sample_answer_image || '',
+      sampleAnswerImage: q.sample_answer_image || '',
       mcqOptionA: q.mcq_option_a || '',
       mcqOptionB: q.mcq_option_b || '',
       mcqOptionC: q.mcq_option_c || '',
@@ -1748,11 +2916,21 @@ export default function HSCGeneratorPage() {
       if (modelOutput) {
         setPdfChatGptResponse((prev) => (prev ? `${prev}\n\n${modelOutput}` : modelOutput));
       }
+      if (Array.isArray(data?.rawInputs) && data.rawInputs.length > 0) {
+        const formatted = data.rawInputs
+          .map((entry: { source?: string; index?: number; input?: string }, idx: number) => {
+            const label = entry?.source ? `${entry.source}${entry.index != null ? ` ${entry.index}` : ''}` : `input ${idx + 1}`;
+            return `--- RAW INPUT (${label}) ---\n\n${entry?.input || ''}`;
+          })
+          .join('\n\n');
+        setPdfRawInputs((prev) => (prev ? `${prev}\n\n${formatted}` : formatted));
+      }
       return data;
     };
 
     try {
       setPdfChatGptResponse('');
+      setPdfRawInputs('');
       if (examPdfFile && criteriaPdfFile) {
         const examData = new FormData();
         examData.append('exam', examPdfFile);
@@ -1760,6 +2938,8 @@ export default function HSCGeneratorPage() {
         examData.append('year', yearToSend);
         examData.append('subject', pdfSubject);
         examData.append('overwrite', pdfOverwrite ? 'true' : 'false');
+        examData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
+        examData.append('schoolName', pdfSchoolName.trim());
         await sendPdf(examData, 'exam PDF');
 
         const criteriaData = new FormData();
@@ -1768,6 +2948,8 @@ export default function HSCGeneratorPage() {
         criteriaData.append('year', yearToSend);
         criteriaData.append('subject', pdfSubject);
         criteriaData.append('overwrite', pdfOverwrite ? 'true' : 'false');
+        criteriaData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
+        criteriaData.append('schoolName', pdfSchoolName.trim());
         const criteriaResponse = await sendPdf(criteriaData, 'criteria PDF');
 
         setPdfStatus('ready');
@@ -1789,6 +2971,8 @@ export default function HSCGeneratorPage() {
       singleData.append('year', yearToSend);
       singleData.append('subject', pdfSubject);
       singleData.append('overwrite', pdfOverwrite ? 'true' : 'false');
+      singleData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
+      singleData.append('schoolName', pdfSchoolName.trim());
 
       const label =
         examPdfFile || criteriaPdfFile
@@ -1973,7 +3157,7 @@ export default function HSCGeneratorPage() {
         reader.onload = () => {
           const dataUrl = reader.result as string;
           setEditQuestion({ ...editQuestion, graphImageData: dataUrl });
-        };
+        };  
         reader.readAsDataURL(file);
         return;
       }
@@ -2166,6 +3350,33 @@ export default function HSCGeneratorPage() {
     }
   };
 
+  const buildUpdatePayload = (draft: any) => ({
+    questionId: draft.id,
+    grade: draft.grade,
+    year: draft.year,
+    subject: draft.subject,
+    topic: draft.topic,
+    marks: draft.marks,
+    questionNumber: draft.question_number,
+    questionText: draft.question_text,
+    markingCriteria: draft.marking_criteria,
+    sampleAnswer: draft.sample_answer,
+    sampleAnswerImage: draft.sample_answer_image,
+    graphImageData: draft.graph_image_data,
+    graphImageSize: draft.graph_image_size,
+    questionType: draft.question_type,
+    mcqOptionA: draft.mcq_option_a,
+    mcqOptionB: draft.mcq_option_b,
+    mcqOptionC: draft.mcq_option_c,
+    mcqOptionD: draft.mcq_option_d,
+    mcqOptionAImage: draft.mcq_option_a_image,
+    mcqOptionBImage: draft.mcq_option_b_image,
+    mcqOptionCImage: draft.mcq_option_c_image,
+    mcqOptionDImage: draft.mcq_option_d_image,
+    mcqCorrectAnswer: draft.mcq_correct_answer,
+    mcqExplanation: draft.mcq_explanation,
+  });
+
   const saveManageQuestion = async () => {
     if (!manageQuestionDraft?.id) return;
 
@@ -2173,31 +3384,7 @@ export default function HSCGeneratorPage() {
       const response = await fetch('/api/hsc/update-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId: manageQuestionDraft.id,
-          grade: manageQuestionDraft.grade,
-          year: manageQuestionDraft.year,
-          subject: manageQuestionDraft.subject,
-          topic: manageQuestionDraft.topic,
-          marks: manageQuestionDraft.marks,
-          questionNumber: manageQuestionDraft.question_number,
-          questionText: manageQuestionDraft.question_text,
-          markingCriteria: manageQuestionDraft.marking_criteria,
-          sampleAnswer: manageQuestionDraft.sample_answer,
-          graphImageData: manageQuestionDraft.graph_image_data,
-          graphImageSize: manageQuestionDraft.graph_image_size,
-          questionType: manageQuestionDraft.question_type,
-          mcqOptionA: manageQuestionDraft.mcq_option_a,
-          mcqOptionB: manageQuestionDraft.mcq_option_b,
-          mcqOptionC: manageQuestionDraft.mcq_option_c,
-          mcqOptionD: manageQuestionDraft.mcq_option_d,
-          mcqOptionAImage: manageQuestionDraft.mcq_option_a_image,
-          mcqOptionBImage: manageQuestionDraft.mcq_option_b_image,
-          mcqOptionCImage: manageQuestionDraft.mcq_option_c_image,
-          mcqOptionDImage: manageQuestionDraft.mcq_option_d_image,
-          mcqCorrectAnswer: manageQuestionDraft.mcq_correct_answer,
-          mcqExplanation: manageQuestionDraft.mcq_explanation,
-        }),
+        body: JSON.stringify(buildUpdatePayload(manageQuestionDraft)),
       });
 
       const result = await response.json();
@@ -2214,6 +3401,47 @@ export default function HSCGeneratorPage() {
     } catch (err) {
       console.error('Error updating question:', err);
       alert(err instanceof Error ? err.message : 'Failed to update question');
+    }
+  };
+
+  const saveInlineEdit = async () => {
+    if (!inlineEditDraft?.id) return;
+
+    setInlineEditSaving(true);
+    try {
+      const response = await fetch('/api/hsc/update-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildUpdatePayload(inlineEditDraft)),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to update question');
+      }
+
+      const updated = Array.isArray(result.data) ? result.data[0] : result.data;
+      if (updated) {
+        setAllQuestions((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+        setPaperQuestions((prev) => {
+          const next = prev.map((q) => (q.id === updated.id ? updated : q));
+          // Keep the current display question merged for roman-subpart groups
+          if (isPaperMode && next.length > 0) {
+            const { group } = getDisplayGroupAt(next, paperIndex);
+            setQuestion(mergeGroupForDisplay(group));
+          } else {
+            setQuestion((prevQ) => (prevQ?.id === updated.id ? updated : prevQ));
+          }
+          return next;
+        });
+        setInlineEditDraft(null);
+      }
+    } catch (err) {
+      console.error('Error updating question:', err);
+      alert(err instanceof Error ? err.message : 'Failed to update question');
+    } finally {
+      setInlineEditSaving(false);
     }
   };
 
@@ -2622,8 +3850,8 @@ export default function HSCGeneratorPage() {
     return 3;
   };
 
-  const startExamSimulation = () => {
-    const durationHours = getExamDurationHours(activePaper?.subject);
+  const startExamSimulation = (subjectOverride?: string | null) => {
+    const durationHours = getExamDurationHours(subjectOverride ?? activePaper?.subject);
     const durationMs = durationHours * 60 * 60 * 1000;
     setExamEndsAt(Date.now() + durationMs);
     setExamRemainingMs(durationMs);
@@ -2633,7 +3861,11 @@ export default function HSCGeneratorPage() {
     setShowFinishExamPrompt(false);
     setExamReviewMode(false);
     setExamReviewIndex(0);
-    setIsSidebarHidden(true);
+    if (sidebarHideTimeoutRef.current) {
+      clearTimeout(sidebarHideTimeoutRef.current);
+      sidebarHideTimeoutRef.current = null;
+    }
+    setSidebarHovered(false);
     setMobileMenuOpen(false);
   };
 
@@ -2648,13 +3880,14 @@ export default function HSCGeneratorPage() {
     endExam();
   };
 
-  const startPaperAttempt = (paper: { year: string; subject: string; grade: string; count: number }) => {
+  const startPaperAttempt = (paper: { year: string; subject: string; grade: string; school: string; count: number }) => {
     const matching = allQuestions
       .filter(
         (q) =>
           String(q.year) === paper.year &&
           String(q.subject) === paper.subject &&
-          String(q.grade) === paper.grade
+          String(q.grade) === paper.grade &&
+          String(q.school_name || 'HSC') === paper.school
       )
       .sort((a, b) => {
         const left = parseQuestionNumberForSort(a.question_number);
@@ -2674,6 +3907,92 @@ export default function HSCGeneratorPage() {
     setViewMode('paper');
     const initialGroup = getDisplayGroupAt(questions, 0);
     resetForQuestion(mergeGroupForDisplay(initialGroup.group));
+  };
+
+  const shuffleQuestions = (items: Question[]) => {
+    const arr = [...items];
+    for (let i = arr.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
+  const loadQuestionsForBuilder = async () => {
+    if (allQuestions.length) return allQuestions as Question[];
+    try {
+      setLoadingQuestions(true);
+      const response = await fetch('/api/hsc/all-questions');
+      const data = await response.json().catch(() => ([]));
+      const rows = Array.isArray(data) ? data : [];
+      setAllQuestions(rows);
+      return rows as Question[];
+    } catch (err) {
+      console.error('Error loading questions for builder:', err);
+      return [] as Question[];
+    } finally {
+      setLoadingQuestions(false);
+    }
+  };
+
+  const initializeCustomExam = async (params: ExamBuilderParams) => {
+    setIsInitializingExam(true);
+    try {
+      clearPaperState();
+      const pool = await loadQuestionsForBuilder();
+      const filtered = pool.filter((q) => {
+        if (String(q.grade) !== params.grade) return false;
+        if (String(q.subject) !== params.subject) return false;
+        if (params.topics.length > 0 && !params.topics.includes(String(q.topic))) return false;
+        return true;
+      });
+
+      if (!filtered.length) {
+        return { ok: false, message: 'No questions match these settings yet.' };
+      }
+
+      const shuffled = shuffleQuestions(filtered);
+      const targetCount = Math.min(params.intensity, shuffled.length);
+      const selected = shuffled.slice(0, targetCount);
+
+      if (!selected.length) {
+        return { ok: false, message: 'Not enough questions to build this exam.' };
+      }
+
+      const totalPossible = selected.reduce((sum, q) => sum + (q.marks || 0), 0);
+      const exam = {
+        type: 'exam',
+        id: Date.now(),
+        paperYear: 'Custom',
+        paperSubject: params.subject,
+        paperGrade: params.grade,
+        examAttempts: selected.map((q) => ({ question: q, submittedAnswer: null, feedback: null })),
+        totalScore: 0,
+        totalPossible,
+        savedAt: new Date().toISOString(),
+      };
+
+      const existing = JSON.parse(localStorage.getItem('savedAttempts') || '[]');
+      existing.push(exam);
+      localStorage.setItem('savedAttempts', JSON.stringify(existing));
+      setSavedAttempts(existing);
+
+      setActivePaper({ year: 'Custom', subject: params.subject, grade: params.grade, school: 'Custom', count: selected.length });
+      setPaperQuestions(selected);
+      setPaperIndex(0);
+      setViewMode('paper');
+      const initialGroup = getDisplayGroupAt(selected, 0);
+      resetForQuestion(mergeGroupForDisplay(initialGroup.group));
+      if (params.cognitive) {
+        startExamSimulation(params.subject);
+      }
+      return { ok: true };
+    } catch (err) {
+      console.error('Failed to initialize custom exam:', err);
+      return { ok: false, message: 'Failed to build exam.' };
+    } finally {
+      setIsInitializingExam(false);
+    }
   };
 
   const goToPaperQuestion = (nextIndex: number) => {
@@ -2703,6 +4022,16 @@ export default function HSCGeneratorPage() {
     };
 
     loadInitialQuestion();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const attempts = JSON.parse(localStorage.getItem('savedAttempts') || '[]');
+      setSavedAttempts(attempts);
+    } catch (err) {
+      console.error('Error loading saved attempts:', err);
+    }
   }, []);
 
   useEffect(() => {
@@ -2744,19 +4073,15 @@ export default function HSCGeneratorPage() {
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
   }, [examRemainingMs]);
 
+  const viewModeLabel = viewMode === 'dashboard' ? 'Dashboard' : viewMode === 'analytics' ? 'Analytics Hub' : viewMode === 'browse' ? 'Browse Bank' : viewMode === 'builder' ? 'Exam Architect' : viewMode === 'formulas' ? 'Formula Vault' : viewMode === 'saved' ? 'Saved Content' : viewMode === 'history' ? 'My History' : viewMode === 'papers' || viewMode === 'paper' ? 'Exam' : viewMode === 'settings' ? 'Settings' : viewMode === 'dev-questions' ? 'Dev Mode' : String(viewMode).replace(/-/g, ' ');
+
   return (
-    <div 
-      className="min-h-screen font-serif selection:bg-white/20 flex flex-col"
-      style={{
-        backgroundColor: 'var(--clr-surface-a0)',
-        color: 'var(--clr-primary-a50)'
-      }}
-    >
+    <div className="flex h-screen bg-white overflow-hidden font-sans">
       <style jsx global>{`
         body { 
-          font-family: 'CMU Serif', serif; 
-          background-color: var(--clr-surface-a0);
-          color: var(--clr-primary-a50);
+          font-family: 'Inter', sans-serif; 
+          background-color: var(--clr-surface);
+          color: var(--foreground);
         }
         .latex-list {
           list-style: none;
@@ -2780,280 +4105,381 @@ export default function HSCGeneratorPage() {
         }
         .latex-table td,
         .latex-table th {
-          border: 1px solid var(--clr-surface-tonal-a30, rgba(255,255,255,0.2));
+          border: 1px solid var(--clr-surface-tonal-a20);
           padding: 0.35rem 0.6rem;
           vertical-align: middle;
         }
       `}</style>
 
-      {isMarking && !examConditionsActive && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
+      {/* Inline edit question modal (dev): edit on the spot without leaving exam/review */}
+      {inlineEditDraft != null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="rounded-2xl border shadow-2xl px-8 py-6 text-center"
+            className="absolute inset-0"
+            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+            onClick={() => !inlineEditSaving && setInlineEditDraft(null)}
+          />
+          <div
+            className="relative w-full max-w-2xl rounded-2xl border p-6 shadow-2xl overflow-y-auto max-h-[90vh]"
             style={{
-              backgroundColor: 'var(--clr-surface-a0)',
+              backgroundColor: 'var(--clr-surface-a10)',
               borderColor: 'var(--clr-surface-tonal-a20)',
+              color: 'var(--clr-primary-a50)',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3" style={{ color: 'var(--clr-surface-a40)' }} />
-            <div className="text-lg font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>
-              Marking your response…
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Edit question (here)</h2>
+              <button
+                type="button"
+                onClick={() => !inlineEditSaving && setInlineEditDraft(null)}
+                className="p-2 rounded-lg cursor-pointer"
+                style={{ backgroundColor: 'var(--clr-surface-a20)' }}
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <div className="text-sm mt-1" style={{ color: 'var(--clr-surface-a50)' }}>
-              Please wait while we assess your work.
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Topic</label>
+                <select
+                  value={inlineEditDraft.topic || ''}
+                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, topic: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                >
+                  {(() => {
+                    const current = inlineEditDraft.topic?.trim();
+                    const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
+                    return options.map((t) => <option key={t} value={t}>{t}</option>);
+                  })()}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Question (LaTeX)</label>
+                <textarea
+                  value={inlineEditDraft.question_text || ''}
+                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, question_text: e.target.value })}
+                  rows={6}
+                  className="w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria (LaTeX)</label>
+                <textarea
+                  value={inlineEditDraft.marking_criteria || ''}
+                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, marking_criteria: e.target.value })}
+                  rows={4}
+                  className="w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer (LaTeX)</label>
+                <textarea
+                  value={inlineEditDraft.sample_answer || ''}
+                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, sample_answer: e.target.value })}
+                  rows={4}
+                  className="w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image URL</label>
+                <input
+                  type="text"
+                  value={inlineEditDraft.sample_answer_image || ''}
+                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, sample_answer_image: e.target.value })}
+                  placeholder="https://... or data:image/png;base64,..."
+                  className="w-full px-4 py-2 rounded-lg border text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                />
+                <p className="text-xs mt-1" style={{ color: 'var(--clr-surface-a40)' }}>If provided, image will be shown instead of LaTeX text</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium mt-3 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image Size</label>
+                <select
+                  value={inlineEditDraft.sample_answer_image_size || 'medium'}
+                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, sample_answer_image_size: e.target.value })}
+                  className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                >
+                  <option value="small">Small</option>
+                  <option value="medium">Medium</option>
+                  <option value="large">Large</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image URL</label>
+                <input
+                  type="text"
+                  value={inlineEditDraft.graph_image_data || ''}
+                  onChange={(e) => {
+                    const nextUrl = e.target.value;
+                    setInlineEditDraft({
+                      ...inlineEditDraft,
+                      graph_image_data: nextUrl,
+                      graph_image_size: nextUrl ? (inlineEditDraft.graph_image_size || 'medium') : inlineEditDraft.graph_image_size,
+                    });
+                  }}
+                  placeholder="https://... or data:image/png;base64,..."
+                  className="w-full px-4 py-2 rounded-lg border text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image Size</label>
+                <select
+                  value={inlineEditDraft.graph_image_size || 'medium'}
+                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, graph_image_size: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border text-sm"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a0)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                >
+                  <option value="small">Small</option>
+                  <option value="medium">Medium</option>
+                  <option value="large">Large</option>
+                  <option value="missing">Missing</option>
+                </select>
+              </div>
+              {inlineEditDraft.question_type === 'multiple_choice' && (
+                <div className="pt-4 border-t space-y-4" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                  <h5 className="text-sm font-bold" style={{ color: 'var(--clr-surface-a50)' }}>MCQ Options</h5>
+                  {[
+                    { key: 'A', text: 'mcq_option_a', image: 'mcq_option_a_image' },
+                    { key: 'B', text: 'mcq_option_b', image: 'mcq_option_b_image' },
+                    { key: 'C', text: 'mcq_option_c', image: 'mcq_option_c_image' },
+                    { key: 'D', text: 'mcq_option_d', image: 'mcq_option_d_image' },
+                  ].map(({ key, text, image }) => (
+                    <div key={key} className="p-3 rounded border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                      <label className="block text-xs font-medium mb-1">Option {key}</label>
+                      <input type="text" placeholder="Text (LaTeX)" value={inlineEditDraft[text] || ''} onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, [text]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                      <input type="url" placeholder="Or image URL" value={inlineEditDraft[image] || ''} onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, [image]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Correct Answer</label>
+                    <select value={inlineEditDraft.mcq_correct_answer || 'A'} onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, mcq_correct_answer: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}>
+                      <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Explanation (LaTeX)</label>
+                    <textarea value={inlineEditDraft.mcq_explanation || ''} onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, mcq_explanation: e.target.value })} rows={3} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={saveInlineEdit}
+                disabled={inlineEditSaving}
+                className="flex-1 px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: 'var(--clr-success-a0)', color: 'var(--clr-light-a0)' }}
+              >
+                {inlineEditSaving ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => !inlineEditSaving && setInlineEditDraft(null)}
+                disabled={inlineEditSaving}
+                className="flex-1 px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* Mobile Header */}
-      <div 
-        className="lg:hidden flex items-center justify-between p-4 border-b sticky top-0 z-50 backdrop-blur-md"
-        style={{
-          backgroundColor: 'var(--clr-surface-a10)',
-          borderColor: 'var(--clr-surface-tonal-a20)',
-        }}
-      >
+      <div className="lg:hidden flex items-center justify-between p-4 border-b border-neutral-100 sticky top-0 z-50 bg-white/80 backdrop-blur-md">
         <div className="flex items-center gap-2">
-          <div 
-            className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xl"
-            style={{
-              backgroundColor: 'var(--clr-primary-a0)',
-              color: 'var(--clr-dark-a0)',
-            }}
-          >
-            ∑
-          </div>
-          <span className="font-bold text-lg" style={{ color: 'var(--clr-primary-a50)' }}>HSC Forge</span>
+          <div className="w-8 h-8 bg-neutral-900 rounded-lg flex items-center justify-center text-white font-serif italic text-xl">∑</div>
+          <span className="font-bold text-lg text-neutral-800">HSC Forge</span>
         </div>
-        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 cursor-pointer">
-          {mobileMenuOpen ? <X /> : <Menu />}
+        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-neutral-600 hover:text-neutral-900 cursor-pointer">
+          {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        
-        {/* Sidebar */}
-        <aside 
+        {/* Sidebar: on desktop collapses to icon strip when not hovered; full width when hovered */}
+        <aside
           className={`
-            fixed inset-y-0 left-0 z-40 w-72 border-r transform transition-all duration-300 ease-in-out lg:relative lg:h-auto relative
-            ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-            ${isSidebarHidden ? 'lg:-translate-x-full lg:w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:translate-x-0 lg:opacity-100'}
+            fixed inset-y-0 left-0 z-40 border-r border-neutral-100 flex flex-col bg-white
+            transition-all duration-250 ease-out
+            ${mobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64'}
+            ${sidebarHovered ? 'lg:translate-x-0 lg:w-64 lg:opacity-100' : 'lg:translate-x-0 lg:w-16 lg:opacity-90'}
+            lg:pointer-events-auto
           `}
-          style={{
-            backgroundColor: 'var(--clr-surface-a10)',
-            borderColor: isSidebarHidden ? 'transparent' : 'var(--clr-surface-tonal-a20)',
+          onMouseEnter={() => {
+            if (sidebarHideTimeoutRef.current) {
+              clearTimeout(sidebarHideTimeoutRef.current);
+              sidebarHideTimeoutRef.current = null;
+            }
+            setSidebarHovered(true);
+          }}
+          onMouseLeave={() => {
+            sidebarHideTimeoutRef.current = setTimeout(() => {
+              setSidebarHovered(false);
+              sidebarHideTimeoutRef.current = null;
+            }, 150);
           }}
         >
-          {!isSidebarHidden && (
-            <button
-              onClick={() => setIsSidebarHidden(true)}
-              aria-label="Hide sidebar"
-              className="hidden lg:flex items-center justify-center w-9 h-9 rounded-full border absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 shadow-lg cursor-pointer"
-              style={{
-                backgroundColor: 'var(--clr-surface-a10)',
-                borderColor: 'var(--clr-surface-tonal-a20)',
-                color: 'var(--clr-primary-a50)',
-              }}
-            >
-              <PanelLeftClose className="w-4 h-4" />
+          <div className={`p-6 mb-4 flex-shrink-0 flex items-center gap-3 overflow-hidden ${sidebarHovered ? 'lg:gap-3' : 'lg:justify-center lg:px-0'}`}>
+            <div className="w-8 h-8 shrink-0 bg-neutral-900 rounded-lg flex items-center justify-center text-white font-serif italic text-xl">∑</div>
+            <span className={`font-bold text-lg tracking-tight text-neutral-800 whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[200px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>HSC <span className="text-neutral-400 font-light">Forge</span></span>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar space-y-0">
+            <button onClick={() => { setViewMode('dashboard'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'dashboard' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <LayoutDashboard size={18} className="shrink-0" />
+              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Dashboard</span>
             </button>
-          )}
-          <div className="p-6 h-full flex flex-col">
-            <div className="hidden lg:flex items-center gap-3 mb-10">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xl"
-                style={{
-                  backgroundColor: 'var(--clr-primary-a0)',
-                  color: 'var(--clr-dark-a0)',
-                }}
-              >
-                ∑
-              </div>
-              <span className="font-bold text-xl tracking-tight" style={{ color: 'var(--clr-primary-a50)' }}>HSC Forge</span>
-            </div>
-
-            <div className="space-y-2 mb-6">
-              <p
-                className="text-xs font-bold uppercase tracking-widest mb-2 px-2"
-                style={{ color: 'var(--clr-surface-a40)' }}
-              >Navigation</p>
-              <button
-                onClick={() => {
-                  setViewMode('generator');
-                  clearPaperState();
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer ${
-                  viewMode === 'generator' ? 'shadow-lg' : 'hover:opacity-80'
-                }`}
-                style={{
-                  backgroundColor: viewMode === 'generator' ? 'var(--clr-primary-a0)' : 'transparent',
-                  color: viewMode === 'generator' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
-                }}
-              >
-                <span className="font-medium text-sm">Browse HSC Questions</span>
-              </button>
-              <button
-                onClick={() => {
-                  setViewMode('papers');
-                  clearPaperState();
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer ${
-                  viewMode === 'papers' || viewMode === 'paper' ? 'shadow-lg' : 'hover:opacity-80'
-                }`}
-                style={{
-                  backgroundColor: viewMode === 'papers' || viewMode === 'paper' ? 'var(--clr-primary-a0)' : 'transparent',
-                  color: viewMode === 'papers' || viewMode === 'paper' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
-                }}
-              >
-                <span className="font-medium text-sm">Browse HSC Papers</span>
-              </button>
-            </div>
-
-            {viewMode === 'generator' && (
-              <div className="space-y-1 flex-1">
-                <p
-                  className="text-xs font-bold uppercase tracking-widest mb-4 px-2"
-                  style={{ color: 'var(--clr-surface-a40)' }}
-                >Quick Filters</p>
-                <button
-                  onClick={() => { setFilterGrade('Year 11'); setViewMode('generator'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer ${
-                    filterGrade === 'Year 11'
-                      ? 'shadow-lg'
-                      : 'hover:opacity-80'
-                  }`}
-                  style={{
-                    backgroundColor: filterGrade === 'Year 11' ? 'var(--clr-primary-a0)' : 'transparent',
-                    color: filterGrade === 'Year 11' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
-                  }}
-                >
-                  <span className="font-medium text-sm">Year 11</span>
-                </button>
-                <button
-                  onClick={() => { setFilterGrade('Year 12'); setViewMode('generator'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 cursor-pointer ${
-                    filterGrade === 'Year 12'
-                      ? 'shadow-lg'
-                      : 'hover:opacity-80'
-                  }`}
-                  style={{
-                    backgroundColor: filterGrade === 'Year 12' ? 'var(--clr-primary-a0)' : 'transparent',
-                    color: filterGrade === 'Year 12' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
-                  }}
-                >
-                  <span className="font-medium text-sm">Year 12</span>
-                </button>
+            <button onClick={() => { setViewMode('browse'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'browse' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <BookOpen size={18} className="shrink-0" />
+              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Browse Bank</span>
+            </button>
+            <button onClick={() => { setViewMode('analytics'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'analytics' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <LineChart size={18} className="shrink-0" />
+              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Analytics Hub</span>
+            </button>
+            <button onClick={() => { setViewMode('builder'); clearPaperState(); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'builder' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <PlusCircle size={18} className="shrink-0" />
+              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Exam Architect</span>
+            </button>
+            <button onClick={() => { setViewMode('formulas'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'formulas' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <Sigma size={18} className="shrink-0" />
+              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Formula Vault</span>
+            </button>
+            <button onClick={() => { loadSavedAttempts(); setViewMode('saved'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'saved' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <Bookmark size={18} className="shrink-0" />
+              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Saved Content</span>
+              {savedAttempts.length > 0 && sidebarHovered && <span className="text-xs text-neutral-400">({savedAttempts.length})</span>}
+            </button>
+            <button onClick={() => { setViewMode('history'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'history' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <History size={18} className="shrink-0" />
+              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>My History</span>
+            </button>
+            {viewMode === 'saved' && savedAttempts.length > 0 && sidebarHovered && (
+              <div className="space-y-0 px-2 pb-2">
+                {savedAttempts.map((attempt) => (
+                  <button key={attempt.id} onClick={() => { setSelectedAttempt(attempt); setMobileMenuOpen(false); }} className={`w-full text-left p-3 rounded-lg transition-colors text-sm cursor-pointer ${selectedAttempt?.id === attempt.id ? 'bg-neutral-100 text-neutral-900 font-medium' : 'text-neutral-600 hover:bg-neutral-50'}`}>
+                    <div className="font-medium truncate">{attempt.subject}</div>
+                    <div className="text-xs text-neutral-400 truncate">{attempt.topic}</div>
+                    <div className="text-xs mt-1 text-neutral-400">{attempt.marks}m • {new Date(attempt.savedAt).toLocaleDateString()}</div>
+                  </button>
+                ))}
               </div>
             )}
-
-            {/* Saved Answers Section */}
-            <div 
-              className="border-t pt-6 space-y-3"
-              style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-            >
-              <p 
-                className="text-xs font-bold uppercase tracking-widest mb-4 px-2"
-                style={{ color: 'var(--clr-surface-a40)' }}
-              >Saved Answers</p>
-              <button
-                onClick={() => loadSavedAttempts()}
-                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors font-medium text-sm border cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--clr-info-a0)',
-                  color: 'var(--clr-info-a20)',
-                  borderColor: 'var(--clr-info-a10)',
-                }}
-              >
-                <Bookmark className="w-4 h-4" />
-                <span>View Saved ({savedAttempts.length})</span>
-              </button>
-              
-              {viewMode === 'saved' && savedAttempts.length > 0 && (
-                <div className="space-y-2">
-                  {savedAttempts.map((attempt) => (
-                    <button
-                      key={attempt.id}
-                      onClick={() => {
-                        setSelectedAttempt(attempt);
-                        setMobileMenuOpen(false);
-                      }}
-                      className={`w-full text-left p-3 rounded-lg transition-colors text-sm border`}
-                      style={{
-                        backgroundColor: selectedAttempt?.id === attempt.id ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
-                        borderColor: selectedAttempt?.id === attempt.id ? 'var(--clr-surface-tonal-a20)' : 'var(--clr-surface-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    >
-                      <div className="font-medium truncate">{attempt.subject}</div>
-                      <div 
-                        className="text-xs truncate"
-                        style={{ color: 'var(--clr-surface-a40)' }}
-                      >{attempt.topic}</div>
-                      <div 
-                        className="text-xs mt-1"
-                        style={{ color: 'var(--clr-surface-a50)' }}
-                      >{attempt.marks}m • {new Date(attempt.savedAt).toLocaleDateString()}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div 
-              className="mt-auto pt-6 border-t space-y-3"
-              style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-            >
+            <div className="mt-auto border-t border-neutral-100">
               {isDevMode && (
-                <button 
-                  onClick={() => setViewMode('dev-questions')}
-                  className="flex items-center gap-3 p-3 rounded-xl w-full transition-colors cursor-pointer font-medium text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-warning-a0)',
-                    color: 'var(--clr-light-a0)',
-                  }}
-                >
-                  <span>Dev Mode ON</span>
+                <button onClick={() => setViewMode('dev-questions')} className={`w-full flex items-center space-x-3 px-6 py-4 text-left cursor-pointer text-amber-700 bg-amber-50 hover:bg-amber-100 font-medium text-sm shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'}`}>
+                  <FileText size={18} className="shrink-0" />
+                  <span className={`text-sm whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[120px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Dev Mode ON</span>
                 </button>
               )}
-              <button 
-                onClick={() => setViewMode('settings')}
-                className="flex items-center gap-3 p-3 rounded-xl w-full transition-colors cursor-pointer"
-                style={{
-                  color: 'var(--clr-surface-a40)',
-                }}
-              >
-                <Settings className="w-5 h-5" />
-                <span className="font-medium text-sm">Settings</span>
+              <button onClick={() => setViewMode('settings')} className={`w-full flex items-center space-x-3 px-6 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'settings' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+                <Settings size={18} className="shrink-0" />
+                <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[140px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>Settings</span>
               </button>
             </div>
-          </div>
+          </nav>
         </aside>
 
         {/* Main Content */}
-        <main 
-          className="flex-1 p-4 lg:p-8 overflow-y-auto relative"
-          style={{ backgroundColor: 'var(--clr-surface-a0)' }}
-        >
-          {isSidebarHidden && (
-            <button
-              onClick={() => setIsSidebarHidden(false)}
-              aria-label="Show sidebar"
-              className="hidden lg:flex items-center justify-center w-9 h-9 rounded-full border absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 shadow-lg cursor-pointer"
-              style={{
-                backgroundColor: 'var(--clr-surface-a10)',
-                borderColor: 'var(--clr-surface-tonal-a20)',
-                color: 'var(--clr-primary-a50)',
-              }}
-            >
-              <PanelLeftOpen className="w-4 h-4" />
-            </button>
-          )}
+        <main className="flex-1 flex flex-col overflow-hidden relative bg-white">
+          <div className="absolute inset-0 pointer-events-none opacity-[0.03] z-0" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
+          <header className="h-16 border-b border-neutral-100 flex items-center justify-between px-4 lg:px-8 bg-white/80 backdrop-blur-md z-10 flex-shrink-0">
+            <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-widest">{viewModeLabel}</h2>
+            <div className="flex items-center gap-4">
+              <div className="relative group hidden md:block">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input type="text" placeholder="Search..." className="pl-10 pr-4 py-2 bg-neutral-50 border border-neutral-100 rounded-full text-sm focus:outline-none focus:ring-1 focus:ring-[#b5a45d] w-48 lg:w-64 transition-all text-neutral-800" />
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 rounded-full border border-neutral-100">
+                <Zap size={14} className="text-amber-500 fill-amber-500" />
+                <span className="text-xs font-bold text-neutral-700">HSC</span>
+              </div>
+            </div>
+          </header>
+          <div className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar z-10 relative">
           <div className="max-w-5xl mx-auto space-y-8">
-            
-            {(viewMode === 'generator' || viewMode === 'paper') ? (
+            {viewMode === 'dashboard' && (
+              <DashboardView
+                setViewMode={setViewMode}
+                heatmapCells={heatmapCells}
+                studyStreak={studyStreak}
+                studentName={userName}
+                heatmapMonth={heatmapMonth}
+                heatmapYear={heatmapYear}
+                onHeatmapMonthChange={(month) => setHeatmapMonth(month)}
+              />
+            )}
+            {viewMode === 'analytics' && (
+              <AnalyticsHubView
+                topicStats={topicStats}
+                analyticsSummary={analyticsSummary}
+                analyticsLoading={analyticsLoading}
+                analyticsError={analyticsError}
+                onGenerateSummary={requestAnalyticsSummary}
+                onSelectTopic={setSyllabusTopic}
+                selectedTopic={syllabusTopic}
+                onCloseTopic={() => setSyllabusTopic(null)}
+              />
+            )}
+            {viewMode === 'browse' && (
+              <BrowseView
+                setViewMode={setViewMode}
+                availablePapers={availablePapers}
+                loadingQuestions={loadingQuestions}
+                startPaperAttempt={startPaperAttempt}
+              />
+            )}
+            {viewMode === 'builder' && (
+              <ExamBuilderView
+                onInitializeExam={initializeCustomExam}
+                isInitializing={isInitializingExam}
+              />
+            )}
+            {viewMode === 'formulas' && <FormulaVaultView setViewMode={setViewMode} />}
+            {viewMode === 'history' && <HistoryView />}
+            {viewMode === 'paper' && (
               <>
             {/* Exam Review Mode: one question at a time */}
             {examEnded && examReviewMode && examAttempts.length > 0 ? (
@@ -3131,7 +4557,7 @@ export default function HSCGeneratorPage() {
                         }}
                       >
                         <div>
-                          <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--clr-primary-a50)' }}>
+                          <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#1a1a1a' }}>
                             {revFeedback ? (
                               revAwarded === 0 ? (
                                 <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} />
@@ -3143,19 +4569,19 @@ export default function HSCGeneratorPage() {
                             ) : null}
                             {revFeedback ? 'Marking Complete' : 'Marking…'}
                           </h3>
-                          <p className="text-sm mt-1" style={{ color: 'var(--clr-surface-a40)' }}>Assessed against NESA Guidelines</p>
+                          <p className="text-sm mt-1" style={{ color: '#525252' }}>Assessed against NESA Guidelines</p>
                         </div>
                         <div className="flex items-center gap-6">
                           <div className="text-right">
-                            <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a50)' }}>Score</span>
+                            <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: '#404040' }}>Score</span>
                             <div className="flex items-baseline gap-1 justify-end">
-                              <span className="text-4xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{revAwarded === null ? '--' : revAwarded}</span>
-                              <span className="text-xl font-medium" style={{ color: 'var(--clr-surface-a50)' }}>/{revMax}</span>
+                              <span className="text-4xl font-bold" style={{ color: '#1a1a1a' }}>{revAwarded === null ? '--' : revAwarded}</span>
+                              <span className="text-xl font-medium" style={{ color: '#404040' }}>/{revMax}</span>
                             </div>
                             {isMcq && revFeedback && (
-                              <div className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
-                                <div>Selected: <strong style={{ color: 'var(--clr-light-a0)' }}>{revFeedback.mcq_selected_answer ?? revSubmitted ?? '-'}</strong></div>
-                                <div>Correct: <strong style={{ color: 'var(--clr-success-a10)' }}>{revFeedback.mcq_correct_answer ?? revQuestion?.mcq_correct_answer ?? '-'}</strong></div>
+                              <div className="mt-2 text-xs space-y-1">
+                                <div style={{ color: '#525252' }}>Selected: <strong style={{ color: '#1a1a1a' }}>{revFeedback.mcq_selected_answer ?? revSubmitted ?? '-'}</strong></div>
+                                <div style={{ color: '#525252' }}>Correct: <strong style={{ color: 'var(--clr-success-a0)' }}>{revFeedback.mcq_correct_answer ?? revQuestion?.mcq_correct_answer ?? '-'}</strong></div>
                               </div>
                             )}
                           </div>
@@ -3164,8 +4590,32 @@ export default function HSCGeneratorPage() {
 
                       {/* Question */}
                       <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                        <h4 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
-                        <div className="font-serif" style={{ color: 'var(--clr-primary-a50)' }}><QuestionTextWithDividers text={revQuestion?.question_text || ''} /></div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
+                          {isDevMode && revQuestion?.id && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Prefer editing the underlying raw DB row by id (avoid saving merged display payloads)
+                                const canonical =
+                                  allQuestions.find((q) => q?.id === revQuestion.id) ||
+                                  paperQuestions.find((q) => q?.id === revQuestion.id) ||
+                                  revQuestion;
+                                setInlineEditDraft({ ...canonical });
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                        <div
+                          className="font-serif rounded-lg border p-3"
+                          style={{ color: 'var(--clr-primary-a50)', borderColor: 'var(--clr-surface-tonal-a20)' }}
+                        >
+                          <QuestionTextWithDividers text={revQuestion?.question_text || ''} />
+                        </div>
                       </div>
 
                       {/* AI Feedback / MCQ Explanation */}
@@ -3181,19 +4631,19 @@ export default function HSCGeneratorPage() {
                             <TrendingUp className="w-4 h-4" />
                             {isMcq ? 'Answer Explanation' : 'AI Feedback'}
                           </h4>
-                          <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a40)' }}>
+                          <div className="text-base leading-relaxed space-y-3 text-neutral-800">
                             {isMcq ? (
                               revFeedback.mcq_explanation ? (
                                 <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} />
                               ) : (
-                                <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>
+                                <p className="italic text-neutral-600">Explanation not available.</p>
                               )
                             ) : revFeedback.ai_evaluation ? (
                               <LatexText text={revFeedback.ai_evaluation} />
                             ) : revFeedback._error ? (
                               <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed. Please try again later.</p>
                             ) : (
-                              <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>AI evaluation is being processed...</p>
+                              <p className="italic text-neutral-600">AI evaluation is being processed...</p>
                             )}
                           </div>
                         </div>
@@ -3245,8 +4695,8 @@ export default function HSCGeneratorPage() {
                                     }
                                     rows.push(
                                       <tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                        <td className="py-3 px-3" style={{ color: 'var(--clr-light-a0)' }}><LatexText text={item.text} /></td>
-                                        <td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a10)' }}>{item.marks}</td>
+                                        <td className="py-3 px-3 text-neutral-800"><LatexText text={item.text} /></td>
+                                        <td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a20)' }}>{item.marks}</td>
                                       </tr>
                                     );
                                   });
@@ -3259,7 +4709,7 @@ export default function HSCGeneratorPage() {
                       )}
 
                       {/* Sample Solution (written only; MCQ explanation is shown above) */}
-                      {!isMcq && (revFeedback?.sample_answer ?? revQuestion?.sample_answer) && (
+                      {!isMcq && (revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? revQuestion?.sample_answer_image) && (
                         <div
                           className="p-8 border-t space-y-4"
                           style={{
@@ -3271,12 +4721,19 @@ export default function HSCGeneratorPage() {
                             <BookOpen className="w-5 h-5" />
                             Sample Solution
                           </h3>
-                          <div
-                            className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2"
-                            style={{ color: 'var(--clr-light-a0)', borderColor: 'var(--clr-success-a10)' }}
-                          >
-                            <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
-                          </div>
+                          {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) ? (
+                            <div
+                              className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800"
+                              style={{ borderColor: 'var(--clr-success-a10)' }}
+                            >
+                              <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
+                            </div>
+                          ) : null}
+                          {revQuestion?.sample_answer_image ? (
+                            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                              <img src={revQuestion.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                            </div>
+                          ) : null}
                         </div>
                       )}
 
@@ -3289,7 +4746,7 @@ export default function HSCGeneratorPage() {
                             borderColor: 'var(--clr-surface-tonal-a20)',
                           }}
                         >
-                          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-info-a20)' }}>
+                          <h3 className="font-bold text-lg flex items-center gap-2 text-neutral-800">
                             <Eye className="w-5 h-5" />
                             Your Submitted Answer
                           </h3>
@@ -3301,7 +4758,73 @@ export default function HSCGeneratorPage() {
                             }}
                           >
                             {isMcq ? (
-                              <p className="font-semibold">Selected Answer: {revSubmitted}</p>
+                              <div className="space-y-3">
+                                <p className="text-sm font-semibold text-neutral-700 mb-3">Selected Answer: <span className="text-lg font-bold text-neutral-900">{revSubmitted}</span></p>
+                                {(() => {
+                                  const options = [
+                                    { label: 'A' as const, text: revQuestion?.mcq_option_a || '', image: revQuestion?.mcq_option_a_image || null },
+                                    { label: 'B' as const, text: revQuestion?.mcq_option_b || '', image: revQuestion?.mcq_option_b_image || null },
+                                    { label: 'C' as const, text: revQuestion?.mcq_option_c || '', image: revQuestion?.mcq_option_c_image || null },
+                                    { label: 'D' as const, text: revQuestion?.mcq_option_d || '', image: revQuestion?.mcq_option_d_image || null },
+                                  ];
+                                  const selectedOption = options.find(opt => opt.label === revSubmitted);
+                                  const correctAnswer = revFeedback?.mcq_correct_answer ?? revQuestion?.mcq_correct_answer;
+                                  const correctOption = options.find(opt => opt.label === correctAnswer);
+                                  return (
+                                    <div className="space-y-2">
+                                      {options.map((option) => {
+                                        const isSelected = option.label === revSubmitted;
+                                        const isCorrect = option.label === correctAnswer;
+                                        return (
+                                          <div
+                                            key={option.label}
+                                            className={`rounded-lg border-2 p-3 ${
+                                              isSelected && isCorrect
+                                                ? 'bg-green-50 border-green-300'
+                                                : isSelected
+                                                ? 'bg-red-50 border-red-300'
+                                                : isCorrect
+                                                ? 'bg-green-50 border-green-200'
+                                                : 'bg-white border-neutral-200'
+                                            }`}
+                                          >
+                                            <div className="flex items-start gap-3">
+                                              <span className={`font-bold text-sm ${
+                                                isSelected && isCorrect
+                                                  ? 'text-green-700'
+                                                  : isSelected
+                                                  ? 'text-red-700'
+                                                  : isCorrect
+                                                  ? 'text-green-600'
+                                                  : 'text-neutral-600'
+                                              }`}>
+                                                {option.label}.
+                                              </span>
+                                              <div className="flex-1 font-serif text-neutral-800">
+                                                {option.image ? (
+                                                  <img src={option.image} alt={`Option ${option.label}`} className="max-w-full object-contain rounded" style={{ maxHeight: `${mcqImageSize}px` }} />
+                                                ) : (
+                                                  <LatexText text={stripOuterBraces(option.text)} />
+                                                )}
+                                              </div>
+                                              {isSelected && (
+                                                <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: isCorrect ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: isCorrect ? 'rgb(21, 128, 61)' : 'rgb(153, 27, 27)' }}>
+                                                  {isCorrect ? '✓ Correct' : 'Your choice'}
+                                                </span>
+                                              )}
+                                              {!isSelected && isCorrect && (
+                                                <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700">
+                                                  Correct
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
                             ) : (
                               <img src={revSubmitted} alt="Your answer" className="w-full rounded" style={{ border: '1px solid var(--clr-surface-tonal-a20)' }} />
                             )}
@@ -3474,10 +4997,11 @@ export default function HSCGeneratorPage() {
                     )}
                     <button
                       onClick={examConditionsActive ? handleEndExam : startExamSimulation}
-                      className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shadow-lg whitespace-nowrap cursor-pointer"
+                      className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shadow-sm whitespace-nowrap cursor-pointer hover:opacity-90"
                       style={{
-                        backgroundColor: examConditionsActive ? 'var(--clr-danger-a10)' : 'var(--clr-primary-a0)',
-                        color: examConditionsActive ? 'var(--clr-light-a0)' : 'var(--clr-dark-a0)',
+                        backgroundColor: examConditionsActive ? 'var(--clr-btn-danger)' : 'var(--clr-btn-primary)',
+                        color: examConditionsActive ? 'var(--clr-btn-danger-text)' : 'var(--clr-btn-primary-text)',
+                        border: '1px solid ' + (examConditionsActive ? 'var(--clr-btn-danger-hover)' : 'var(--clr-btn-primary-hover)'),
                       }}
                     >
                       {examConditionsActive ? 'End Exam' : 'Simulate Exam Conditions'}
@@ -3527,7 +5051,7 @@ export default function HSCGeneratorPage() {
                     className="h-full transition-all duration-500"
                     style={{
                       width: `${Math.round(paperProgress * 100)}%`,
-                      backgroundColor: 'var(--clr-primary-a0)',
+                      backgroundColor: 'var(--clr-btn-primary-hover)',
                     }}
                   />
                 </div>
@@ -3551,117 +5075,33 @@ export default function HSCGeneratorPage() {
                       goToPaperQuestion(endIndex);
                     }}
                     disabled={paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length}
-                    className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
                     style={{
-                      backgroundColor: 'var(--clr-primary-a0)',
-                      borderColor: 'var(--clr-primary-a0)',
-                      color: 'var(--clr-dark-a0)',
+                      backgroundColor: 'var(--clr-btn-primary)',
+                      borderColor: 'var(--clr-btn-primary-hover)',
+                      color: 'var(--clr-btn-primary-text)',
                     }}
                   >Next Question</button>
                 </div>
               </div>
             )}
 
-            {/* Filters Bar */}
-            {!isPaperMode && (
-              <div 
-                className="flex flex-wrap gap-3 pb-4 border-b"
-                style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-              >
-                <select 
-                  value={filterGrade}
-                  onChange={(e) => setFilterGrade(e.target.value)}
-                  className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a10)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                    border: `1px solid var(--clr-surface-tonal-a20)`,
-                  }}
-                >
-                  <option value="Year 11">Year 11</option>
-                  <option value="Year 12">Year 12</option>
-                </select>
-
-                <select 
-                  value={filterYear}
-                  onChange={(e) => setFilterYear(e.target.value)}
-                  className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a10)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                    border: `1px solid var(--clr-surface-tonal-a20)`,
-                  }}
-                >
-                  <option value="">All Years</option>
-                  {YEARS.map((year) => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-
-                <select 
-                  value={filterSubject}
-                  onChange={(e) => setFilterSubject(e.target.value)}
-                  className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a10)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                    border: `1px solid var(--clr-surface-tonal-a20)`,
-                  }}
-                >
-                  <option value="">All Subjects</option>
-                  {SUBJECTS_BY_YEAR[filterGrade as 'Year 11' | 'Year 12']?.map((subject) => (
-                    <option key={subject} value={subject}>{subject}</option>
-                  ))}
-                </select>
-
-                <select 
-                  value={filterTopic}
-                  onChange={(e) => setFilterTopic(e.target.value)}
-                  className="rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a10)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                    border: `1px solid var(--clr-surface-tonal-a20)`,
-                  }}
-                >
-                  <option value="">All Topics</option>
-                  {getTopics(filterGrade, filterSubject).map((topic) => (
-                    <option key={topic} value={topic}>{topic}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             {/* Question Card */}
             <div className="relative">
               <div 
-                className="absolute top-2 left-2 w-full h-full rounded-2xl -z-10"
-                style={{ backgroundColor: 'var(--clr-surface-a20)' }}
-              />
-              
-              <div 
-                className={`text-zinc-100 rounded-2xl p-6 lg:p-10 shadow-2xl border transition-all duration-500 ${isGenerating ? 'blur-sm scale-[0.99] opacity-80' : 'blur-0 scale-100 opacity-100'}`}
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                  color: 'var(--clr-primary-a50)',
-                }}
+                className={`glass-card rounded-2xl p-6 lg:p-10 border border-neutral-100 transition-all duration-500 ${isGenerating ? 'blur-sm scale-[0.99] opacity-80' : 'blur-0 scale-100 opacity-100'}`}
               >
                 {loading ? (
                   <div className="flex items-center justify-center min-h-[300px]">
                     <div className="text-center">
-                      <RefreshCw className="w-8 h-8 text-zinc-400 animate-spin mx-auto mb-2" />
-                      <p className="text-zinc-400">Loading question...</p>
+                      <RefreshCw className="w-8 h-8 text-neutral-400 animate-spin mx-auto mb-2" />
+                      <p className="text-neutral-500">Loading question...</p>
                     </div>
                   </div>
                 ) : error ? (
                   <div className="flex items-center justify-center min-h-[300px]">
                     <div className="text-center">
-                      <p className="text-red-400 font-medium">Error: {error}</p>
+                      <p className="text-red-600 font-medium">Error: {error}</p>
                       <button 
                         onClick={() => (isPaperMode ? goToPaperQuestion(paperIndex) : generateQuestion())}
                         className="mt-4 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors cursor-pointer"
@@ -3672,42 +5112,58 @@ export default function HSCGeneratorPage() {
                   </div>
                 ) : question ? (
                   <>
-                    <div className="flex flex-col gap-4 border-b border-zinc-700 pb-6 mb-8">
+                    <div className="flex flex-col gap-4 border-b border-neutral-100 pb-6 mb-8">
                       <div className="flex justify-between items-start gap-6">
                         <div>
-                          <span className="block font-bold text-2xl text-zinc-100">Question {question.question_number || ''}</span>
-                          <span className="text-zinc-200 font-semibold text-lg block">{question.marks} Marks</span>
-                          <span className="text-zinc-300 text-base block mt-1">{question.topic}</span>
+                          <span className="block font-bold text-2xl text-neutral-900">Question {question.question_number || ''}</span>
+                          <span className="text-neutral-600 font-semibold text-lg block">{question.marks} Marks</span>
+                          <span className="text-neutral-500 text-base block mt-1">{question.topic}</span>
                         </div>
-                        <div className="text-right">
-                          <span className="text-lg font-semibold text-zinc-300 block">{question.subject}</span>
-                          <span className="text-zinc-500 font-medium uppercase tracking-widest text-xs block mt-1">
-                            {question.year} HSC
+                        <div className="text-right flex flex-col items-end gap-2">
+                          {isDevMode && question.id && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // If we're displaying a merged multi-part question, edit the underlying raw row by id
+                                const canonical =
+                                  allQuestions.find((q) => q?.id === question.id) ||
+                                  paperQuestions.find((q) => q?.id === question.id) ||
+                                  question;
+                                setInlineEditDraft({ ...canonical });
+                              }}
+                              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                              Edit question
+                            </button>
+                          )}
+                          <span className="text-lg font-semibold text-neutral-600 block">{question.subject}</span>
+                          <span className="text-neutral-400 font-medium uppercase tracking-widest text-xs block mt-1">
+                            {question.year} {question.school_name || 'HSC'}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    <div 
-                      className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap"
-                      style={{ color: 'var(--clr-light-a0)' }}
-                    >
-                      <QuestionTextWithDividers text={question.question_text} />
-                      {question.graph_image_data && (
-                        <div className="my-4">
-                          <img
-                            src={question.graph_image_data}
-                            alt="Question graph"
-                            className={`rounded-lg border graph-image graph-image--${question.graph_image_size || 'medium'}`}
-                            style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                          />
-                        </div>
-                      )}
+                    <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--clr-question-bg)', borderColor: 'var(--clr-question-border)' }}>
+                      <div className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap text-neutral-800">
+                        <QuestionTextWithDividers text={question.question_text} />
+                      </div>
                     </div>
+                    {question.graph_image_data && (
+                      <div className="mt-4 rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                        <img
+                          src={question.graph_image_data}
+                          alt="Question graph"
+                          className={`rounded-lg border graph-image graph-image--${question.graph_image_size || 'medium'}`}
+                          style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                        />
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="flex items-center justify-center min-h-[300px]">
-                    <p style={{ color: 'var(--clr-surface-a40)' }}>Click "Generate" to load a question</p>
+                    <p className="text-neutral-500">Loading question…</p>
                   </div>
                 )}
               </div>
@@ -3722,10 +5178,30 @@ export default function HSCGeneratorPage() {
                   borderColor: 'var(--clr-surface-tonal-a20)',
                 }}
               >
-                <label
-                  className="block text-sm font-semibold mb-3 uppercase tracking-wide"
-                  style={{ color: 'var(--clr-surface-a40)' }}
-                >Answer Options</label>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <label
+                    className="block text-sm font-semibold uppercase tracking-wide"
+                    style={{ color: 'var(--clr-surface-a40)' }}
+                  >Answer Options</label>
+                  {(() => {
+                    const hasImages = [question.mcq_option_a_image, question.mcq_option_b_image, question.mcq_option_c_image, question.mcq_option_d_image].some(Boolean);
+                    return hasImages ? (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-neutral-600">Image size:</label>
+                        <input
+                          type="range"
+                          min="64"
+                          max="512"
+                          step="16"
+                          value={mcqImageSize}
+                          onChange={(e) => setMcqImageSize(Number(e.target.value))}
+                          className="w-24"
+                        />
+                        <span className="text-xs text-neutral-600 w-12">{mcqImageSize}px</span>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
                 <div className="space-y-3">
                   {([
                     { label: 'A' as const, text: stripOuterBraces(question.mcq_option_a || ''), image: question.mcq_option_a_image || null },
@@ -3754,7 +5230,7 @@ export default function HSCGeneratorPage() {
                         <span className="font-bold text-sm">{option.label}.</span>
                         <div className="flex-1 font-serif min-w-0">
                           {option.image ? (
-                            <img src={option.image} alt={`Option ${option.label}`} className="max-h-32 max-w-full object-contain rounded" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }} />
+                            <img src={option.image} alt={`Option ${option.label}`} className="max-w-full object-contain rounded" style={{ maxHeight: `${mcqImageSize}px`, borderColor: 'var(--clr-surface-tonal-a20)' }} />
                           ) : (
                             <LatexText text={option.text || ''} />
                           )}
@@ -3766,10 +5242,11 @@ export default function HSCGeneratorPage() {
                 <button
                   onClick={() => submitAnswer()}
                   disabled={isMarking}
-                  className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition text-sm disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
+                  className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition text-sm disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
                   style={{
-                    backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-success-a0)',
-                    color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-light-a0)',
+                    backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-btn-success)',
+                    color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-btn-success-text)',
+                    border: isMarking ? undefined : '1px solid var(--clr-btn-success-hover)',
                   }}
                 >
                   {isMarking ? (
@@ -3804,11 +5281,8 @@ export default function HSCGeneratorPage() {
                 </div>
                 {/* Excalidraw answer area (toolbar and controls handled by Excalidraw itself) */}
                 <div
-                  className="rounded-xl"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    touchAction: 'none',
-                  }}
+                  className="rounded-xl bg-white border border-neutral-100"
+                  style={{ touchAction: 'none' }}
                   onTouchMove={(e) => {
                     if (isIpad && e.touches.length < 2) {
                       e.preventDefault();
@@ -3821,7 +5295,7 @@ export default function HSCGeneratorPage() {
                     }}
                   >
                     <Excalidraw
-                      theme={'dark'}
+                      theme="light"
                       initialData={{
                         appState: {
                           currentItemStrokeWidth: 1,
@@ -3871,10 +5345,11 @@ export default function HSCGeneratorPage() {
                   <button
                     onClick={() => submitAnswer()}
                     disabled={isMarking}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold transition text-sm flex-1 sm:flex-none justify-center disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold transition text-sm flex-1 sm:flex-none justify-center disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
                     style={{
-                      backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-success-a0)',
-                      color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-light-a0)',
+                      backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-btn-success)',
+                      color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-btn-success-text)',
+                      border: isMarking ? undefined : '1px solid var(--clr-btn-success-hover)',
                     }}
                   >
                     {isMarking ? (
@@ -3961,10 +5436,7 @@ export default function HSCGeneratorPage() {
                   className="font-bold text-xl mb-4"
                   style={{ color: 'var(--clr-success-a20)' }}
                 >Sample Solution</h3>
-                <div 
-                  className="font-serif text-lg leading-relaxed space-y-4"
-                  style={{ color: 'var(--clr-light-a0)' }}
-                >
+                <div className="font-serif text-lg leading-relaxed space-y-4 text-neutral-800">
                   {question?.question_type === 'multiple_choice' ? (
                     <>
                       {question.mcq_correct_answer && (
@@ -3978,15 +5450,22 @@ export default function HSCGeneratorPage() {
                         </p>
                       )}
                     </>
-                  ) : question?.sample_answer ? (
-                    <LatexText text={question.sample_answer} />
+                  ) : question?.sample_answer || question?.sample_answer_image ? (
+                    <>
+                      {question.sample_answer ? <LatexText text={question.sample_answer} /> : null}
+                      {question.sample_answer_image ? (
+                        <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                          <img src={question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                        </div>
+                      ) : null}
+                    </>
                   ) : (
                     <>
                       <p>A detailed solution will appear here. Use this as a guide to check your working and understanding.</p>
                       <p 
                         className="text-sm italic"
                         style={{ color: 'var(--clr-surface-a40)' }}
-                      >Generate a new question to see different solutions.</p>
+                      >Use Next Question to see more.</p>
                     </>
                   )}
                 </div>
@@ -3999,7 +5478,7 @@ export default function HSCGeneratorPage() {
                 
                 {/* Marking Report Card */}
                 <div 
-                  className="text-zinc-100 rounded-2xl overflow-hidden border shadow-2xl"
+                  className="rounded-2xl overflow-hidden border shadow-2xl"
                   style={{
                     backgroundColor: 'var(--clr-surface-a10)',
                     borderColor: 'var(--clr-surface-tonal-a20)',
@@ -4017,7 +5496,7 @@ export default function HSCGeneratorPage() {
                         <div>
                             <h3 
                               className="text-xl font-bold flex items-center gap-2"
-                              style={{ color: 'var(--clr-primary-a50)' }}
+                              style={{ color: '#1a1a1a' }}
                             >
                                 {awardedMarks === 0 ? (
                                   <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} />
@@ -4030,7 +5509,7 @@ export default function HSCGeneratorPage() {
                             </h3>
                             <p 
                               className="text-sm mt-1"
-                              style={{ color: 'var(--clr-surface-a40)' }}
+                              style={{ color: '#525252' }}
                             >Assessed against NESA Guidelines</p>
                         </div>
                         
@@ -4038,22 +5517,22 @@ export default function HSCGeneratorPage() {
                             <div className="text-right">
                                 <span 
                                   className="block text-xs font-bold uppercase tracking-widest"
-                                  style={{ color: 'var(--clr-surface-a50)' }}
+                                  style={{ color: '#404040' }}
                                 >Score</span>
                                 <div className="flex items-baseline gap-1 justify-end">
                                     <span 
                                       className="text-4xl font-bold"
-                                      style={{ color: 'var(--clr-primary-a50)' }}
+                                      style={{ color: '#1a1a1a' }}
                                     >{awardedMarks === null ? '--' : awardedMarks}</span>
                                     <span 
                                       className="text-xl font-medium"
-                                      style={{ color: 'var(--clr-surface-a50)' }}
+                                      style={{ color: '#404040' }}
                                     >/{maxMarks}</span>
                                 </div>
                                 {isMultipleChoiceReview && (
-                                  <div className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
-                                    <div>Selected: <strong style={{ color: 'var(--clr-light-a0)' }}>{feedback?.mcq_selected_answer || submittedAnswer || '-'}</strong></div>
-                                    <div>Correct: <strong style={{ color: 'var(--clr-success-a10)' }}>{feedback?.mcq_correct_answer || question?.mcq_correct_answer || '-'}</strong></div>
+                                  <div className="mt-2 text-xs" style={{ color: '#525252' }}>
+                                    <div>Selected: <strong style={{ color: '#1a1a1a' }}>{feedback?.mcq_selected_answer || submittedAnswer || '-'}</strong></div>
+                                    <div>Correct: <strong style={{ color: 'var(--clr-success-a0)' }}>{feedback?.mcq_correct_answer || question?.mcq_correct_answer || '-'}</strong></div>
                                   </div>
                                 )}
                             </div>
@@ -4077,20 +5556,20 @@ export default function HSCGeneratorPage() {
                         </h4>
                         <div 
                           className="text-base leading-relaxed space-y-3"
-                          style={{ color: 'var(--clr-primary-a40)' }}
+                          style={{ color: 'var(--clr-primary-a50)' }}
                         >
                             {isMultipleChoiceReview ? (
                               feedback?.mcq_explanation ? (
                                 <LatexText text={stripOuterBraces(feedback.mcq_explanation)} />
                               ) : (
-                                <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>
+                                <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>Explanation not available.</p>
                               )
                             ) : feedback.ai_evaluation ? (
                               <LatexText text={feedback.ai_evaluation} />
                             ) : (
                               <p 
                                 className="italic"
-                                style={{ color: 'var(--clr-surface-a40)' }}
+                                style={{ color: 'var(--clr-surface-a50)' }}
                               >AI evaluation is being processed...</p>
                             )}
                         </div>
@@ -4170,7 +5649,7 @@ export default function HSCGeneratorPage() {
                                               >
                                                 <td 
                                                   className="py-3 px-3"
-                                                  style={{ color: 'var(--clr-light-a0)' }}
+                                                  style={{ color: 'var(--clr-primary-a50)' }}
                                                 >
                                                   <LatexText text={item.text} />
                                                 </td>
@@ -4208,15 +5687,19 @@ export default function HSCGeneratorPage() {
                               <BookOpen className="w-5 h-5" />
                               Sample Solution
                           </h3>
-                          <div 
-                            className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2"
-                            style={{
-                              color: 'var(--clr-light-a0)',
-                              borderColor: 'var(--clr-success-a10)',
-                            }}
-                          >
-                            <LatexText text={feedback.sample_answer} />
-                          </div>
+                          {feedback.sample_answer ? (
+                            <div 
+                              className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800"
+                              style={{ borderColor: 'var(--clr-success-a10)' }}
+                            >
+                              <LatexText text={feedback.sample_answer} />
+                            </div>
+                          ) : null}
+                          {feedback.question?.sample_answer_image ? (
+                            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                              <img src={feedback.question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                            </div>
+                          ) : null}
                       </div>
                     )}
 
@@ -4310,7 +5793,8 @@ export default function HSCGeneratorPage() {
               </>
               ) }
               </>
-            ) : viewMode === 'papers' ? (
+            )}
+            {viewMode === 'papers' && (
               <>
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
                   <div>
@@ -4344,7 +5828,7 @@ export default function HSCGeneratorPage() {
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {availablePapers.map((paper) => (
                       <button
-                        key={`${paper.year}-${paper.grade}-${paper.subject}`}
+                            key={`${paper.year}-${paper.grade}-${paper.subject}-${paper.school}`}
                         onClick={() => startPaperAttempt(paper)}
                         className="text-left border rounded-2xl p-6 transition-all hover:-translate-y-0.5 hover:shadow-xl cursor-pointer"
                         style={{
@@ -4361,6 +5845,9 @@ export default function HSCGeneratorPage() {
                         <div className="text-sm mt-1" style={{ color: 'var(--clr-surface-a50)' }}>
                           {paper.grade}
                         </div>
+                            <div className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>
+                              {paper.school || 'HSC'}
+                            </div>
                         <div className="text-xs mt-4" style={{ color: 'var(--clr-surface-a40)' }}>
                           {paper.count} question{paper.count === 1 ? '' : 's'} available
                         </div>
@@ -4369,7 +5856,8 @@ export default function HSCGeneratorPage() {
                   </div>
                 )}
               </>
-            ) : (
+            )}
+            {viewMode === 'saved' && (
               <>
                 {/* Saved Attempts View */}
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
@@ -4384,7 +5872,7 @@ export default function HSCGeneratorPage() {
                     >{savedAttempts.length} answer{savedAttempts.length !== 1 ? 's' : ''} saved</p>
                   </div>
                   <button 
-                    onClick={() => setViewMode('generator')}
+                    onClick={() => setViewMode('browse')}
                     className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all cursor-pointer"
                     style={{
                       backgroundColor: 'var(--clr-primary-a0)',
@@ -4392,7 +5880,7 @@ export default function HSCGeneratorPage() {
                     }}
                   >
                     <RefreshCw className="w-5 h-5" />
-                    Back to Generator
+                    Browse exams
                   </button>
                 </div>
 
@@ -4464,29 +5952,52 @@ export default function HSCGeneratorPage() {
                                   <div className="rounded-2xl overflow-hidden border shadow-2xl" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                     <div className="p-6 border-b flex flex-wrap items-center justify-between gap-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                       <div>
-                                        <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--clr-primary-a50)' }}>
+                                        <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#1a1a1a' }}>
                                           {revFeedback ? (revAwarded === 0 ? <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} /> : revAwarded !== null && revAwarded < revMax ? <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} /> : <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />) : null}
                                           {revFeedback ? 'Marking Complete' : 'Marking…'}
                                         </h3>
-                                        <p className="text-sm mt-1" style={{ color: 'var(--clr-surface-a40)' }}>Assessed against NESA Guidelines</p>
+                                        <p className="text-sm mt-1" style={{ color: '#525252' }}>Assessed against NESA Guidelines</p>
                                       </div>
                                       <div className="text-right">
-                                        <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a50)' }}>Score</span>
+                                        <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: '#404040' }}>Score</span>
                                         <div className="flex items-baseline gap-1 justify-end">
-                                          <span className="text-4xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{revAwarded === null ? '--' : revAwarded}</span>
-                                          <span className="text-xl font-medium" style={{ color: 'var(--clr-surface-a50)' }}>/{revMax}</span>
+                                          <span className="text-4xl font-bold" style={{ color: '#1a1a1a' }}>{revAwarded === null ? '--' : revAwarded}</span>
+                                          <span className="text-xl font-medium" style={{ color: '#404040' }}>/{revMax}</span>
                                         </div>
                                       </div>
                                     </div>
                                     <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                      <h4 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
-                                      <div className="font-serif" style={{ color: 'var(--clr-primary-a50)' }}><QuestionTextWithDividers text={revQuestion?.question_text || ''} /></div>
+                                      <div className="flex items-center justify-between gap-2 mb-2">
+                                        <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
+                                        {isDevMode && revQuestion?.id && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setViewMode('dev-questions');
+                                              setDevTab('manage');
+                                              setSelectedManageQuestionId(revQuestion.id);
+                                              setManageQuestionDraft(revQuestion);
+                                              setManageQuestionEditMode(false);
+                                            }}
+                                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                          >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                            Edit
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div
+                                        className="font-serif rounded-lg border p-3"
+                                        style={{ color: 'var(--clr-primary-a50)', borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                      >
+                                        <QuestionTextWithDividers text={revQuestion?.question_text || ''} />
+                                      </div>
                                     </div>
                                     {revFeedback && (
                                       <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                         <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}><TrendingUp className="w-4 h-4" />{isMcq ? 'Answer Explanation' : 'AI Feedback'}</h4>
-                                        <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a40)' }}>
-                                          {isMcq ? (revFeedback.mcq_explanation ? <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} /> : <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>Explanation not available.</p>) : revFeedback.ai_evaluation ? <LatexText text={revFeedback.ai_evaluation} /> : revFeedback._error ? <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed.</p> : <p className="italic" style={{ color: 'var(--clr-surface-a40)' }}>AI evaluation is being processed...</p>}
+                                        <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a50)' }}>
+                                          {isMcq ? (revFeedback.mcq_explanation ? <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} /> : <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>Explanation not available.</p>) : revFeedback.ai_evaluation ? <LatexText text={revFeedback.ai_evaluation} /> : revFeedback._error ? <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed.</p> : <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>AI evaluation is being processed...</p>}
                                         </div>
                                       </div>
                                     )}
@@ -4511,7 +6022,7 @@ export default function HSCGeneratorPage() {
                                                     lastSubpart = item.subpart;
                                                     rows.push(<tr key={`sub-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Part ({item.subpart})</td></tr>);
                                                   }
-                                                  rows.push(<tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td className="py-3 px-3" style={{ color: 'var(--clr-light-a0)' }}><LatexText text={item.text} /></td><td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a10)' }}>{item.marks}</td></tr>);
+                                                  rows.push(<tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td className="py-3 px-3" style={{ color: 'var(--clr-primary-a50)' }}><LatexText text={item.text} /></td><td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a10)' }}>{item.marks}</td></tr>);
                                                 });
                                                 return rows;
                                               })()}
@@ -4520,12 +6031,27 @@ export default function HSCGeneratorPage() {
                                         </div>
                                       </div>
                                     )}
-                                    {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) && (
+                                    {(revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? revQuestion?.sample_answer_image) && (
                                       <div className="p-8 border-t space-y-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                         <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}><BookOpen className="w-5 h-5" />{isMcq ? 'Answer Explanation' : 'Sample Solution'}</h3>
-                                        <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2" style={{ color: 'var(--clr-light-a0)', borderColor: 'var(--clr-success-a10)' }}>
-                                          {isMcq && revFeedback?.mcq_explanation ? <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} /> : <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />}
-                                        </div>
+                                        {isMcq && revFeedback?.mcq_explanation ? (
+                                          <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                            <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} />
+                                          </div>
+                                        ) : (revFeedback?.sample_answer ?? revQuestion?.sample_answer) || revQuestion?.sample_answer_image ? (
+                                          <>
+                                            {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) ? (
+                                              <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                                <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
+                                              </div>
+                                            ) : null}
+                                            {revQuestion?.sample_answer_image ? (
+                                              <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                                <img src={revQuestion.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                                              </div>
+                                            ) : null}
+                                          </>
+                                        ) : null}
                                       </div>
                                     )}
                                     {revSubmitted && (
@@ -4768,12 +6294,19 @@ export default function HSCGeneratorPage() {
                             className="text-sm font-bold uppercase tracking-widest"
                             style={{ color: 'var(--clr-success-a20)' }}
                           >Sample Solution</h3>
-                          <div 
-                            className="font-serif"
-                            style={{ color: 'var(--clr-light-a0)' }}
-                          >
-                            <LatexText text={selectedAttempt.sampleAnswer} />
-                          </div>
+                          {selectedAttempt.sampleAnswer ? (
+                            <div 
+                              className="font-serif"
+                              style={{ color: 'var(--clr-light-a0)' }}
+                            >
+                              <LatexText text={selectedAttempt.sampleAnswer} />
+                            </div>
+                          ) : null}
+                          {selectedAttempt.question?.sample_answer_image ? (
+                            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                              <img src={selectedAttempt.question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </div>
@@ -4874,7 +6407,7 @@ export default function HSCGeneratorPage() {
           <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
             <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Settings</h1>
             <button 
-              onClick={() => setViewMode('generator')}
+              onClick={() => setViewMode('browse')}
               className="p-2 rounded-lg cursor-pointer"
               style={{ color: 'var(--clr-surface-a40)' }}
             >
@@ -4894,6 +6427,35 @@ export default function HSCGeneratorPage() {
                 <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>Account Information</h2>
                 
                 <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Name</label>
+                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <input
+                        type="text"
+                        value={userNameDraft}
+                        onChange={(e) => setUserNameDraft(e.target.value)}
+                        placeholder="Enter your name"
+                        className="w-full px-4 py-2 rounded-lg border"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a0)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                          color: 'var(--clr-primary-a50)',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveName}
+                        disabled={isSavingName || userNameDraft.trim() === userName}
+                        className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+                        style={{
+                          backgroundColor: 'var(--clr-primary-a50)',
+                          color: 'var(--clr-surface-a0)',
+                        }}
+                      >
+                        {isSavingName ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
                   <div>
                     <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Email</label>
                     <p className="mt-1 text-lg" style={{ color: 'var(--clr-light-a0)' }}>{userEmail}</p>
@@ -4932,7 +6494,7 @@ export default function HSCGeneratorPage() {
                         <select
                           value={pdfGrade}
                           onChange={(e) => {
-                            const nextGrade = e.target.value as 'Year 11' | 'Year 12';
+                            const nextGrade = e.target.value as 'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12';
                             const nextSubjects = SUBJECTS_BY_YEAR[nextGrade];
                             setPdfGrade(nextGrade);
                             if (!nextSubjects.includes(pdfSubject)) {
@@ -4946,6 +6508,10 @@ export default function HSCGeneratorPage() {
                             color: 'var(--clr-primary-a50)',
                           }}
                         >
+                          <option value="Year 7">Year 7</option>
+                          <option value="Year 8">Year 8</option>
+                          <option value="Year 9">Year 9</option>
+                          <option value="Year 10">Year 10</option>
                           <option value="Year 11">Year 11</option>
                           <option value="Year 12">Year 12</option>
                         </select>
@@ -4988,6 +6554,21 @@ export default function HSCGeneratorPage() {
                             <option key={subject} value={subject}>{subject}</option>
                           ))}
                         </select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>School Name</label>
+                        <input
+                          type="text"
+                          value={pdfSchoolName}
+                          onChange={(e) => setPdfSchoolName(e.target.value)}
+                          placeholder="e.g., Riverside High School"
+                          className="mt-2 w-full px-4 py-2 rounded-lg border"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        />
                       </div>
                     </div>
                     <div>
@@ -5059,6 +6640,15 @@ export default function HSCGeneratorPage() {
                       Overwrite existing questions and marking criteria for this grade/year/subject
                     </label>
 
+                    <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
+                      <input
+                        type="checkbox"
+                        checked={pdfGenerateCriteria}
+                        onChange={(e) => setPdfGenerateCriteria(e.target.checked)}
+                      />
+                      Generate marking criteria from mark count
+                    </label>
+
                     <div className="flex items-center gap-3">
                       <button
                         onClick={submitPdfPair}
@@ -5080,6 +6670,25 @@ export default function HSCGeneratorPage() {
                         </span>
                       )}
                     </div>
+
+                    {pdfRawInputs && (
+                      <div className="mt-4">
+                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                          Raw Model Input
+                        </label>
+                        <textarea
+                          readOnly
+                          value={pdfRawInputs}
+                          rows={12}
+                          className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        />
+                      </div>
+                    )}
 
                     {pdfChatGptResponse && (
                       <div className="mt-4">
@@ -5113,7 +6722,7 @@ export default function HSCGeneratorPage() {
           <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
             <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Developer Tools</h1>
             <button 
-              onClick={() => setViewMode('generator')}
+              onClick={() => setViewMode('browse')}
               className="p-2 rounded-lg cursor-pointer"
               style={{ color: 'var(--clr-surface-a40)' }}
             >
@@ -5144,6 +6753,17 @@ export default function HSCGeneratorPage() {
               }}
             >
               Manage Questions ({allQuestions.length})
+            </button>
+            <button
+              onClick={() => setDevTab('review')}
+              className="px-4 py-2 rounded-lg font-medium transition cursor-pointer"
+              style={{
+                backgroundColor: devTab === 'review' ? 'var(--clr-primary-a0)' : 'transparent',
+                color: devTab === 'review' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
+                borderBottom: devTab === 'review' ? `2px solid var(--clr-primary-a0)` : 'none',
+              }}
+            >
+              Review solutions
             </button>
           </div>
 
@@ -5389,7 +7009,7 @@ export default function HSCGeneratorPage() {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer</label>
+                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer (LaTeX)</label>
                         <textarea 
                           value={newQuestion.sampleAnswer}
                           onChange={(e) => setNewQuestion({...newQuestion, sampleAnswer: e.target.value})}
@@ -5402,6 +7022,40 @@ export default function HSCGeneratorPage() {
                             color: 'var(--clr-primary-a50)',
                           }}
                         />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer Image URL</label>
+                        <input
+                          type="text"
+                          value={newQuestion.sampleAnswerImage}
+                          onChange={(e) => setNewQuestion({...newQuestion, sampleAnswerImage: e.target.value})}
+                          placeholder="https://... or data:image/png;base64,..."
+                          className="w-full px-4 py-2 rounded-lg border"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        />
+                        <p className="text-xs mt-1" style={{ color: 'var(--clr-surface-a40)' }}>If provided, image will be shown instead of LaTeX text</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2 mt-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer Image Size</label>
+                        <select
+                          value={newQuestion.sampleAnswerImageSize}
+                          onChange={(e) => setNewQuestion({ ...newQuestion, sampleAnswerImageSize: e.target.value as 'small' | 'medium' | 'large' })}
+                          className="w-full px-4 py-2 rounded-lg border"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        >
+                          <option value="small">Small</option>
+                          <option value="medium">Medium</option>
+                          <option value="large">Large</option>
+                        </select>
                       </div>
                     </>
                   )}
@@ -5470,7 +7124,7 @@ export default function HSCGeneratorPage() {
                       {isAddingQuestion ? 'Adding...' : 'Add Question'}
                     </button>
                     <button 
-                      onClick={() => setViewMode('generator')}
+                      onClick={() => setViewMode('browse')}
                       className="flex-1 px-4 py-3 rounded-lg font-medium cursor-pointer"
                       style={{
                         backgroundColor: 'var(--clr-surface-a20)',
@@ -5543,7 +7197,7 @@ export default function HSCGeneratorPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-6 gap-3 mb-6">
+                <div className="grid grid-cols-1 lg:grid-cols-8 gap-3 mb-6">
                   <input
                     type="text"
                     value={manageSearchQuery}
@@ -5602,6 +7256,21 @@ export default function HSCGeneratorPage() {
                     ))}
                   </select>
                   <select
+                    value={manageFilterSchool}
+                    onChange={(e) => setManageFilterSchool(e.target.value)}
+                    className="px-3 py-2 rounded-lg border text-sm"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a0)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <option value="">All Schools</option>
+                    {manageFilterOptions.schools.map((school) => (
+                      <option key={school} value={school}>{school}</option>
+                    ))}
+                  </select>
+                  <select
                     value={manageFilterTopic}
                     onChange={(e) => setManageFilterTopic(e.target.value)}
                     className="px-3 py-2 rounded-lg border text-sm"
@@ -5646,6 +7315,7 @@ export default function HSCGeneratorPage() {
                       <option value="grade">Sort by Grade</option>
                       <option value="subject">Sort by Subject</option>
                       <option value="topic">Sort by Topic</option>
+                      <option value="school">Sort by School</option>
                       <option value="marks">Sort by Marks</option>
                     </select>
                     <button
@@ -5728,10 +7398,13 @@ export default function HSCGeneratorPage() {
                                         <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-warning-a0)', color: 'var(--clr-light-a0)' }}>Missing Image</span>
                                       )}
                                       <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
+                                      {q.school_name && (
+                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.school_name}</span>
+                                      )}
                                       <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
                                     </div>
                                     <p style={{ color: 'var(--clr-surface-a40)' }} className="text-sm">{q.topic}</p>
-                                    <p style={{ color: 'var(--clr-primary-a40)' }} className="text-xs mt-1 line-clamp-1">{q.question_text}</p>
+                                    <p className="text-xs mt-1 line-clamp-1 text-neutral-700">{q.question_text}</p>
                                   </div>
                                 </div>
                               </button>
@@ -5759,7 +7432,9 @@ export default function HSCGeneratorPage() {
                             <div className="space-y-6">
                               <div className="flex items-start justify-between">
                                 <div>
-                                  <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>{manageQuestionDraft.year} HSC</span>
+                                  <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>
+                                    {manageQuestionDraft.year} {manageQuestionDraft.school_name || 'HSC'}
+                                  </span>
                                   <h3 className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{manageQuestionDraft.subject}</h3>
                                   <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>{manageQuestionDraft.topic}</p>
                                 </div>
@@ -5769,7 +7444,7 @@ export default function HSCGeneratorPage() {
                                 </div>
                               </div>
 
-                              <div className="text-lg leading-relaxed space-y-4 font-serif" style={{ color: 'var(--clr-light-a0)' }}>
+                              <div className="text-lg leading-relaxed space-y-4 font-serif text-neutral-800">
                                 <QuestionTextWithDividers text={manageQuestionDraft.question_text || ''} />
                                 {manageQuestionDraft.graph_image_data && (
                                   <div className="my-4">
@@ -5795,7 +7470,7 @@ export default function HSCGeneratorPage() {
                                     ].map((opt) => (
                                       <div key={opt.label} className="flex items-start gap-3 rounded-lg border px-4 py-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                         <span className="font-bold text-sm" style={{ color: 'var(--clr-primary-a50)' }}>{opt.label}.</span>
-                                        <div className="flex-1 font-serif min-w-0" style={{ color: 'var(--clr-light-a0)' }}>
+                                        <div className="flex-1 font-serif min-w-0 text-neutral-800">
                                           {opt.image ? (
                                             <img src={opt.image} alt={`Option ${opt.label}`} className="max-h-28 max-w-full object-contain rounded" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }} />
                                           ) : (
@@ -5808,7 +7483,7 @@ export default function HSCGeneratorPage() {
                                       <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>Correct: <strong>{manageQuestionDraft.mcq_correct_answer}</strong></p>
                                     )}
                                     {manageQuestionDraft.mcq_explanation && (
-                                      <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                      <div className="mt-3 pt-3 border-t text-neutral-800" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                         <h5 className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Explanation</h5>
                                         <LatexText text={stripOuterBraces(manageQuestionDraft.mcq_explanation)} />
                                       </div>
@@ -5820,7 +7495,7 @@ export default function HSCGeneratorPage() {
                               {manageQuestionDraft.marking_criteria && (
                                 <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                   <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marking Criteria</h4>
-                                  <div className="font-serif text-base leading-relaxed space-y-2" style={{ color: 'var(--clr-light-a0)' }}>
+                                  <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800">
                                     <LatexText text={manageQuestionDraft.marking_criteria} />
                                   </div>
                                 </div>
@@ -5829,7 +7504,7 @@ export default function HSCGeneratorPage() {
                               {manageQuestionDraft.sample_answer && (
                                 <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-success-a10)' }}>
                                   <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-success-a20)' }}>Sample Answer</h4>
-                                  <div className="font-serif text-base leading-relaxed space-y-2" style={{ color: 'var(--clr-light-a0)' }}>
+                                  <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800">
                                     <LatexText text={manageQuestionDraft.sample_answer} />
                                   </div>
                                 </div>
@@ -5915,6 +7590,35 @@ export default function HSCGeneratorPage() {
                                       color: 'var(--clr-primary-a50)',
                                     }}
                                   />
+                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image URL</label>
+                                  <input
+                                    type="text"
+                                    value={manageQuestionDraft.sample_answer_image || ''}
+                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, sample_answer_image: e.target.value })}
+                                    placeholder="https://... or data:image/png;base64,..."
+                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  />
+                                  <p className="text-xs mt-1" style={{ color: 'var(--clr-surface-a40)' }}>If provided, image will be shown instead of LaTeX text</p>
+                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image Size</label>
+                                  <select
+                                    value={manageQuestionDraft.sample_answer_image_size || 'medium'}
+                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, sample_answer_image_size: e.target.value })}
+                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  >
+                                    <option value="small">Small</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="large">Large</option>
+                                  </select>
                                   <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image URL</label>
                                   <input
                                     type="text"
@@ -5992,11 +7696,75 @@ export default function HSCGeneratorPage() {
                 )}
               </div>
             )}
+
+            {devTab === 'review' && (
+              <div className="max-w-4xl mx-auto">
+                <p className="text-sm mb-6" style={{ color: 'var(--clr-surface-a50)' }}>
+                  Sample solutions in order (same filters as Manage). Compare with your actual solutions to verify correctness.
+                </p>
+                {loadingQuestions ? (
+                  <div className="py-12 text-center" style={{ color: 'var(--clr-surface-a40)' }}>Loading questions…</div>
+                ) : filteredManageQuestions.length === 0 ? (
+                  <div className="py-12 text-center rounded-xl border" style={{ color: 'var(--clr-surface-a40)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                    No questions to review. Add questions or adjust filters in Manage.
+                  </div>
+                ) : (
+                  <div className="space-y-8">
+                    {filteredManageQuestions.map((q, index) => (
+                      <article
+                        key={q.id}
+                        className="rounded-2xl border overflow-hidden"
+                        style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}
+                      >
+                        <div className="px-5 py-3 border-b flex flex-wrap items-center gap-x-4 gap-y-1" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                          <span className="font-semibold text-neutral-800">
+                            #{index + 1} · Q{q.question_number ?? '?'}
+                          </span>
+                          <span className="text-sm text-neutral-600">{q.year} {q.school_name || 'HSC'}</span>
+                          <span className="text-sm text-neutral-600">{q.subject}</span>
+                          <span className="text-sm text-neutral-600">{q.topic}</span>
+                          {q.question_type === 'multiple_choice' && (
+                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>MCQ</span>
+                          )}
+                        </div>
+                        <div className="p-5">
+                          <details className="mb-4">
+                            <summary className="text-sm font-medium cursor-pointer" style={{ color: 'var(--clr-surface-a50)' }}>Question text</summary>
+                            <div className="mt-2 font-serif text-sm leading-relaxed text-neutral-800 border-l-2 pl-4" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                              <LatexText text={q.question_text || ''} />
+                            </div>
+                          </details>
+                          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--clr-success-a10)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                            <h4 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-success-a20)' }}>Sample solution</h4>
+                            {q.sample_answer ? (
+                              <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800">
+                                <LatexText text={q.sample_answer} />
+                              </div>
+                            ) : q.question_type === 'multiple_choice' ? (
+                              <div className="text-neutral-700">
+                                <p className="font-medium">Correct: {q.mcq_correct_answer ?? '—'}</p>
+                                {q.mcq_explanation && (
+                                  <div className="mt-2 font-serif text-sm">
+                                    <LatexText text={stripOuterBraces(q.mcq_explanation)} />
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-sm italic" style={{ color: 'var(--clr-surface-a40)' }}>No sample answer</p>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
 
-
+            </div>
           </div>
         </main>
       </div>
