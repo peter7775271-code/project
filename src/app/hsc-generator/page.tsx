@@ -1911,7 +1911,6 @@ export default function HSCGeneratorPage() {
     markingCriteria: '',
     sampleAnswer: '',
     sampleAnswerImage: '',
-    sampleAnswerImage: '',
     mcqOptionA: '',
     mcqOptionB: '',
     mcqOptionC: '',
