@@ -4,6 +4,9 @@ import OpenAI from 'openai';
 
 export const runtime = 'nodejs';
 
+const MIN_PAPER_YEAR = 2017;
+const MAX_PAPER_YEAR = new Date().getFullYear();
+
 const TOPIC_LISTS = {
   'Year 12': {
     advanced: [
@@ -678,6 +681,46 @@ const chunkText = (text: string, maxChars: number) => {
   return chunks.filter((chunk) => chunk.length > 0);
 };
 
+const getNextPaperNumber = async (schoolName: string, year: number) => {
+  const { data, error } = await supabaseAdmin
+    .from('hsc_questions')
+    .select('paper_number')
+    .match({ school_name: schoolName, year })
+    .order('paper_number', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    throw new Error(`Failed to determine next paper number: ${error.message}`);
+  }
+
+  const maxPaperNumber =
+    Array.isArray(data) && data.length > 0
+      ? Number(data[0]?.paper_number) || 0
+      : 0;
+
+  return maxPaperNumber + 1;
+};
+
+const getLatestPaperNumber = async (schoolName: string, year: number) => {
+  const { data, error } = await supabaseAdmin
+    .from('hsc_questions')
+    .select('paper_number')
+    .match({ school_name: schoolName, year })
+    .order('paper_number', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    throw new Error(`Failed to determine latest paper number: ${error.message}`);
+  }
+
+  const latestPaperNumber =
+    Array.isArray(data) && data.length > 0
+      ? Number(data[0]?.paper_number) || null
+      : null;
+
+  return latestPaperNumber;
+};
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -690,6 +733,7 @@ export async function POST(request: Request) {
     const overwriteInput = formData.get('overwrite');
     const generateCriteriaInput = formData.get('generateMarkingCriteria');
     const schoolNameInput = formData.get('schoolName');
+    const paperNumberInput = formData.get('paperNumber');
 
     const examFile = exam instanceof File ? exam : null;
     const examImageFiles = examImages.filter((item): item is File => item instanceof File);
@@ -710,12 +754,21 @@ export async function POST(request: Request) {
     const generateMarkingCriteria = String(generateCriteriaInput || '').toLowerCase() === 'true';
     const schoolName = String(schoolNameInput || '').trim();
     const schoolNameForDb = schoolName || 'HSC';
+    const parsedPaperNumber = Number.parseInt(String(paperNumberInput || ''), 10);
+    const hasExplicitPaperNumber = Number.isInteger(parsedPaperNumber) && parsedPaperNumber > 0;
     const allowTopicIdentify =
       generateMarkingCriteria &&
       (grade.includes('7') || grade.includes('8') || grade.includes('9') || grade.includes('10') || grade.includes('11') || grade.includes('12'));
 
     if (!grade || Number.isNaN(year) || !subject) {
       return NextResponse.json({ error: 'Invalid grade, year, or subject' }, { status: 400 });
+    }
+
+    if (year < MIN_PAPER_YEAR || year > MAX_PAPER_YEAR) {
+      return NextResponse.json(
+        { error: `Year must be between ${MIN_PAPER_YEAR} and ${MAX_PAPER_YEAR}` },
+        { status: 400 }
+      );
     }
 
     if (examFile) {
@@ -747,6 +800,24 @@ export async function POST(request: Request) {
     }
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    const hasExamInputs = Boolean(examFile || examImageFiles.length);
+    const paperNumber = hasExplicitPaperNumber
+      ? parsedPaperNumber
+      : hasExamInputs
+        ? await getNextPaperNumber(schoolNameForDb, year)
+        : await getLatestPaperNumber(schoolNameForDb, year);
+
+    if (!paperNumber) {
+      return NextResponse.json(
+        {
+          error:
+            'No existing paper found for this school/year. Upload exam content first or provide paperNumber explicitly.',
+        },
+        { status: 400 }
+      );
+    }
+    const paperLabel = `${schoolNameForDb} ${year} Paper ${paperNumber}`;
 
     const contentParts: Array<{ source: 'exam' | 'criteria'; text: string }> = [];
     const useExamTextPipeline = String(process.env.USE_PDF_TEXT_PIPELINE || '').toLowerCase() === 'true';
@@ -920,7 +991,13 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
         const { error: deleteError } = await supabaseAdmin
           .from('hsc_questions')
           .delete()
-          .match({ grade, year, subject });
+          .match({
+            grade,
+            year,
+            subject,
+            school_name: schoolNameForDb,
+            paper_number: paperNumber,
+          });
 
         if (deleteError) {
           console.error('Overwrite delete error:', deleteError);
@@ -954,6 +1031,8 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
             year,
             subject,
             school_name: schoolNameForDb,
+            paper_number: paperNumber,
+            paper_label: paperLabel,
             topic,
             marks: question.marks || 0,
             question_number: question.questionNumber || null,
@@ -1149,6 +1228,8 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
               year,
               subject,
               school_name: schoolNameForDb,
+              paper_number: paperNumber,
+              paper_label: paperLabel,
               topic,
               marks: question.marks || 0,
               question_number: question.questionNumber || null,
@@ -1193,7 +1274,13 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
         const { error: clearError } = await supabaseAdmin
           .from('hsc_questions')
           .update({ marking_criteria: null })
-          .match({ grade, year, subject });
+          .match({
+            grade,
+            year,
+            subject,
+            school_name: schoolNameForDb,
+            paper_number: paperNumber,
+          });
 
         if (clearError) {
           console.error('Overwrite criteria clear error:', clearError);
@@ -1222,7 +1309,13 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
       const { data: existingQuestions, error: fetchError } = await supabaseAdmin
         .from('hsc_questions')
         .select('id, question_number, topic')
-        .match({ grade, year, subject });
+        .match({
+          grade,
+          year,
+          subject,
+          school_name: schoolNameForDb,
+          paper_number: paperNumber,
+        });
 
       if (fetchError) {
         console.error('Criteria fetch error:', fetchError);
@@ -1310,6 +1403,9 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
         year,
         grade,
         subject,
+        schoolName: schoolNameForDb,
+        paperNumber,
+        paperLabel,
         questionsCreated: createdQuestions.length,
         criteriaUpdated: updatedCriteriaCount,
         criteriaMissing: missingCriteria.length,

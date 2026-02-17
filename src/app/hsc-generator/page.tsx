@@ -1100,7 +1100,12 @@ const BROWSE_SUBJECTS: { label: string; value: string }[] = [
   { label: 'Mathematics Extension 2', value: 'Mathematics Extension 2' },
 ];
 
-const BROWSE_YEARS = ['2020', '2021', '2022', '2023', '2024', '2025'];
+const MIN_EXAM_YEAR = 2017;
+const CURRENT_EXAM_YEAR = new Date().getFullYear();
+const BROWSE_YEARS = Array.from(
+  { length: CURRENT_EXAM_YEAR - MIN_EXAM_YEAR + 1 },
+  (_, i) => String(CURRENT_EXAM_YEAR - i)
+);
 const BROWSE_GRADES_SENIOR = ['Year 11', 'Year 12'] as const;
 const BROWSE_GRADES_JUNIOR = ['Year 7', 'Year 8', 'Year 9', 'Year 10'] as const;
 
@@ -1813,6 +1818,7 @@ export default function HSCGeneratorPage() {
   const [pdfOverwrite, setPdfOverwrite] = useState(false);
   const [pdfGenerateCriteria, setPdfGenerateCriteria] = useState(false);
   const [pdfSchoolName, setPdfSchoolName] = useState('');
+  const [pdfPaperNumber, setPdfPaperNumber] = useState('');
   const pdfYearRef = useRef(pdfYear);
   pdfYearRef.current = pdfYear;
   const [viewMode, setViewMode] = useState<'dashboard' | 'analytics' | 'browse' | 'builder' | 'formulas' | 'saved' | 'history' | 'settings' | 'dev-questions' | 'papers' | 'paper'>('dashboard');
@@ -1933,7 +1939,10 @@ export default function HSCGeneratorPage() {
   const [filterTopic, setFilterTopic] = useState<string>('');
 
   // Available filter options
-  const YEARS = ['2020', '2021', '2022', '2023', '2024', '2025'];
+  const YEARS = Array.from(
+    { length: CURRENT_EXAM_YEAR - MIN_EXAM_YEAR + 1 },
+    (_, i) => String(CURRENT_EXAM_YEAR - i)
+  );
 
   const ALL_TOPICS = useMemo(() => {
     const set = new Set<string>();
@@ -2938,6 +2947,9 @@ export default function HSCGeneratorPage() {
         examData.append('overwrite', pdfOverwrite ? 'true' : 'false');
         examData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
         examData.append('schoolName', pdfSchoolName.trim());
+        if (pdfPaperNumber.trim()) {
+          examData.append('paperNumber', pdfPaperNumber.trim());
+        }
         await sendPdf(examData, 'exam PDF');
 
         const criteriaData = new FormData();
@@ -2948,6 +2960,9 @@ export default function HSCGeneratorPage() {
         criteriaData.append('overwrite', pdfOverwrite ? 'true' : 'false');
         criteriaData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
         criteriaData.append('schoolName', pdfSchoolName.trim());
+        if (pdfPaperNumber.trim()) {
+          criteriaData.append('paperNumber', pdfPaperNumber.trim());
+        }
         const criteriaResponse = await sendPdf(criteriaData, 'criteria PDF');
 
         setPdfStatus('ready');
@@ -2971,6 +2986,9 @@ export default function HSCGeneratorPage() {
       singleData.append('overwrite', pdfOverwrite ? 'true' : 'false');
       singleData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
       singleData.append('schoolName', pdfSchoolName.trim());
+      if (pdfPaperNumber.trim()) {
+        singleData.append('paperNumber', pdfPaperNumber.trim());
+      }
 
       const label =
         examPdfFile || criteriaPdfFile
@@ -6537,6 +6555,9 @@ export default function HSCGeneratorPage() {
                             <option key={year} value={year}>{year}</option>
                           ))}
                         </select>
+                        <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                          Accepted years: {MIN_EXAM_YEAR}–{CURRENT_EXAM_YEAR}
+                        </p>
                       </div>
                       <div>
                         <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Subject</label>
@@ -6562,6 +6583,23 @@ export default function HSCGeneratorPage() {
                           value={pdfSchoolName}
                           onChange={(e) => setPdfSchoolName(e.target.value)}
                           placeholder="e.g., Riverside High School"
+                          className="mt-2 w-full px-4 py-2 rounded-lg border"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Paper Number (optional)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={pdfPaperNumber}
+                          onChange={(e) => setPdfPaperNumber(e.target.value)}
+                          placeholder="Auto if blank"
                           className="mt-2 w-full px-4 py-2 rounded-lg border"
                           style={{
                             backgroundColor: 'var(--clr-surface-a0)',
@@ -6637,7 +6675,7 @@ export default function HSCGeneratorPage() {
                         checked={pdfOverwrite}
                         onChange={(e) => setPdfOverwrite(e.target.checked)}
                       />
-                      Overwrite existing questions and marking criteria for this grade/year/subject
+                      Overwrite existing questions and marking criteria for this grade/year/subject/school/paper number
                     </label>
 
                     <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>

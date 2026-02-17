@@ -13,8 +13,11 @@ Go to your Supabase project dashboard → **SQL Editor** → **New Query** and r
 CREATE TABLE hsc_questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   grade TEXT NOT NULL CHECK (grade IN ('Year 11', 'Year 12')),
-  year INTEGER NOT NULL CHECK (year >= 2020 AND year <= 2030),
+  year INTEGER NOT NULL CHECK (year >= 2017 AND year <= 2035),
   subject TEXT NOT NULL,
+  school_name TEXT,
+  paper_number INTEGER NOT NULL DEFAULT 1,
+  paper_label TEXT,
   topic TEXT NOT NULL,
   marks INTEGER NOT NULL,
   question_number TEXT,
@@ -115,8 +118,11 @@ Your tables should now be created. You'll see:
 |--------|------|-------------|
 | id | UUID | Primary key |
 | grade | TEXT | 'Year 11' or 'Year 12' |
-| year | INTEGER | HSC exam year (e.g., 2024) |
+| year | INTEGER | HSC exam year (supports 2017+) |
 | subject | TEXT | Subject name (e.g., 'Mathematics Advanced') |
+| school_name | TEXT | Optional school name for paper source |
+| paper_number | INTEGER | Distinguishes multiple papers from same school/year |
+| paper_label | TEXT | Readable label like School 2023 Paper 2 |
 | topic | TEXT | Topic name (e.g., 'Complex Numbers') |
 | marks | INTEGER | Total marks for question |
 | question_number | TEXT | Optional question number (e.g., 11 or 11a)) |
