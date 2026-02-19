@@ -1,307 +1,361 @@
 "use client";
 
-import { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import {
+  ArrowRight,
+  Zap,
+  Brain,
+  Timer,
+  Sparkles,
+  Layers,
+  LineChart,
+  BookOpen,
+  Menu,
+  X,
+  SlidersHorizontal,
+} from "lucide-react";
+
+const styles = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+
+  :root {
+    --clr-primary: #b5a45d;
+    --clr-primary-light: #fdf8e6;
+    --clr-surface: #ffffff;
+    --foreground: #1a1a1a;
+  }
+
+  body {
+    background-color: var(--clr-surface);
+    color: var(--foreground);
+    font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
+  }
+
+  .font-serif {
+    font-family: 'Playfair Display', serif;
+  }
+
+  .text-primary {
+    color: var(--clr-primary);
+  }
+
+  .bg-primary {
+    background-color: var(--clr-primary);
+  }
+
+  .hover\\:bg-primary:hover {
+    background-color: var(--clr-primary);
+  }
+
+  .hover\\:text-primary:hover {
+    color: var(--clr-primary);
+  }
+
+  .gold-shimmer-text {
+    background: linear-gradient(90deg, #8a7a3a 0%, #b5a45d 50%, #8a7a3a 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 4s linear infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-20px); }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .glass {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .hero-gradient {
+    background: radial-gradient(circle at 50% 50%, var(--clr-primary-light) 0%, #ffffff 100%);
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .reveal.active {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .grid-pattern {
+    background-image: radial-gradient(rgba(0,0,0,0.05) 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+`;
 
 export default function Home() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
   useEffect(() => {
     const handleScroll = () => {
-      const doc = document.documentElement;
-      const winScroll = doc.scrollTop || document.body.scrollTop;
-      const height = doc.scrollHeight - doc.clientHeight;
-      const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
-      const progress = document.getElementById("progress");
-      if (progress) progress.style.width = `${scrolled}%`;
+      setScrolled(window.scrollY > 20);
+
+      const reveals = document.querySelectorAll(".reveal");
+      reveals.forEach((reveal) => {
+        const windowHeight = window.innerHeight;
+        const revealTop = reveal.getBoundingClientRect().top;
+        const revealPoint = 150;
+        if (revealTop < windowHeight - revealPoint) {
+          reveal.classList.add("active");
+        }
+      });
     };
 
-    handleScroll();
     window.addEventListener("scroll", handleScroll);
+    handleScroll();
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const navItems = [
+    { label: "Features", href: "#features" },
+    { label: "Analytics", href: "#analytics" },
+    { label: "Question Bank", href: "#question-bank" },
+    { label: "Pricing", href: "#pricing" },
+  ];
+
   return (
-    <div className="min-h-screen bg-grid home-shell selection:bg-[#93c5fd] selection:text-[#0f172a]">
-      <div id="progress" />
+    <div className="relative bg-white text-neutral-900">
+      <style>{styles}</style>
 
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 glass border-b border-black/10">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2 group cursor-pointer">
-            <div className="w-10 h-10 bg-[#93c5fd] rounded-xl flex items-center justify-center font-black text-black transition-transform group-hover:rotate-12">
-              H
+      <nav className={`fixed top-0 left-0 w-full z-[100] transition-all duration-500 ${scrolled ? "py-4 glass border-b" : "py-8"}`}>
+        <div className="max-w-7xl mx-auto px-8 flex items-center justify-between">
+          <a href="#question-bank" className="flex items-center space-x-3 group cursor-pointer">
+            <div className="w-10 h-10 bg-neutral-900 rounded-xl flex items-center justify-center text-white font-serif text-2xl leading-none hover:bg-primary transition-colors">
+              <span className="leading-none -translate-y-[1px]">∑</span>
             </div>
-            <span className="text-xl font-bold tracking-tight text-slate-900">
-              HSC<span className="text-[#93c5fd]">AI</span>
+            <span className="font-bold text-xl tracking-tight">
+              PRAXIS<span className="text-neutral-400 font-light">AI</span>
             </span>
+          </a>
+
+          <div className="hidden md:flex items-center space-x-12">
+            {navItems.map((item) => (
+              <a key={item.label} href={item.href} className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-500 hover:text-primary transition-colors">
+                {item.label}
+              </a>
+            ))}
           </div>
 
-          <div className="hidden md:flex items-center gap-3 text-[11px] font-bold tracking-[0.2em] uppercase">
-            <a
-              href="#features"
-              className="px-4 py-2 rounded-full border border-black/10 bg-white/80 text-slate-600 transition-all hover:text-[#93c5fd] hover:border-[#93c5fd]/40 hover:bg-[#93c5fd]/10"
-            >
-              Question Bank
-            </a>
-            <a
-              href="#marking"
-              className="px-4 py-2 rounded-full border border-black/10 bg-white/80 text-slate-600 transition-all hover:text-[#93c5fd] hover:border-[#93c5fd]/40 hover:bg-[#93c5fd]/10"
-            >
-              Marking
-            </a>
-            <a
-              href="#papers"
-              className="px-4 py-2 rounded-full border border-black/10 bg-white/80 text-slate-600 transition-all hover:text-[#93c5fd] hover:border-[#93c5fd]/40 hover:bg-[#93c5fd]/10"
-            >
-              Simulations
-            </a>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <Link href="/login" className="text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">
+          <div className="hidden md:flex items-center space-x-4">
+            <Link href="/login" className="text-xs font-bold uppercase tracking-widest px-6 py-2 hover:text-primary transition-colors">
               Sign In
             </Link>
-            <Link href="/signup" className="btn-primary px-8 py-3 rounded-full text-sm font-black uppercase tracking-widest">
-              Get Started
+            <Link href="/signup" className="bg-neutral-900 text-white text-xs font-bold uppercase tracking-widest px-8 py-4 rounded-full hover:bg-primary transition-all shadow-xl shadow-neutral-900/10">
+              Start Free
+            </Link>
+          </div>
+
+          <button className="md:hidden" onClick={() => setIsMenuOpen((prev) => !prev)} aria-label="Toggle menu">
+            {isMenuOpen ? <X /> : <Menu />}
+          </button>
+        </div>
+
+        {isMenuOpen && (
+          <div className="md:hidden px-8 pt-4 pb-6 glass border-t mt-4 space-y-4">
+            {navItems.map((item) => (
+              <a key={item.label} href={item.href} className="block text-xs font-bold uppercase tracking-[0.2em] text-neutral-500 hover:text-primary" onClick={() => setIsMenuOpen(false)}>
+                {item.label}
+              </a>
+            ))}
+            <div className="flex gap-3 pt-2">
+              <Link href="/login" className="text-xs font-bold uppercase tracking-widest px-4 py-2 border border-neutral-200 rounded-full">
+                Sign In
+              </Link>
+              <Link href="/signup" className="bg-neutral-900 text-white text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-full">
+                Start Free
+              </Link>
+            </div>
+          </div>
+        )}
+      </nav>
+
+      <section id="question-bank" className="relative min-h-screen flex items-center pt-20 overflow-hidden hero-gradient">
+        <div className="absolute inset-0 grid-pattern opacity-40"></div>
+
+        <div className="max-w-7xl mx-auto px-8 relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
+          <div className="space-y-8 reveal">
+            <div className="inline-flex items-center space-x-2 px-4 py-2 bg-white border border-neutral-100 rounded-full shadow-sm">
+              <Sparkles size={14} className="text-[#b5a45d]" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Thousands of Official Style Questions</span>
+            </div>
+
+            <h1 className="text-6xl md:text-8xl font-light leading-[1.1] tracking-tight">
+              Master the <br />
+              <span className="font-serif italic font-normal">Exam,</span> <br />
+              <span className="font-bold gold-shimmer-text">Own the Result.</span>
+            </h1>
+
+            <p className="text-lg text-neutral-500 max-w-lg leading-relaxed font-light">
+              Don&apos;t just study—practice with thousands of board-certified questions. Create custom exams tailored to your specific weak points.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6 pt-4">
+              <Link href="/dashboard" className="w-full sm:w-auto bg-neutral-900 text-white px-10 py-5 rounded-full font-bold uppercase tracking-widest text-xs flex items-center justify-center space-x-3 hover:bg-primary transition-all shadow-2xl hover:-translate-y-1">
+                <span>Explore the Bank</span>
+                <ArrowRight size={16} />
+              </Link>
+              <a href="#features" className="flex items-center space-x-3 text-xs font-bold uppercase tracking-widest text-neutral-400 hover:text-neutral-900 transition-colors">
+                <div className="w-12 h-12 rounded-full border border-neutral-200 flex items-center justify-center">
+                  <Zap size={18} />
+                </div>
+                <span>How it Works</span>
+              </a>
+            </div>
+          </div>
+
+          <div className="relative reveal animate-float hidden lg:block">
+            <div className="glass rounded-[3rem] p-4 shadow-2xl border-white/50 relative z-20 overflow-hidden">
+              <div className="bg-white rounded-[2.5rem] p-10 space-y-8">
+                <div className="flex justify-between items-center border-b border-neutral-100 pb-6">
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-bold text-[#b5a45d] uppercase tracking-widest">Question Bank Archive</div>
+                    <div className="text-3xl font-bold">12,482+</div>
+                  </div>
+                  <BookOpen size={32} className="text-neutral-900" />
+                </div>
+                <div className="space-y-4">
+                  {["Mathematics", "Physics", "Biology"].map((subject) => (
+                    <div key={subject} className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl">
+                      <span className="text-sm font-medium">{subject}</span>
+                      <span className="text-[10px] font-bold text-neutral-400">2,400+ Qs</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className="py-32 bg-white relative">
+        <div className="max-w-7xl mx-auto px-8">
+          <div className="text-center max-w-3xl mx-auto mb-20 space-y-4 reveal">
+            <h2 className="text-[10px] font-bold text-[#b5a45d] uppercase tracking-[0.4em]">Optimized for Results</h2>
+            <h3 className="text-5xl font-light">
+              The Ultimate <span className="font-serif italic text-neutral-400">Practice Suite</span>
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="md:col-span-2 glass rounded-[3rem] p-12 flex flex-col justify-between overflow-hidden relative reveal group shadow-sm">
+              <div className="absolute top-0 right-0 p-12 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
+                <Layers size={240} />
+              </div>
+              <div className="space-y-6 relative z-10">
+                <div className="w-14 h-14 bg-neutral-900 rounded-2xl flex items-center justify-center text-white">
+                  <BookOpen size={24} />
+                </div>
+                <h4 className="text-4xl font-bold tracking-tight text-neutral-900">Massive Question Library</h4>
+                <p className="text-neutral-500 text-lg max-w-md leading-relaxed">
+                  Access over <span className="text-neutral-900 font-bold">12,000+ board-certified questions</span> designed to mimic the exact style and rigor of real national examinations.
+                </p>
+              </div>
+              <div className="pt-12 relative z-10">
+                <div className="flex flex-wrap gap-2">
+                  {["Grade 9", "Grade 10", "Grade 11", "Grade 12"].map((grade) => (
+                    <span key={grade} className="px-4 py-2 bg-neutral-100 rounded-full text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                      {grade}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="glass rounded-[3rem] p-12 flex flex-col justify-between reveal group shadow-2xl border-neutral-100">
+              <div className="space-y-6">
+                <div className="w-14 h-14 bg-neutral-900 rounded-2xl flex items-center justify-center text-white">
+                  <SlidersHorizontal size={24} />
+                </div>
+                <h4 className="text-3xl font-semibold tracking-tight leading-tight text-neutral-900">Custom Exam Architect</h4>
+                <p className="text-neutral-500 text-sm leading-relaxed">
+                  Build your own exams by selecting specific <span className="text-neutral-900 font-medium">topics, years, and difficulty levels</span>. Practice only what you need.
+                </p>
+              </div>
+              <Link href="/dashboard" className="w-full mt-10 py-5 bg-neutral-900 text-white rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-primary transition-all shadow-lg text-center">
+                Start Building
+              </Link>
+            </div>
+
+            <div className="glass rounded-[3rem] p-10 flex flex-col justify-between reveal">
+              <div className="space-y-4">
+                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center">
+                  <Timer size={22} />
+                </div>
+                <h4 className="text-xl font-bold text-neutral-900">Authentic Simulation</h4>
+                <p className="text-sm text-neutral-400 leading-relaxed">
+                  Simulate real boards like <span className="text-neutral-900 font-medium">SAT, IB, and GCSE</span> with official timers and formatting.
+                </p>
+              </div>
+            </div>
+
+            <div id="analytics" className="glass rounded-[3rem] p-10 flex flex-col justify-between reveal" style={{ transitionDelay: "0.1s" }}>
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: "rgba(181, 164, 93, 0.1)", color: "#b5a45d" }}>
+                  <Brain size={22} />
+                </div>
+                <h4 className="text-xl font-bold text-neutral-900">AI Step-by-Step</h4>
+                <p className="text-sm text-neutral-400 leading-relaxed">Stuck? Our AI tutor breaks down complex problems into manageable logical steps.</p>
+              </div>
+            </div>
+
+            <div className="glass rounded-[3rem] p-10 flex flex-col justify-between reveal" style={{ transitionDelay: "0.2s" }}>
+              <div className="space-y-4">
+                <div className="w-12 h-12 bg-neutral-100 text-neutral-900 rounded-xl flex items-center justify-center">
+                  <LineChart size={22} />
+                </div>
+                <h4 className="text-xl font-bold text-neutral-900">Topic Mastery Hub</h4>
+                <p className="text-sm text-neutral-400 leading-relaxed">Identify exactly which topics are dragging down your average with visual heatmaps.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" className="py-40 bg-neutral-50 relative overflow-hidden">
+        <div className="max-w-4xl mx-auto px-8 text-center space-y-12 reveal">
+          <h2 className="text-6xl md:text-7xl font-light leading-tight tracking-tighter">
+            Elevate your <span className="font-serif italic">Potential.</span>
+          </h2>
+          <p className="text-xl text-neutral-400 font-light max-w-xl mx-auto">
+            Stop guessing what will be on the test. Join the elite students practicing with the world&apos;s largest certified archive.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link href="/signup" className="w-full sm:w-auto bg-neutral-900 text-white px-12 py-6 rounded-full font-bold uppercase tracking-widest text-xs hover:bg-primary transition-all shadow-2xl text-center">
+              Get Instant Access
             </Link>
           </div>
         </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center pt-24 overflow-hidden hero-gradient">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#93c5fd] opacity-[0.16] rounded-full mix-blend-screen filter blur-[120px] animate-blob" />
-        <div
-          className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-[#a5b4fc] opacity-[0.16] rounded-full mix-blend-screen filter blur-[120px] animate-blob"
-          style={{ animationDelay: "-5s" }}
-        />
-
-        <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-20 items-center relative z-10">
-          <div className="animate-fade-in-up">
-            <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white border border-[#93c5fd]/30 text-[#2563eb] text-[10px] font-black tracking-[0.2em] mb-8 uppercase">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#93c5fd] opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#93c5fd]" />
-              </span>
-              GPT-5 MATHEMATICS SPECIALIST
-            </div>
-            <h1 className="text-6xl md:text-8xl font-black leading-tight mb-8 tracking-tighter text-slate-900">
-              Maths Study,<br />
-              <span className="gold-shimmer">Decoded.</span>
-            </h1>
-            <p className="text-xl text-slate-600 mb-10 max-w-lg leading-relaxed font-light">
-              Submit your handwritten working for Extension 1 & 2. Get pinpoint feedback on your proofs and logic instantly.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-6">
-              <Link href="/hsc-generator?view=papers" className="btn-primary px-10 py-5 rounded-2xl text-lg font-black flex items-center justify-center gap-3">
-                Attempt a Mathematics Paper
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
-              </Link>
-              <Link href="/hsc-generator" className="glass px-10 py-5 rounded-2xl text-lg font-black border border-black/10 hover:bg-black/5 transition-all text-center">
-                Browse HSC Questions
-              </Link>
-            </div>
-          </div>
-
-          {/* Animated Mockup Container */}
-          <div className="relative group">
-            <div className="animate-float">
-              <div className="glass rounded-[2.5rem] p-6 shadow-[0_40px_100px_rgba(0,0,0,0.8)] relative overflow-hidden">
-                <div className="scanner-line" />
-                <div className="bg-slate-900 rounded-3xl overflow-hidden border border-black/5">
-                  <div className="p-5 border-b border-white/5 flex items-center justify-between bg-slate-900">
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#333]" />
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#333]" />
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#333]" />
-                      </div>
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Active Grading Engine</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-[#2563eb]">Maths Ext. 1 Specialist</span>
-                  </div>
-
-                  <div className="p-8">
-                    <div className="flex justify-between items-end mb-6">
-                      <div>
-                        <p className="text-[10px] font-black text-[#2563eb] uppercase tracking-widest mb-1">2024 HSC / Q13(B)</p>
-                        <h3 className="text-lg font-bold text-white">Further Calculus Skills</h3>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-4xl font-black text-[#47d5a6]">3</span>
-                        <span className="text-gray-600 font-bold">/5</span>
-                      </div>
-                    </div>
-
-                    <div className="mb-4 p-4 rounded-xl bg-white/[0.03] border border-white/5 text-[13px] text-gray-200">
-                      <p className="mb-2 font-bold text-[#2563eb]">Question (ii):</p>
-                      <span>{`Hence, or otherwise, evaluate $\\int_0^{\\pi/4} (\\cos^4 x + \\sin^4 x) \\,dx$.`}</span>
-                    </div>
-
-                    <div className="relative mb-6 p-6 rounded-2xl bg-white/[0.02] border border-white/5 handwritten-container text-2xl shadow-inner overflow-hidden">
-                      <div className="handwritten-ink space-y-2">
-                        <div>{`$\\int_0^{\\pi/4} \\frac{1 + \\cos^2 2x}{2} \\,dx$`}</div>
-                        <div>{`$= \\frac{1}{2} [x + \\frac{1}{2}\\sin 2x]_0^{\\pi/4}$`}</div>
-                        <div>{`$= \\frac{1}{2} (\\frac{\\pi}{4} + \\frac{1}{2})$`}</div>
-                      </div>
-                      <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-1 h-12 bg-[#9c2121] rounded-full blur-[2px] opacity-60" />
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="p-4 rounded-2xl bg-[#9c2121]/5 border border-[#9c2121]/20">
-                        <div className="flex items-center gap-2 mb-1">
-                          <svg className="w-4 h-4 text-[#d94a4a]" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                          </svg>
-                          <p className="text-[10px] font-black text-[#eb9e9e] uppercase tracking-widest">Marking Feedback</p>
-                        </div>
-                        <p className="text-[11px] text-gray-300">{`Step 2: You integrated $\\cos^2 2x$ incorrectly. You must use the double angle identity $\\cos^2 \\theta = \\frac{1 + \\cos 2\\theta}{2}$ again. $-2$ marks.`}</p>
-                      </div>
-                      <button className="w-full py-2 bg-[#0b1220] rounded-lg text-[10px] font-black uppercase tracking-widest text-[#93c5fd] border border-[#93c5fd]/40 hover:bg-[#93c5fd]/20 transition-colors">
-                        View Full Worked Solution
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="absolute -z-10 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[#93c5fd]/20 blur-[120px] rounded-full" />
-          </div>
-        </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-40 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-24">
-            <h2 className="text-4xl md:text-6xl font-black mb-6 text-slate-900">Designed for <span className="gold-shimmer">Maths.</span></h2>
-            <p className="text-slate-600 text-xl font-light">The only platform that understands complex algebraic proofs as well as a human tutor.</p>
+      <footer className="py-20 border-t border-neutral-100 bg-white">
+        <div className="max-w-7xl mx-auto px-8 flex flex-col md:flex-row justify-between items-center text-[10px] font-bold uppercase tracking-widest text-neutral-300">
+          <div className="flex items-center space-x-3 text-neutral-900 mb-6 md:mb-0">
+            <div className="w-6 h-6 bg-neutral-900 rounded flex items-center justify-center text-white font-serif text-sm leading-none">
+              <span className="leading-none -translate-y-[0.5px]">∑</span>
+            </div>
+            <span className="tracking-[0.2em]">Praxis AI</span>
           </div>
-          <div className="grid md:grid-cols-3 gap-12 mb-32">
-            <div className="glass p-10 rounded-[2rem] group">
-              <div className="w-16 h-16 bg-[#93c5fd]/25 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
-                <svg className="w-8 h-8 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="text-2xl font-bold text-slate-900 mb-4">Step-by-Step Analysis</h3>
-              <p className="text-slate-600 leading-relaxed font-light">Our AI doesn't just look at the final answer. It marks every line of your working out against the NESA marking criteria.</p>
-            </div>
-
-            <div className="glass p-10 rounded-[2rem] border-t-2 border-t-[#93c5fd] group">
-              <div className="w-16 h-16 bg-[#93c5fd]/25 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
-                <svg className="w-8 h-8 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </div>
-              <h3 className="text-2xl font-bold text-slate-900 mb-4">Handwriting Capture</h3>
-              <p className="text-slate-600 leading-relaxed font-light">Proprietary math-specialised OCR converts messy student scripts into clean, analysable LaTeX data instantly.</p>
-            </div>
-
-            <div className="glass p-10 rounded-[2rem] group">
-              <div className="w-16 h-16 bg-[#93c5fd]/25 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
-                <svg className="w-8 h-8 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-2xl font-bold text-slate-900 mb-4">Worked Samples</h3>
-              <p className="text-slate-600 leading-relaxed font-light">Every marking comes with a "Band 6 Standard" sample answer so you can see exactly how a top-tier student would solve it.</p>
-            </div>
-          </div>
-
-          <div id="marking" className="grid lg:grid-cols-2 gap-20 items-center mb-48">
-            <div className="order-2 lg:order-1 relative">
-              <div className="glass p-8 rounded-[2.5rem] border-[#93c5fd]/35 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#93c5fd]/25 to-transparent" />
-                <div className="relative space-y-6">
-                  <div className="flex items-center justify-between border-b border-black/5 pb-4">
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">Live Marking Log</span>
-                    <span className="text-[10px] bg-[#47d5a6]/20 text-[#47d5a6] px-2 py-0.5 rounded font-bold">Matching Criteria</span>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-5 h-5 rounded-full bg-[#47d5a6] flex items-center justify-center text-black font-bold text-[10px] mt-1">✓</div>
-                      <p className="text-sm text-gray-300">{`Identity $\\cos^2 x = \\frac{1 + \\cos 2x}{2}$ identified and correctly applied.`}</p>
-                    </div>
-                    <div className="flex items-start gap-4">
-                      <div className="w-5 h-5 rounded-full bg-[#47d5a6] flex items-center justify-center text-black font-bold text-[10px] mt-1">✓</div>
-                      <p className="text-sm text-gray-300">{`Integration bounds $[0, \\pi/4]$ handled correctly in Step 1.`}</p>
-                    </div>
-                    <div className="flex items-start gap-4">
-                      <div className="w-5 h-5 rounded-full bg-[#9c2121] flex items-center justify-center text-white font-bold text-[10px] mt-1">!</div>
-                      <p className="text-sm text-[#eb9e9e]">{`Calculus chain rule error in nested integration of $\\cos^2 2x$.`}</p>
-                    </div>
-                  </div>
-                  <div className="pt-4 border-t border-black/5">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs font-bold text-slate-500">Marking Precision</span>
-                      <span className="text-xs font-bold text-[#2563eb]">99.4% Accurate</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-black/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#93c5fd] w-[99.4%] animate-pulse-slow" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="order-1 lg:order-2 space-y-6">
-              <h2 className="text-4xl md:text-5xl font-black tracking-tight leading-tight text-slate-900">Precision Marking, <br /><span className="gold-shimmer">Instantly.</span></h2>
-              <p className="text-xl text-slate-600 font-light leading-relaxed">
-                Upload your working and get feedback aligned to official HSC marking criteria. Our engine identifies every identity used and every logical step taken.
-              </p>
-              <button className="btn-primary px-8 py-4 rounded-xl text-sm font-black uppercase tracking-widest">See Sample Marking</button>
-            </div>
-          </div>
-
-          <div id="papers" className="grid lg:grid-cols-2 gap-20 items-center">
-            <div className="space-y-6">
-              <h2 className="text-4xl md:text-5xl font-black tracking-tight leading-tight text-slate-900">Full Paper <br /><span className="gold-shimmer">Simulations.</span></h2>
-              <p className="text-xl text-slate-600 font-light leading-relaxed">
-                Attempt complete papers in a focused, exam-style experience. Time your progress and receive a full band-estimate report at the end.
-              </p>
-              <div className="flex gap-4 pt-4">
-                <div className="px-4 py-2 glass rounded-lg border-[#93c5fd]/35 text-[10px] font-bold text-[#2563eb] uppercase tracking-widest">3 Hour Mode</div>
-                <div className="px-4 py-2 glass rounded-lg border-[#93c5fd]/35 text-[10px] font-bold text-[#2563eb] uppercase tracking-widest">Section II Focus</div>
-              </div>
-            </div>
-            <div className="relative">
-              <div className="glass p-1 rounded-[3rem] border-white/10 relative">
-                <div className="bg-white/90 rounded-[2.8rem] p-10 relative overflow-hidden">
-                  <div className="flex items-center justify-between mb-12">
-                    <div className="flex items-center gap-4">
-                      <div className="w-3 h-3 rounded-full bg-[#9c2121] animate-pulse" />
-                      <span className="text-xs font-black uppercase tracking-[0.3em] text-slate-900">Focus Mode Active</span>
-                    </div>
-                    <div className="text-3xl font-mono text-slate-900 font-bold tracking-tighter">02:44:12</div>
-                  </div>
-                  <div className="space-y-6 opacity-60">
-                    <div className="h-4 w-3/4 bg-black/10 rounded-full" />
-                    <div className="h-4 w-full bg-black/10 rounded-full" />
-                    <div className="h-4 w-5/6 bg-black/10 rounded-full" />
-                    <div className="h-4 w-full bg-black/10 rounded-full" />
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 p-10 bg-gradient-to-t from-black to-transparent pt-20">
-                    <button className="w-full py-5 glass rounded-2xl border-[#93c5fd]/40 text-[#2563eb] font-black uppercase tracking-widest text-sm hover:bg-[#93c5fd] hover:text-black transition-all">Submit Paper for Marking</button>
-                  </div>
-                </div>
-              </div>
-              <div className="absolute -z-10 -bottom-10 left-1/2 -translate-x-1/2 w-4/5 h-20 bg-[#93c5fd]/20 blur-[60px] rounded-full" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-20 border-t border-black/10 glass mt-40">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-10">
-          <div className="flex items-center gap-2 opacity-50 grayscale">
-            <div className="w-6 h-6 bg-[#93c5fd] rounded flex items-center justify-center font-black text-black text-[10px]">H</div>
-            <span className="text-lg font-bold tracking-tight text-slate-900 uppercase tracking-widest">HSC.AI</span>
-          </div>
-          <div className="text-xs text-gray-600 font-bold uppercase tracking-widest">
-            &copy; 2026 Developed for the Future of Australian Education.
-          </div>
+          <p>© 2026 Praxis AI. Built for excellence.</p>
         </div>
       </footer>
     </div>

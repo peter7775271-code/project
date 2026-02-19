@@ -74,7 +74,7 @@ export default function LoginForm() {
           value={formData.email}
           onChange={handleChange}
           className="w-full px-5 py-4 rounded-2xl text-sm bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-[#dacb7d] focus:ring-2 focus:ring-[#dacb7d]/20 transition-all"
-          placeholder="student@hsc.ai"
+          placeholder="student@praxis.ai"
           disabled={loading}
         />
       </div>

@@ -19,6 +19,9 @@ WHERE paper_label IS NULL;
 ALTER TABLE hsc_questions
 ALTER COLUMN paper_number SET NOT NULL;
 
+ALTER TABLE hsc_questions
+ALTER COLUMN paper_number SET DEFAULT 1;
+
 DO $$
 DECLARE
   c RECORD;
@@ -36,8 +39,16 @@ BEGIN
 END $$;
 
 ALTER TABLE hsc_questions
+DROP CONSTRAINT IF EXISTS hsc_questions_year_check;
+
+ALTER TABLE hsc_questions
 ADD CONSTRAINT hsc_questions_year_check
 CHECK (year >= 2017 AND year <= 2035);
 
 CREATE INDEX IF NOT EXISTS idx_hsc_questions_school_year_paper
 ON hsc_questions(school_name, year, paper_number);
+
+UPDATE hsc_questions
+SET paper_label = CONCAT(COALESCE(school_name, 'HSC'), ' ', year::text, ' Paper ', paper_number::text)
+WHERE paper_label IS NULL
+  AND paper_number IS NOT NULL;

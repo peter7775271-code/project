@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Auth App - Sign Up",
-  description: "A simple user authentication web app",
+  title: "Praxis AI | Master the Exam, Own the Result",
+  description: "Practice with thousands of official-style questions, build custom exams, and improve with AI-powered feedback.",
 };
 
 export default function RootLayout({
