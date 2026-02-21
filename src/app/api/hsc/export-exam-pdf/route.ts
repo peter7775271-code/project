@@ -465,7 +465,9 @@ export async function POST(request: Request) {
       pdfBuffer = Buffer.from(arrayBuffer);
     }
 
-    return new Response(pdfBuffer, {
+    const pdfBody = new Uint8Array(pdfBuffer);
+
+    return new Response(pdfBody, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
