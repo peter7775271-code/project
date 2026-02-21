@@ -174,7 +174,7 @@ Please try a different link or upload an image instead."
          All paths converge at:
          ↓
     ┌────────────────┐
-    │ GPT-4o Analysis│
+    │ GPT-5.2 Analysis│
     │ Health Score   │
     │ Ingredients    │
     │ Macronutrients │
@@ -270,7 +270,7 @@ User Form
                         │
                         └─→ Have image + name?
                             │
-                            └─→ Call OpenAI GPT-4o ────→ Cloud API
+                            └─→ Call OpenAI GPT-5.2 ────→ Cloud API
                                 │
                                 ├─→ Analyze ingredients
                                 ├─→ Calculate score

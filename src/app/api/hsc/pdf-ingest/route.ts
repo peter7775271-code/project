@@ -907,11 +907,11 @@ export async function POST(request: Request) {
       return String(content);
     };
 
-    // Default all PDF intake work to GPT-4o; can be overridden via env vars.
-    const examTextModel = process.env.OPENAI_PDF_EXAM_MODEL || 'gpt-4o';
+    // Default all PDF intake work to GPT-5.2; can be overridden via env vars.
+    const examTextModel = process.env.OPENAI_PDF_EXAM_MODEL || 'gpt-5.2';
     const criteriaTextModel =
-      process.env.OPENAI_PDF_CRITERIA_MODEL || 'gpt-4o';
-    const examVisionModel = process.env.OPENAI_PDF_VISION_MODEL || 'gpt-4o';
+      process.env.OPENAI_PDF_CRITERIA_MODEL || 'gpt-5.2';
+    const examVisionModel = process.env.OPENAI_PDF_VISION_MODEL || 'gpt-5.2';
 
     const chunkResponses: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];
     const refusals: Array<{ source: 'exam' | 'criteria'; index: number; content: string }> = [];

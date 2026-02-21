@@ -111,7 +111,7 @@ npm install cheerio axios sharp puppeteer
 
 **No new environment variables needed.**
 Uses existing:
-- `OPENAI_API_KEY` (for GPT-4o analysis)
+- `OPENAI_API_KEY` (for GPT-5.2 analysis)
 - `SUPABASE_*` (for database)
 
 ## Testing Quick Start

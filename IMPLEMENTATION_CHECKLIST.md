@@ -103,7 +103,7 @@
 
 - [x] HTML scraping: ~8 seconds
 - [x] Screenshot fallback: ~20 seconds
-- [x] GPT-4o analysis: ~4 seconds
+- [x] GPT-5.2 analysis: ~4 seconds
 - [x] Total: 4-24 seconds depending on input
 - [x] Image optimization reduces bandwidth
 - [x] Appropriate timeouts set

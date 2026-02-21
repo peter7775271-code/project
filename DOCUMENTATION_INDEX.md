@@ -324,7 +324,7 @@ A: See CODE_CHANGES_SUMMARY.md → exact changes
 - ✅ Screenshot fallback with puppeteer
 - ✅ Image optimization with sharp
 - ✅ Frontend URL input field
-- ✅ Integration with GPT-4o analysis
+- ✅ Integration with GPT-5.2 analysis
 - ✅ Alternative suggestion support
 - ✅ Comprehensive documentation
 

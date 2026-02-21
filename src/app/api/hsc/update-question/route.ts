@@ -37,9 +37,18 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!grade || !year || !subject || !topic || !marks || !questionText) {
+    const parsedMarks = Number.parseInt(String(marks), 10);
+
+    if (!grade || !year || !subject || !topic || !questionText) {
       return Response.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    if (!Number.isFinite(parsedMarks) || parsedMarks < 0) {
+      return Response.json(
+        { error: 'Marks must be a valid non-negative integer' },
         { status: 400 }
       );
     }
@@ -70,7 +79,7 @@ export async function POST(request: Request) {
         year: parseInt(year),
         subject,
         topic,
-        marks: parseInt(marks),
+        marks: parsedMarks,
         question_number: questionNumber || null,
         question_text: questionText,
         question_type: resolvedQuestionType,

@@ -172,7 +172,7 @@ Progress Bar Colors:
           ▼
 ┌──────────────────────────────────────┐
 │  /api/nutrition/analyze (First Call) │
-│  - GPT-4o Vision Analysis            │
+│  - GPT-5.2 Vision Analysis            │
 │  - Extract ingredients               │
 │  - Calculate health score            │
 └─────────┬────────────────────────────┘
@@ -188,7 +188,7 @@ Progress Bar Colors:
     │ Generate        │  │
     │ Alternative     │  │
     │ (Second Call)   │  │
-    │ - GPT-4o Text   │  │
+    │ - GPT-5.2 Text   │  │
     │ - Alternative   │  │
     │   product name  │  │
     │ - Score &       │  │

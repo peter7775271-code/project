@@ -6,7 +6,7 @@ A complete URL-to-nutrition-analysis pipeline that allows users to paste product
 
 ### User Flow
 ```
-User pastes product URL → System extracts product info → GPT-4o analyzes → 
+User pastes product URL → System extracts product info → GPT-5.2 analyzes → 
 Shows nutrition score + healthier alternative (if score < 50)
 ```
 
@@ -58,7 +58,7 @@ if (productUrl) {
 
 **Features:**
 - Calls scrape endpoint internally
-- Uses extracted data for GPT-4o analysis
+- Uses extracted data for GPT-5.2 analysis
 - Same alternative suggestion logic (if score < 50)
 - Error handling with helpful messages
 
@@ -207,7 +207,7 @@ Any one of: Name OR URL OR Image provided
    - Receives URL
    - Calls `/api/nutrition/scrape`
    - Gets productName + productImage
-   - Calls GPT-4o Vision API
+  - Calls GPT-5.2 Vision API
    - Analyzes as if user uploaded image
    - Returns health score (e.g., 15/100)
    - Since score < 50, generates alternative
@@ -225,7 +225,7 @@ Any one of: Name OR URL OR Image provided
 |--------|------|-------|
 | HTML scraping | 8 sec | Fast, most ecommerce |
 | Screenshot | 20 sec | Fallback, works everywhere |
-| GPT-4o analysis | 4 sec | Same as direct image |
+| GPT-5.2 analysis | 4 sec | Same as direct image |
 | Alternative (if score < 50) | +3 sec | Additional API call |
 | **Total: HTML path** | **15 sec** | Common case |
 | **Total: Screenshot path** | **27 sec** | Fallback case |

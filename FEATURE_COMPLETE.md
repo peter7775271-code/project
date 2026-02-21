@@ -23,7 +23,7 @@ Successfully implemented AI-powered alternative product suggestions for the nutr
 if (analysis.healthScore < 50) {
   try {
     const alternativeCompletion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5.2',
       messages: [
         {
           role: 'system',
@@ -96,13 +96,13 @@ interface NutritionEntry {
 ```
 1. User submits product for analysis
    ↓
-2. API calls GPT-4o to analyze original product
+2. API calls GPT-5.2 to analyze original product
    ↓
 3. Health score is calculated (0-100)
    ↓
 4. Check: Is score < 50?
    ├─ YES → Generate alternative suggestion
-   │   ├─ Call GPT-4o again
+   │   ├─ Call GPT-5.2 again
    │   ├─ Request healthier alternative product
    │   ├─ Parse alternative analysis
    │   └─ Include in response

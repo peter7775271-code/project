@@ -2,7 +2,7 @@
 
 ## Overview
 
-Users can now analyze products by pasting a link to the product webpage. The system extracts product information, images, and metadata directly from URLs, then analyzes them using GPT-4o.
+Users can now analyze products by pasting a link to the product webpage. The system extracts product information, images, and metadata directly from URLs, then analyzes them using GPT-5.2.
 
 ## How It Works
 
@@ -33,7 +33,7 @@ If HTML scraping fails → Fall back to screenshot (comprehensive)
     ↓
 Return extracted data to analyze endpoint
     ↓
-Analyze endpoint uses image/name for GPT-4o analysis
+Analyze endpoint uses image/name for GPT-5.2 analysis
     ↓
 Return full nutrition analysis + alternative suggestion
 ```
@@ -128,7 +128,7 @@ async function screenshotFallback(url: string) {
    - Extract `productName` and `productImage`
    - Replace user input with scraped data
 2. Validate that one input exists (name, image, or URL)
-3. Continue normal analysis flow (GPT-4o analysis)
+3. Continue normal analysis flow (GPT-5.2 analysis)
 4. Generate alternative if score < 50
 5. Save to database
 
@@ -222,7 +222,7 @@ Scraper extracts:
 - Product Name: "Coca-Cola Classic Bottles, 12 Oz (Pack of 24)"
 - Product Image: [JPEG from Amazon CDN]
 ↓
-GPT-4o Analysis:
+GPT-5.2 Analysis:
 - Health Score: 15/100
 - Alternative: Sparkling Water
 - Score Improvement: +70 points
@@ -236,7 +236,7 @@ Scraper uses screenshot fallback (dynamic content)
 - Product Name: "Organic Kale"
 - Product Image: [Full page screenshot]
 ↓
-GPT-4o Analysis:
+GPT-5.2 Analysis:
 - Health Score: 92/100
 - Alternative: Not shown (healthy product)
 ```
@@ -262,7 +262,7 @@ User sees: "Could not extract product data from URL.
 - `puppeteer` - Browser automation (screenshot fallback)
 
 **Already installed:**
-- `openai` - GPT-4o API
+- `openai` - GPT-5.2 API
 - `next` - Framework
 - `supabase-js` - Database
 
@@ -270,7 +270,7 @@ User sees: "Could not extract product data from URL.
 
 ### Environment Variables
 No new environment variables required. Uses existing:
-- `OPENAI_API_KEY` - For GPT-4o analysis
+- `OPENAI_API_KEY` - For GPT-5.2 analysis
 
 ### Timeouts
 - Fetch HTML: 10 seconds
@@ -300,7 +300,7 @@ No new environment variables required. Uses existing:
 **Additional API calls:**
 - 1 additional HTTP request per URL (scrape endpoint)
 - Image download + processing (local, no cost)
-- Same GPT-4o usage (unless score < 50, then +1 call for alternative)
+- Same GPT-5.2 usage (unless score < 50, then +1 call for alternative)
 
 **Bandwidth:**
 - Typical: 1-5 MB per analysis

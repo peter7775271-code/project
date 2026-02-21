@@ -574,21 +574,26 @@ function HtmlSegment({ html }: { html: string }) {
       const wrapStandaloneMatrix = (input: string) => {
         const MATH_PLACEHOLDER = '\u200B\u200BMATH_BLOCK\u200B\u200B';
         const blocks: string[] = [];
-        let protectedInput = input.replace(/\\\([\s\S]*?\\\)/g, (m) => {
-          blocks.push(m);
-          return `${MATH_PLACEHOLDER}${blocks.length - 1}\u200B\u200B`;
-        });
+        let protectedInput = input;
+
+        const protect = (regex: RegExp) => {
+          protectedInput = protectedInput.replace(regex, (m) => {
+            blocks.push(m);
+            return `${MATH_PLACEHOLDER}${blocks.length - 1}\u200B\u200B`;
+          });
+        };
+
+        // Protect all existing math blocks first so we only wrap true standalone matrices.
+        protect(/\$\$[\s\S]*?\$\$/g);
+        protect(/\\\[[\s\S]*?\\\]/g);
+        protect(/\\\([\s\S]*?\\\)/g);
+        protect(/(?<!\\)\$(?:(?!\$\$)[\s\S])*?(?<!\\)\$(?!\$)/g);
+
         const envNames = ['pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'matrix', 'array'];
         let result = protectedInput;
         for (const env of envNames) {
-          const re = new RegExp(
-            `(^|[^$\\\\])\\\\begin\\{${env}\\}([\\s\\S]*?)\\\\end\\{${env}\\}`,
-            'g'
-          );
-          result = result.replace(re, (_, before, body) => {
-            if (before === '$') return _ + `\\begin{${env}}${body}\\end{${env}}`;
-            return `${before}$\\begin{${env}}${body}\\end{${env}}$`;
-          });
+          const re = new RegExp(`\\\\begin\\{${env}\\}[\\s\\S]*?\\\\end\\{${env}\\}`, 'g');
+          result = result.replace(re, (fullMatch) => `$${fullMatch}$`);
         }
         blocks.forEach((block, i) => {
           result = result.replace(`${MATH_PLACEHOLDER}${i}\u200B\u200B`, block);
@@ -1292,6 +1297,15 @@ function BrowseView({
     );
   }, [availablePapers, selectedSubject, selectedGrade, selectedYear]);
 
+  const subjectExamCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    availablePapers.forEach((paper) => {
+      const subject = String(paper.subject || '');
+      counts.set(subject, (counts.get(subject) || 0) + 1);
+    });
+    return counts;
+  }, [availablePapers]);
+
   return (
     <div className="max-w-6xl mx-auto space-y-10">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-neutral-100 pb-8">
@@ -1304,6 +1318,9 @@ function BrowseView({
       {!selectedSubject ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {BROWSE_SUBJECTS.map((sub) => (
+            (() => {
+              const count = subjectExamCounts.get(sub.value) || 0;
+              return (
             <button
               key={sub.value}
               type="button"
@@ -1315,11 +1332,14 @@ function BrowseView({
               </div>
               <h3 className="font-bold text-xl mb-1 text-neutral-900">{sub.label}</h3>
               <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest">Available exams</p>
+              <p className="text-2xl font-bold text-neutral-900 mt-1">{count}</p>
               <div className="mt-6 flex items-center text-[#b5a45d] opacity-0 group-hover:opacity-100 transition-all">
                 <span className="text-[10px] font-bold uppercase tracking-widest mr-2">Select</span>
                 <ArrowRight size={14} />
               </div>
             </button>
+              );
+            })()
           ))}
         </div>
       ) : (
@@ -1764,13 +1784,46 @@ export default function HSCGeneratorPage() {
     mcq_explanation?: string | null;
   };
 
+  const getFetchErrorMessage = (err: unknown, fallback: string) => {
+    if (!(err instanceof Error)) return fallback;
+    const message = String(err.message || '').trim();
+    const lower = message.toLowerCase();
+
+    if (err.name === 'AbortError' || err.name === 'TimeoutError' || lower.includes('timed out')) {
+      return 'Request timed out. Please try again.';
+    }
+
+    if (lower.includes('fetch failed') || lower.includes('failed to fetch')) {
+      return 'Network error while contacting the server. Please check your connection and try again.';
+    }
+
+    return message || fallback;
+  };
+
+  const isExpectedFetchError = (err: unknown) => {
+    if (!(err instanceof Error)) return false;
+    const message = String(err.message || '').toLowerCase();
+    return (
+      err.name === 'AbortError' ||
+      err.name === 'TimeoutError' ||
+      message.includes('timed out') ||
+      message.includes('fetch failed') ||
+      message.includes('failed to fetch')
+    );
+  };
+
   const fetchWithTimeout = async (url: string, timeoutMs = 10000) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutId = setTimeout(
+      () => controller.abort(new DOMException(`Request timed out after ${timeoutMs}ms`, 'TimeoutError')),
+      timeoutMs
+    );
 
     try {
       const response = await fetch(url, { signal: controller.signal });
       return response;
+    } catch (err) {
+      throw new Error(getFetchErrorMessage(err, 'Failed to fetch data'));
     } finally {
       clearTimeout(timeoutId);
     }
@@ -1830,7 +1883,10 @@ export default function HSCGeneratorPage() {
   const [isSavingName, setIsSavingName] = useState(false);
   const [paperQuestions, setPaperQuestions] = useState<Question[]>([]);
   const [paperIndex, setPaperIndex] = useState(0);
+  const [showPaperQuestionNavigator, setShowPaperQuestionNavigator] = useState(false);
   const [activePaper, setActivePaper] = useState<{ year: string; subject: string; grade: string; school: string; count: number } | null>(null);
+  const [exportingPaperPdf, setExportingPaperPdf] = useState<'exam' | 'solutions' | null>(null);
+  const [exportingSavedExamPdf, setExportingSavedExamPdf] = useState<'exam' | 'solutions' | null>(null);
   const [examEndsAt, setExamEndsAt] = useState<number | null>(null);
   const [examRemainingMs, setExamRemainingMs] = useState<number | null>(null);
   const [examConditionsActive, setExamConditionsActive] = useState(false);
@@ -1865,6 +1921,7 @@ export default function HSCGeneratorPage() {
   const [selectedManageQuestionId, setSelectedManageQuestionId] = useState<string | null>(null);
   const [manageQuestionDraft, setManageQuestionDraft] = useState<any | null>(null);
   const [manageQuestionEditMode, setManageQuestionEditMode] = useState(false);
+  const manageListScrollYRef = useRef(0);
   const [inlineEditDraft, setInlineEditDraft] = useState<any | null>(null);
   const [inlineEditSaving, setInlineEditSaving] = useState(false);
   const [selectedManageQuestionIds, setSelectedManageQuestionIds] = useState<string[]>([]);
@@ -1877,8 +1934,14 @@ export default function HSCGeneratorPage() {
   const [manageFilterTopic, setManageFilterTopic] = useState<string>('');
   const [manageFilterSchool, setManageFilterSchool] = useState<string>('');
   const [manageFilterType, setManageFilterType] = useState<'all' | 'written' | 'multiple_choice'>('all');
+  const [manageFiltersApplied, setManageFiltersApplied] = useState(false);
   const [manageSortKey, setManageSortKey] = useState<'question_number' | 'year' | 'subject' | 'grade' | 'marks' | 'topic' | 'school'>('question_number');
   const [manageSortDirection, setManageSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [customExamGroupByQuestionId, setCustomExamGroupByQuestionId] = useState<Record<string, string>>({});
+  const mainContentScrollRef = useRef<HTMLDivElement | null>(null);
+  const manageDragSelectingRef = useRef(false);
+  const manageDragSelectValueRef = useRef(true);
+  const manageDragTouchedRef = useRef<Set<string>>(new Set());
   const [newQuestion, setNewQuestion] = useState({
     grade: 'Year 12',
     year: new Date().getFullYear().toString(),
@@ -1969,6 +2032,159 @@ export default function HSCGeneratorPage() {
     return { number, part, subpart, raw };
   };
 
+  const expandManualGroupedSelection = (
+    selected: Question[],
+    sourcePool: Question[],
+    groupByQuestionId: Record<string, string>
+  ) => {
+    const normalizeGroup = (value: string | undefined) => String(value || '').trim().toLowerCase();
+    const groups = new Map<string, Question[]>();
+
+    sourcePool.forEach((question) => {
+      const rawLabel = groupByQuestionId[question.id];
+      const label = normalizeGroup(rawLabel);
+      if (!label) return;
+      const existing = groups.get(label) || [];
+      existing.push(question);
+      groups.set(label, existing);
+    });
+
+    groups.forEach((items, label) => {
+      const sortedItems = [...items].sort((a, b) => {
+        const left = parseQuestionNumberForSort(a.question_number);
+        const right = parseQuestionNumberForSort(b.question_number);
+        return left.number - right.number || left.part.localeCompare(right.part) || left.subpart - right.subpart || left.raw.localeCompare(right.raw);
+      });
+      groups.set(label, sortedItems);
+    });
+
+    const seenIds = new Set<string>();
+    const seenGroupLabels = new Set<string>();
+    const expanded: Question[] = [];
+
+    selected.forEach((question) => {
+      const groupLabel = normalizeGroup(groupByQuestionId[question.id]);
+      if (groupLabel) {
+        if (seenGroupLabels.has(groupLabel)) return;
+        seenGroupLabels.add(groupLabel);
+        const groupedQuestions = groups.get(groupLabel) || [question];
+        groupedQuestions.forEach((groupedQuestion) => {
+          if (seenIds.has(groupedQuestion.id)) return;
+          seenIds.add(groupedQuestion.id);
+          expanded.push(groupedQuestion);
+        });
+        return;
+      }
+
+      if (seenIds.has(question.id)) return;
+      seenIds.add(question.id);
+      expanded.push(question);
+    });
+
+    return expanded;
+  };
+
+  const expandRomanSubpartSelection = (selected: Question[], sourcePool: Question[]) => {
+    const getRomanGroupKey = (question: Question) => {
+      const parsed = parseQuestionNumberForSort(question.question_number);
+      if (!parsed.part || !parsed.subpart) return null;
+      const base = getQuestionDisplayBase(question.question_number);
+      const paperNumber = String((question as any).paper_number ?? '');
+      return [
+        String(question.grade || ''),
+        String(question.subject || ''),
+        String(question.year || ''),
+        String(question.school_name || ''),
+        paperNumber,
+        base,
+      ].join('|');
+    };
+
+    const romanGroups = new Map<string, Question[]>();
+    sourcePool.forEach((question) => {
+      const groupKey = getRomanGroupKey(question);
+      if (!groupKey) return;
+      const existing = romanGroups.get(groupKey) || [];
+      existing.push(question);
+      romanGroups.set(groupKey, existing);
+    });
+
+    romanGroups.forEach((group, groupKey) => {
+      const sortedGroup = [...group].sort((a, b) => {
+        const left = parseQuestionNumberForSort(a.question_number);
+        const right = parseQuestionNumberForSort(b.question_number);
+        return left.number - right.number || left.part.localeCompare(right.part) || left.subpart - right.subpart || left.raw.localeCompare(right.raw);
+      });
+      romanGroups.set(groupKey, sortedGroup);
+    });
+
+    const seenIds = new Set<string>();
+    const seenGroupKeys = new Set<string>();
+    const expanded: Question[] = [];
+
+    selected.forEach((question) => {
+      const groupKey = getRomanGroupKey(question);
+      if (groupKey) {
+        if (!seenGroupKeys.has(groupKey)) {
+          seenGroupKeys.add(groupKey);
+          const siblings = romanGroups.get(groupKey) || [question];
+          siblings.forEach((sibling) => {
+            if (seenIds.has(sibling.id)) return;
+            seenIds.add(sibling.id);
+            expanded.push(sibling);
+          });
+        }
+        return;
+      }
+
+      if (seenIds.has(question.id)) return;
+      seenIds.add(question.id);
+      expanded.push(question);
+    });
+
+    return expanded;
+  };
+
+  const applySiblingGraphImages = (questions: Question[]) => {
+    const grouped = new Map<string, Question[]>();
+
+    questions.forEach((question) => {
+      const base = getQuestionDisplayBase(question.question_number);
+      const key = [
+        String(question.grade || ''),
+        String(question.subject || ''),
+        String(question.year || ''),
+        String(question.school_name || ''),
+        base,
+      ].join('|');
+      const existing = grouped.get(key) || [];
+      existing.push(question);
+      grouped.set(key, existing);
+    });
+
+    const imageByQuestionId = new Map<string, { data: string; size: 'small' | 'medium' | 'large' }>();
+
+    grouped.forEach((group) => {
+      const sourceWithImage = group.find((question) => String(question.graph_image_data || '').trim());
+      if (!sourceWithImage || !sourceWithImage.graph_image_data) return;
+      const sharedData = String(sourceWithImage.graph_image_data);
+      const sharedSize = (sourceWithImage.graph_image_size || 'medium') as 'small' | 'medium' | 'large';
+      group.forEach((question) => {
+        imageByQuestionId.set(question.id, { data: sharedData, size: sharedSize });
+      });
+    });
+
+    return questions.map((question) => {
+      const shared = imageByQuestionId.get(question.id);
+      if (!shared) return question;
+      return {
+        ...question,
+        graph_image_data: shared.data,
+        graph_image_size: shared.size,
+      };
+    });
+  };
+
   /** Display base for grouping: e.g. "11 (a)(i)" and "11 (a)(ii)" both yield "11 (a)". */
   const getQuestionDisplayBase = (qNumber: string | null | undefined): string => {
     const raw = String(qNumber ?? '').trim();
@@ -2045,6 +2261,7 @@ export default function HSCGeneratorPage() {
     const totalMarks = mergedCarrier?.marks != null
       ? mergedCarrier.marks
       : group.reduce((sum, q) => sum + (q.marks ?? 0), 0);
+    const graphSource = group.find((q) => String(q.graph_image_data || '').trim());
     return {
       ...first,
       id: first.id,
@@ -2053,6 +2270,8 @@ export default function HSCGeneratorPage() {
       marking_criteria: markingCriteria || first.marking_criteria,
       sample_answer: sampleAnswer || first.sample_answer,
       marks: totalMarks,
+      graph_image_data: graphSource?.graph_image_data || first.graph_image_data,
+      graph_image_size: (graphSource?.graph_image_size || first.graph_image_size || 'medium') as 'small' | 'medium' | 'large',
     };
   };
 
@@ -2062,6 +2281,12 @@ export default function HSCGeneratorPage() {
     const subjects = new Set<string>();
     const topics = new Set<string>();
     const schools = new Set<string>();
+
+    Object.keys(SUBJECTS_BY_YEAR).forEach((grade) => grades.add(grade));
+    YEARS.forEach((year) => years.add(year));
+    Object.values(SUBJECTS_BY_YEAR).forEach((values) => values.forEach((subject) => subjects.add(subject)));
+    ALL_TOPICS.forEach((topic) => topics.add(topic));
+
     allQuestions.forEach((q) => {
       if (q?.grade) grades.add(String(q.grade));
       if (q?.year) years.add(String(q.year));
@@ -2236,7 +2461,31 @@ export default function HSCGeneratorPage() {
     return streak;
   }, [activityMap]);
 
+  const hasManageFilters = useMemo(() => {
+    return (
+      manageMissingImagesOnly ||
+      manageFilterType !== 'all' ||
+      Boolean(manageFilterGrade) ||
+      Boolean(manageFilterYear) ||
+      Boolean(manageFilterSubject) ||
+      Boolean(manageFilterTopic) ||
+      Boolean(manageFilterSchool) ||
+      Boolean(manageSearchQuery.trim())
+    );
+  }, [
+    manageMissingImagesOnly,
+    manageFilterType,
+    manageFilterGrade,
+    manageFilterYear,
+    manageFilterSubject,
+    manageFilterTopic,
+    manageFilterSchool,
+    manageSearchQuery,
+  ]);
+
   const filteredManageQuestions = useMemo(() => {
+    const shouldGateManageResults = viewMode === 'dev-questions' && devTab === 'manage' && !manageFiltersApplied;
+    if (shouldGateManageResults) return [];
     const search = manageSearchQuery.trim().toLowerCase();
     const filtered = allQuestions.filter((q) => {
       if (manageMissingImagesOnly && (q.graph_image_data || q.graph_image_size !== 'missing')) return false;
@@ -2283,6 +2532,9 @@ export default function HSCGeneratorPage() {
 
     return sorted;
   }, [
+    viewMode,
+    devTab,
+    manageFiltersApplied,
     allQuestions,
     manageSearchQuery,
     manageFilterGrade,
@@ -2338,10 +2590,22 @@ export default function HSCGeneratorPage() {
     }
   }, []);
 
-  // Fetch questions when entering dev mode (manage or review tab)
+  // Fetch questions when entering review tab
   useEffect(() => {
-    if (viewMode === 'dev-questions' && (devTab === 'manage' || devTab === 'review')) {
+    if (viewMode === 'dev-questions' && devTab === 'review') {
       fetchAllQuestions();
+    }
+  }, [viewMode, devTab]);
+
+  useEffect(() => {
+    if (viewMode === 'dev-questions' && devTab === 'manage') {
+      setManageFiltersApplied(false);
+      setAllQuestions([]);
+      setSelectedManageQuestionId(null);
+      setManageQuestionDraft(null);
+      setManageQuestionEditMode(false);
+      setSelectedManageQuestionIds([]);
+      setQuestionsFetchError(null);
     }
   }, [viewMode, devTab]);
 
@@ -2374,6 +2638,14 @@ export default function HSCGeneratorPage() {
     const availableIds = new Set(allQuestions.map((q) => q.id));
     setSelectedManageQuestionIds((prev) => prev.filter((id) => availableIds.has(id)));
   }, [allQuestions, selectedManageQuestionIds.length]);
+
+  useEffect(() => {
+    const handleMouseUp = () => endManageDragSelection();
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   // Legacy freehand canvas logic removed; Excalidraw now owns the drawing surface.
 
@@ -2766,6 +3038,123 @@ export default function HSCGeneratorPage() {
     existing.push(exam);
     localStorage.setItem('savedAttempts', JSON.stringify(existing));
     setSavedAttempts(existing);
+  };
+
+  const exportExamQuestionsPdf = async ({
+    includeSolutions,
+    questions,
+    title,
+    subtitle,
+    downloadName,
+  }: {
+    includeSolutions: boolean;
+    questions: any[];
+    title: string;
+    subtitle: string;
+    downloadName: string;
+  }) => {
+    if (!questions.length) {
+      throw new Error('No questions available to export.');
+    }
+    const response = await fetch('/api/hsc/export-exam-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        subtitle,
+        downloadName,
+        includeSolutions,
+        questions,
+      }),
+    });
+
+    if (!response.ok) {
+      let err: any = {};
+      try {
+        err = await response.json();
+      } catch {
+        const text = await response.text().catch(() => '');
+        err = text ? { details: text } : {};
+      }
+      throw new Error(err?.details || err?.error || `Failed to export PDF (${response.status})`);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${downloadName.replace(/[^a-z0-9\-_.]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'custom-exam'}${includeSolutions ? '-with-solutions' : ''}.pdf`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportPaperPdf = async (includeSolutions: boolean) => {
+    if (!activePaper || !paperQuestions.length) {
+      alert('No paper is loaded to export.');
+      return;
+    }
+
+    const mode: 'exam' | 'solutions' = includeSolutions ? 'solutions' : 'exam';
+    setExportingPaperPdf(mode);
+
+    try {
+      const title = `${activePaper.year === 'Custom' ? 'Custom Exam' : `${activePaper.year} ${activePaper.subject}`} ${includeSolutions ? 'Solutions' : 'Paper'}`;
+      const subtitle = `${activePaper.subject} • ${activePaper.grade}`;
+      const downloadName = `${activePaper.year}-${activePaper.subject}-${activePaper.grade}`;
+
+      await exportExamQuestionsPdf({
+        includeSolutions,
+        questions: paperQuestions,
+        title,
+        subtitle,
+        downloadName,
+      });
+    } catch (err) {
+      console.error('Error exporting paper PDF:', err);
+      alert(err instanceof Error ? err.message : 'Failed to export PDF');
+    } finally {
+      setExportingPaperPdf(null);
+    }
+  };
+
+  const exportSavedExamPdf = async (includeSolutions: boolean) => {
+    if (!selectedAttempt || selectedAttempt.type !== 'exam') {
+      alert('Select a saved exam first.');
+      return;
+    }
+
+    const questions = Array.isArray(selectedAttempt.examAttempts)
+      ? selectedAttempt.examAttempts.map((entry: any) => entry?.question).filter(Boolean)
+      : [];
+
+    if (!questions.length) {
+      alert('This saved exam has no questions to export.');
+      return;
+    }
+
+    const mode: 'exam' | 'solutions' = includeSolutions ? 'solutions' : 'exam';
+    setExportingSavedExamPdf(mode);
+
+    try {
+      const title = `${selectedAttempt.paperYear || 'Saved'} ${selectedAttempt.paperSubject || 'Exam'} ${includeSolutions ? 'Solutions' : 'Paper'}`.trim();
+      const subtitle = `${selectedAttempt.paperGrade || ''}`.trim();
+      const downloadName = `${selectedAttempt.paperYear || 'saved'}-${selectedAttempt.paperSubject || 'exam'}-${selectedAttempt.paperGrade || ''}`;
+
+      await exportExamQuestionsPdf({
+        includeSolutions,
+        questions,
+        title,
+        subtitle,
+        downloadName,
+      });
+    } catch (err) {
+      console.error('Error exporting saved exam PDF:', err);
+      alert(err instanceof Error ? err.message : 'Failed to export PDF');
+    } finally {
+      setExportingSavedExamPdf(null);
+    }
   };
 
   const removeSavedAttempt = (id: number) => {
@@ -3195,13 +3584,87 @@ export default function HSCGeneratorPage() {
         console.error('[fetchAllQuestions]', msg);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to fetch questions';
+      const msg = getFetchErrorMessage(err, 'Failed to fetch questions');
       setQuestionsFetchError(msg);
       setAllQuestions([]);
-      console.error('Error fetching questions:', err);
+      if (isExpectedFetchError(err)) {
+        console.warn('[fetchAllQuestions]', msg);
+      } else {
+        console.error('Error fetching questions:', err);
+      }
     } finally {
       setLoadingQuestions(false);
     }
+  };
+
+  const applyManageFilters = async () => {
+    if (!hasManageFilters) {
+      alert('Apply at least one filter before loading questions.');
+      return;
+    }
+
+    try {
+      setLoadingQuestions(true);
+      setQuestionsFetchError(null);
+
+      const params = new URLSearchParams();
+      if (manageFilterGrade) params.set('grade', manageFilterGrade);
+      if (manageFilterYear) params.set('year', manageFilterYear);
+      if (manageFilterSubject) params.set('subject', manageFilterSubject);
+      if (manageFilterTopic) params.set('topic', manageFilterTopic);
+      if (manageFilterSchool) params.set('school', manageFilterSchool);
+      if (manageFilterType !== 'all') params.set('questionType', manageFilterType);
+      if (manageMissingImagesOnly) params.set('missingImagesOnly', 'true');
+      const search = manageSearchQuery.trim();
+      if (search) params.set('search', search);
+
+      const response = await fetch(`/api/hsc/all-questions?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        const rows = Array.isArray(data) ? data : [];
+        setAllQuestions(rows);
+        setManageFiltersApplied(true);
+        setSelectedManageQuestionId(null);
+        setManageQuestionDraft(null);
+        setManageQuestionEditMode(false);
+        setSelectedManageQuestionIds([]);
+      } else {
+        const msg = data?.details ?? data?.error ?? `Failed to fetch questions (${response.status})`;
+        setQuestionsFetchError(msg);
+        setAllQuestions([]);
+        setManageFiltersApplied(true);
+      }
+    } catch (err) {
+      const msg = getFetchErrorMessage(err, 'Failed to fetch questions');
+      setQuestionsFetchError(msg);
+      setAllQuestions([]);
+      setManageFiltersApplied(true);
+      if (isExpectedFetchError(err)) {
+        console.warn('Manage questions fetch issue:', msg);
+      } else {
+        console.error('Error fetching filtered manage questions:', err);
+      }
+    } finally {
+      setLoadingQuestions(false);
+    }
+  };
+
+  const resetManageFilters = () => {
+    setManageSearchQuery('');
+    setManageFilterGrade('');
+    setManageFilterYear('');
+    setManageFilterSubject('');
+    setManageFilterTopic('');
+    setManageFilterSchool('');
+    setManageFilterType('all');
+    setManageMissingImagesOnly(false);
+    setManageFiltersApplied(false);
+    setQuestionsFetchError(null);
+    setAllQuestions([]);
+    setSelectedManageQuestionId(null);
+    setManageQuestionDraft(null);
+    setManageQuestionEditMode(false);
+    setSelectedManageQuestionIds([]);
   };
 
   const deleteQuestion = async (questionId: string) => {
@@ -3221,6 +3684,12 @@ export default function HSCGeneratorPage() {
         alert('Question deleted successfully!');
         // Remove from local list
         setAllQuestions(allQuestions.filter(q => q.id !== questionId));
+        setCustomExamGroupByQuestionId((prev) => {
+          if (!prev[questionId]) return prev;
+          const next = { ...prev };
+          delete next[questionId];
+          return next;
+        });
       } else {
         alert('Failed to delete question');
       }
@@ -3242,6 +3711,25 @@ export default function HSCGeneratorPage() {
       }
       return [...prev, questionId];
     });
+  };
+
+  const beginManageDragSelection = (questionId: string, shouldSelect: boolean) => {
+    manageDragSelectingRef.current = true;
+    manageDragSelectValueRef.current = shouldSelect;
+    manageDragTouchedRef.current = new Set([questionId]);
+    toggleManageSelection(questionId, shouldSelect);
+  };
+
+  const continueManageDragSelection = (questionId: string) => {
+    if (!manageDragSelectingRef.current) return;
+    if (manageDragTouchedRef.current.has(questionId)) return;
+    manageDragTouchedRef.current.add(questionId);
+    toggleManageSelection(questionId, manageDragSelectValueRef.current);
+  };
+
+  const endManageDragSelection = () => {
+    manageDragSelectingRef.current = false;
+    manageDragTouchedRef.current = new Set();
   };
 
   const setAllManageSelections = (selectAll: boolean, ids?: string[]) => {
@@ -3275,6 +3763,17 @@ export default function HSCGeneratorPage() {
 
       const remaining = allQuestions.filter((q) => !selectedManageQuestionIds.includes(q.id));
       setAllQuestions(remaining);
+      setCustomExamGroupByQuestionId((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        selectedManageQuestionIds.forEach((questionId) => {
+          if (next[questionId]) {
+            delete next[questionId];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
       setSelectedManageQuestionIds([]);
       if (selectedManageQuestionId && selectedManageQuestionIds.includes(selectedManageQuestionId)) {
         setSelectedManageQuestionId(null);
@@ -3343,6 +3842,39 @@ export default function HSCGeneratorPage() {
     }
   };
 
+  const assignSelectedQuestionsToGroup = () => {
+    if (!selectedManageQuestionIds.length) return;
+
+    const existingGroupNumbers = Object.values(customExamGroupByQuestionId)
+      .map((value) => Number.parseInt(String(value), 10))
+      .filter((value) => Number.isInteger(value) && value > 0);
+    const nextGroupNumber = existingGroupNumbers.length ? Math.max(...existingGroupNumbers) + 1 : 1;
+    const label = String(nextGroupNumber);
+
+    setCustomExamGroupByQuestionId((prev) => {
+      const next = { ...prev };
+      selectedManageQuestionIds.forEach((questionId) => {
+        next[questionId] = label;
+      });
+      return next;
+    });
+  };
+
+  const clearSelectedQuestionGroups = () => {
+    if (!selectedManageQuestionIds.length) return;
+    setCustomExamGroupByQuestionId((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      selectedManageQuestionIds.forEach((questionId) => {
+        if (next[questionId]) {
+          delete next[questionId];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  };
+
   const clearAllQuestions = async () => {
     if (!confirm('This will permanently delete ALL questions. Continue?')) {
       return;
@@ -3356,6 +3888,7 @@ export default function HSCGeneratorPage() {
         throw new Error(data?.error || 'Failed to clear questions');
       }
       setAllQuestions([]);
+      setCustomExamGroupByQuestionId({});
       setSelectedManageQuestionId(null);
       setManageQuestionDraft(null);
     } catch (err) {
@@ -3474,6 +4007,14 @@ export default function HSCGeneratorPage() {
     // Clear the canvas
     renderAllStrokes(false);
     setIsEraser(false);
+  };
+
+  const clearExcalidrawCanvas = () => {
+    excalidrawSceneRef.current = null;
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+    api.resetScene();
+    api.history.clear();
   };
 
   const hasCurrentAnswer = () => {
@@ -3759,8 +4300,13 @@ export default function HSCGeneratorPage() {
       setQuestion(data.question);
       setTimeout(() => resetCanvas(400), 100);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load question');
-      console.error('Error fetching question:', err);
+      const msg = getFetchErrorMessage(err, 'Failed to load question');
+      setError(msg);
+      if (isExpectedFetchError(err)) {
+        console.warn('Question fetch issue:', msg);
+      } else {
+        console.error('Error fetching question:', err);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -3837,6 +4383,7 @@ export default function HSCGeneratorPage() {
     setSubmittedAnswer(null);
     setSelectedMcqAnswer(null);
     setIsEraser(false);
+    clearExcalidrawCanvas();
     setTimeout(() => resetCanvas(400), 0);
 
     historyRef.current = [];
@@ -3849,6 +4396,7 @@ export default function HSCGeneratorPage() {
     setActivePaper(null);
     setPaperQuestions([]);
     setPaperIndex(0);
+    setShowPaperQuestionNavigator(false);
     setExamEndsAt(null);
     setExamRemainingMs(null);
     setExamConditionsActive(false);
@@ -3925,6 +4473,34 @@ export default function HSCGeneratorPage() {
     resetForQuestion(mergeGroupForDisplay(initialGroup.group));
   };
 
+  const openSavedExamAsPaper = (attempt: any) => {
+    if (!attempt || attempt.type !== 'exam') return;
+
+    const questions = Array.isArray(attempt.examAttempts)
+      ? attempt.examAttempts.map((entry: any) => entry?.question).filter(Boolean)
+      : [];
+
+    if (!questions.length) {
+      alert('This saved exam has no questions to display.');
+      return;
+    }
+
+    clearPaperState();
+    const typedQuestions = questions as Question[];
+    setActivePaper({
+      year: String(attempt.paperYear || 'Saved'),
+      subject: String(attempt.paperSubject || 'Saved Exam'),
+      grade: String(attempt.paperGrade || ''),
+      school: 'Saved',
+      count: typedQuestions.length,
+    });
+    setPaperQuestions(typedQuestions);
+    setPaperIndex(0);
+    setViewMode('paper');
+    const initialGroup = getDisplayGroupAt(typedQuestions, 0);
+    resetForQuestion(mergeGroupForDisplay(initialGroup.group));
+  };
+
   const shuffleQuestions = (items: Question[]) => {
     const arr = [...items];
     for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -3956,9 +4532,13 @@ export default function HSCGeneratorPage() {
     try {
       clearPaperState();
       const pool = await loadQuestionsForBuilder();
-      const filtered = pool.filter((q) => {
+      const gradeSubjectPool = pool.filter((q) => {
         if (String(q.grade) !== params.grade) return false;
         if (String(q.subject) !== params.subject) return false;
+        return true;
+      });
+
+      const filtered = gradeSubjectPool.filter((q) => {
         if (params.topics.length > 0 && !params.topics.includes(String(q.topic))) return false;
         return true;
       });
@@ -3970,19 +4550,22 @@ export default function HSCGeneratorPage() {
       const shuffled = shuffleQuestions(filtered);
       const targetCount = Math.min(params.intensity, shuffled.length);
       const selected = shuffled.slice(0, targetCount);
+      const manualGroupedSelection = expandManualGroupedSelection(selected, gradeSubjectPool, customExamGroupByQuestionId);
+      const romanGroupedSelection = expandRomanSubpartSelection(manualGroupedSelection, gradeSubjectPool);
+      const finalSelectionWithSharedImages = applySiblingGraphImages(romanGroupedSelection);
 
-      if (!selected.length) {
+      if (!finalSelectionWithSharedImages.length) {
         return { ok: false, message: 'Not enough questions to build this exam.' };
       }
 
-      const totalPossible = selected.reduce((sum, q) => sum + (q.marks || 0), 0);
+      const totalPossible = finalSelectionWithSharedImages.reduce((sum, q) => sum + (q.marks || 0), 0);
       const exam = {
         type: 'exam',
         id: Date.now(),
         paperYear: 'Custom',
         paperSubject: params.subject,
         paperGrade: params.grade,
-        examAttempts: selected.map((q) => ({ question: q, submittedAnswer: null, feedback: null })),
+        examAttempts: finalSelectionWithSharedImages.map((q) => ({ question: q, submittedAnswer: null, feedback: null })),
         totalScore: 0,
         totalPossible,
         savedAt: new Date().toISOString(),
@@ -3993,11 +4576,11 @@ export default function HSCGeneratorPage() {
       localStorage.setItem('savedAttempts', JSON.stringify(existing));
       setSavedAttempts(existing);
 
-      setActivePaper({ year: 'Custom', subject: params.subject, grade: params.grade, school: 'Custom', count: selected.length });
-      setPaperQuestions(selected);
+      setActivePaper({ year: 'Custom', subject: params.subject, grade: params.grade, school: 'Custom', count: finalSelectionWithSharedImages.length });
+      setPaperQuestions(finalSelectionWithSharedImages);
       setPaperIndex(0);
       setViewMode('paper');
-      const initialGroup = getDisplayGroupAt(selected, 0);
+      const initialGroup = getDisplayGroupAt(finalSelectionWithSharedImages, 0);
       resetForQuestion(mergeGroupForDisplay(initialGroup.group));
       if (params.cognitive) {
         startExamSimulation(params.subject);
@@ -4018,6 +4601,27 @@ export default function HSCGeneratorPage() {
     resetForQuestion(mergeGroupForDisplay(group));
   };
 
+  const scrollMainContentToTop = () => {
+    const contentEl = mainContentScrollRef.current;
+    if (contentEl) {
+      contentEl.scrollTo({ top: 0, behavior: 'auto' });
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  };
+
+  const handleNextQuestion = () => {
+    if (isPaperMode) {
+      const { endIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
+      goToPaperQuestion(endIndex);
+    } else {
+      generateQuestion();
+    }
+    scrollMainContentToTop();
+  };
+
   // Initial load
   useEffect(() => {
     const loadInitialQuestion = async () => {
@@ -4030,8 +4634,13 @@ export default function HSCGeneratorPage() {
         const data = await response.json();
         setQuestion(data.question);
       } catch (err) {
-        console.error('Error loading initial question:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load question');
+        const msg = getFetchErrorMessage(err, 'Failed to load question');
+        setError(msg);
+        if (isExpectedFetchError(err)) {
+          console.warn('Initial question fetch issue:', msg);
+        } else {
+          console.error('Error loading initial question:', err);
+        }
       } finally {
         setLoading(false);
       }
@@ -4049,6 +4658,33 @@ export default function HSCGeneratorPage() {
       console.error('Error loading saved attempts:', err);
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = JSON.parse(localStorage.getItem('customExamQuestionGroups') || '{}');
+      if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+        const normalized: Record<string, string> = {};
+        Object.entries(stored as Record<string, unknown>).forEach(([questionId, groupLabel]) => {
+          const id = String(questionId || '').trim();
+          const label = String(groupLabel || '').trim();
+          if (id && label) normalized[id] = label;
+        });
+        setCustomExamGroupByQuestionId(normalized);
+      }
+    } catch (err) {
+      console.error('Error loading custom exam groups:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('customExamQuestionGroups', JSON.stringify(customExamGroupByQuestionId));
+    } catch (err) {
+      console.error('Error saving custom exam groups:', err);
+    }
+  }, [customExamGroupByQuestionId]);
 
   useEffect(() => {
     if (typeof navigator === 'undefined') return;
@@ -4090,6 +4726,26 @@ export default function HSCGeneratorPage() {
   }, [examRemainingMs]);
 
   const viewModeLabel = viewMode === 'dashboard' ? 'Dashboard' : viewMode === 'analytics' ? 'Analytics Hub' : viewMode === 'browse' ? 'Browse Bank' : viewMode === 'builder' ? 'Exam Architect' : viewMode === 'formulas' ? 'Formula Vault' : viewMode === 'saved' ? 'Saved Content' : viewMode === 'history' ? 'My History' : viewMode === 'papers' || viewMode === 'paper' ? 'Exam' : viewMode === 'settings' ? 'Settings' : viewMode === 'dev-questions' ? 'Dev Mode' : String(viewMode).replace(/-/g, ' ');
+  const paperDisplayGroups = useMemo(() => {
+    const groups: Array<{ startIndex: number; endIndex: number; label: string }> = [];
+    if (!paperQuestions.length) return groups;
+    let index = 0;
+    while (index < paperQuestions.length) {
+      const groupInfo = getDisplayGroupAt(paperQuestions, index);
+      const firstQuestion = groupInfo.group[0];
+      groups.push({
+        startIndex: groupInfo.startIndex,
+        endIndex: groupInfo.endIndex,
+        label: String(firstQuestion?.question_number || groupInfo.startIndex + 1),
+      });
+      index = groupInfo.endIndex;
+    }
+    return groups;
+  }, [paperQuestions]);
+  const activePaperGroupStartIndex = useMemo(() => {
+    if (!paperQuestions.length) return -1;
+    return getDisplayGroupAt(paperQuestions, paperIndex).startIndex;
+  }, [paperQuestions, paperIndex]);
 
   return (
     <div className="flex h-screen bg-white overflow-hidden font-sans">
@@ -4344,10 +5000,14 @@ export default function HSCGeneratorPage() {
 
       {/* Mobile Header */}
       <div className="lg:hidden flex items-center justify-between p-4 border-b border-neutral-100 sticky top-0 z-50 bg-white/80 backdrop-blur-md">
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="flex items-center gap-2 cursor-pointer"
+        >
           <div className="w-8 h-8 bg-neutral-900 rounded-lg flex items-center justify-center text-white font-serif italic text-xl">∑</div>
           <span className="font-bold text-lg text-neutral-800">Praxis AI</span>
-        </div>
+        </button>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-neutral-600 hover:text-neutral-900 cursor-pointer">
           {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
@@ -4377,12 +5037,19 @@ export default function HSCGeneratorPage() {
             }, 150);
           }}
         >
-          <div className={`p-6 mb-4 flex-shrink-0 flex items-center gap-3 overflow-hidden justify-center px-0 lg:px-6 ${sidebarHovered ? 'lg:gap-3' : 'lg:justify-center lg:px-0'}`}>
+          <button
+            type="button"
+            onClick={() => {
+              router.push('/');
+              setMobileMenuOpen(false);
+            }}
+            className={`w-full p-6 mb-4 flex-shrink-0 flex items-center gap-3 overflow-hidden justify-center px-0 lg:px-6 cursor-pointer ${sidebarHovered ? 'lg:gap-3' : 'lg:justify-center lg:px-0'}`}
+          >
             <div className="w-8 h-8 shrink-0 bg-neutral-900 rounded-lg flex items-center justify-center text-white font-serif italic text-xl">∑</div>
             <span className={`hidden lg:inline font-bold text-lg tracking-tight text-neutral-800 whitespace-nowrap transition-all duration-200 ${sidebarHovered ? 'lg:opacity-100 lg:max-w-[200px]' : 'lg:opacity-0 lg:max-w-0 lg:overflow-hidden'}`}>
               Praxis <span className="text-neutral-400 font-light">AI</span>
             </span>
-          </div>
+          </button>
 
           <nav className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar space-y-0">
             <button onClick={() => { setViewMode('dashboard'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 justify-center px-0 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 lg:justify-start lg:px-6 ${sidebarHovered ? 'lg:justify-start lg:px-6' : 'lg:justify-center lg:px-0'} ${viewMode === 'dashboard' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
@@ -4456,7 +5123,7 @@ export default function HSCGeneratorPage() {
               </div>
             </div>
           </header>
-          <div className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar z-10 relative">
+          <div ref={mainContentScrollRef} className={`flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar z-10 relative ${viewMode === 'paper' && showPaperQuestionNavigator ? 'lg:pr-[22rem]' : ''}`}>
           <div className="max-w-5xl mx-auto space-y-8">
             {viewMode === 'dashboard' && (
               <DashboardView
@@ -5088,10 +5755,7 @@ export default function HSCGeneratorPage() {
                     }}
                   >Previous Question</button>
                   <button
-                    onClick={() => {
-                      const { endIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
-                      goToPaperQuestion(endIndex);
-                    }}
+                    onClick={handleNextQuestion}
                     disabled={paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length}
                     className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
                     style={{
@@ -5101,7 +5765,60 @@ export default function HSCGeneratorPage() {
                     }}
                   >Next Question</button>
                 </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowPaperQuestionNavigator((prev) => !prev)}
+                    className="px-4 py-2 rounded-lg border text-sm font-semibold transition cursor-pointer"
+                    style={{
+                      backgroundColor: showPaperQuestionNavigator ? 'var(--clr-btn-primary)' : 'var(--clr-surface-a10)',
+                      borderColor: showPaperQuestionNavigator ? 'var(--clr-btn-primary-hover)' : 'var(--clr-surface-tonal-a20)',
+                      color: showPaperQuestionNavigator ? 'var(--clr-btn-primary-text)' : 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    {showPaperQuestionNavigator ? 'Hide Question List' : 'Show Question List'}
+                  </button>
+                </div>
               </div>
+            )}
+
+            {isPaperMode && showPaperQuestionNavigator && (
+              <aside
+                className="fixed right-4 top-24 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border shadow-xl"
+                style={{
+                  backgroundColor: 'var(--clr-surface-a0)',
+                  borderColor: 'var(--clr-surface-tonal-a20)',
+                }}
+              >
+                <div
+                  className="px-4 py-3 border-b text-xs font-bold uppercase tracking-widest"
+                  style={{
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-surface-a40)',
+                  }}
+                >
+                  Questions ({paperDisplayGroups.length})
+                </div>
+                <div className="max-h-[70vh] overflow-y-auto p-2 space-y-1">
+                  {paperDisplayGroups.map((group, idx) => {
+                    const isActive = group.startIndex === activePaperGroupStartIndex;
+                    return (
+                      <button
+                        key={`${group.label}-${group.startIndex}-${idx}`}
+                        type="button"
+                        onClick={() => goToPaperQuestion(group.startIndex)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                        style={{
+                          backgroundColor: isActive ? 'var(--clr-btn-primary)' : 'transparent',
+                          color: isActive ? 'var(--clr-btn-primary-text)' : 'var(--clr-primary-a50)',
+                        }}
+                      >
+                        Question {group.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </aside>
             )}
 
             {/* Question Card */}
@@ -5390,7 +6107,7 @@ export default function HSCGeneratorPage() {
                   borderColor: 'var(--clr-surface-tonal-a20)',
                 }}
               >
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button 
                     onClick={() => setShowAnswer(!showAnswer)}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer"
@@ -5402,17 +6119,36 @@ export default function HSCGeneratorPage() {
                     <Eye className="w-4 h-4" />
                     {showAnswer ? 'Hide' : 'Show'} Solution
                   </button>
+                  {isPaperMode && (
+                    <>
+                      <button
+                        onClick={() => exportPaperPdf(false)}
+                        disabled={exportingPaperPdf !== null}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a20)',
+                          color: 'var(--clr-primary-a50)',
+                        }}
+                      >
+                        <Download className="w-4 h-4" />
+                        {exportingPaperPdf === 'exam' ? 'Exporting Exam PDF…' : 'Export Exam PDF'}
+                      </button>
+                      <button
+                        onClick={() => exportPaperPdf(true)}
+                        disabled={exportingPaperPdf !== null}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: 'var(--clr-btn-primary)',
+                          color: 'var(--clr-btn-primary-text)',
+                          border: '1px solid var(--clr-btn-primary-hover)',
+                        }}
+                      >
+                        <Download className="w-4 h-4" />
+                        {exportingPaperPdf === 'solutions' ? 'Exporting Solutions PDF…' : 'Export Exam + Solutions PDF'}
+                      </button>
+                    </>
+                  )}
                 </div>
-                
-                <button 
-                  className="flex items-center gap-2 px-4 py-2 transition-colors font-medium text-sm cursor-pointer"
-                  style={{
-                    color: 'var(--clr-surface-a40)',
-                  }}
-                >
-                  <Download className="w-4 h-4" />
-                  Export PDF
-                </button>
               </div>
             )}
 
@@ -5721,6 +6457,61 @@ export default function HSCGeneratorPage() {
                       </div>
                     )}
 
+                    {/* Action Buttons */}
+                    <div 
+                      className="border-t p-6 flex flex-wrap items-center gap-3"
+                      style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                    >
+                        <button
+                            onClick={saveAttempt}
+                            disabled={isSaving}
+                            className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 cursor-pointer border`}
+                            style={{
+                              backgroundColor: isSaving ? 'var(--clr-surface-a20)' : 'var(--clr-btn-primary)',
+                              borderColor: isSaving ? 'var(--clr-surface-tonal-a20)' : 'var(--clr-btn-primary)',
+                              color: isSaving ? 'var(--clr-surface-a40)' : 'var(--clr-btn-primary-text)',
+                              cursor: isSaving ? 'not-allowed' : 'pointer',
+                              opacity: isSaving ? 0.7 : 1,
+                            }}
+                        >
+                            <Bookmark className={`w-4 h-4 transition-all ${
+                              isSaving ? 'fill-zinc-300' : ''
+                            }`} />
+                            {isSaving ? 'Saving...' : 'Save Answer'}
+                        </button>
+                        <button
+                            onClick={() => {
+                              setAppState('idle');
+                              setFeedback(null);
+                              setSubmittedAnswer(null);
+                              setUploadedFile(null);
+                              setTimeout(() => resetCanvas(canvasHeight), 50);
+                            }}
+                            className="px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer border"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a10)',
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                              color: 'var(--clr-primary-a50)',
+                            }}
+                        >
+                            <Edit2 className="w-4 h-4" />
+                            Review & Try Again
+                        </button>
+                        <button
+                            onClick={handleNextQuestion}
+                            disabled={isPaperMode && (paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length)}
+                            className="ml-auto px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed border"
+                            style={{
+                              backgroundColor: 'var(--clr-btn-primary)',
+                              borderColor: 'var(--clr-btn-primary)',
+                              color: 'var(--clr-btn-primary-text)',
+                            }}
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                            Next Question
+                        </button>
+                    </div>
+
                     {/* Submitted Answer Section */}
                     {submittedAnswer && (
                       <div 
@@ -5732,7 +6523,7 @@ export default function HSCGeneratorPage() {
                       >
                         <h3 
                           className="font-bold text-lg flex items-center gap-2"
-                          style={{ color: 'var(--clr-info-a20)' }}
+                          style={{ color: 'var(--clr-dark-a0)' }}
                         >
                           <Eye className="w-5 h-5" />
                           Your Submitted Answer
@@ -5752,58 +6543,6 @@ export default function HSCGeneratorPage() {
                         </div>
                       </div>
                     )}
-
-                    {/* Action Buttons */}
-                    <div 
-                      className="border-t p-6 flex gap-3"
-                      style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                    >
-                        <button
-                            onClick={() => (isPaperMode ? goToPaperQuestion(getDisplayGroupAt(paperQuestions, paperIndex).endIndex) : generateQuestion())}
-                            disabled={isPaperMode && (paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length)}
-                            className="flex-1 px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                            style={{
-                              backgroundColor: 'var(--clr-primary-a0)',
-                              color: 'var(--clr-dark-a0)',
-                            }}
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            Next Question
-                        </button>
-                        <button
-                            onClick={() => {
-                              setAppState('idle');
-                              setFeedback(null);
-                              setSubmittedAnswer(null);
-                              setUploadedFile(null);
-                              setTimeout(() => resetCanvas(canvasHeight), 50);
-                            }}
-                            className="px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                            style={{
-                              backgroundColor: 'var(--clr-surface-a20)',
-                              color: 'var(--clr-primary-a50)',
-                            }}
-                        >
-                            <Edit2 className="w-4 h-4" />
-                            Review & Try Again
-                        </button>
-                        <button
-                            onClick={saveAttempt}
-                            disabled={isSaving}
-                            className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 cursor-pointer`}
-                            style={{
-                              backgroundColor: isSaving ? 'var(--clr-surface-a30)' : 'var(--clr-primary-a10)',
-                              color: isSaving ? 'var(--clr-surface-a40)' : 'var(--clr-dark-a0)',
-                              cursor: isSaving ? 'not-allowed' : 'pointer',
-                              opacity: isSaving ? 0.7 : 1,
-                            }}
-                        >
-                            <Bookmark className={`w-4 h-4 transition-all ${
-                              isSaving ? 'fill-zinc-300' : ''
-                            }`} />
-                            {isSaving ? 'Saving...' : 'Save Answer'}
-                        </button>
-                    </div>
 
                 </div>
               </div>
@@ -6115,14 +6854,42 @@ export default function HSCGeneratorPage() {
                               ))}
                             </ul>
                           </div>
-                          <button
-                            onClick={() => { setSavedExamReviewMode(true); setSavedExamReviewIndex(0); }}
-                            className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
-                            style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
-                          >
-                            <BookOpen className="w-5 h-5" />
-                            Review Questions
-                          </button>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <button
+                              onClick={() => openSavedExamAsPaper(selectedAttempt)}
+                              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                              style={{ backgroundColor: 'var(--clr-info-a0)', color: 'var(--clr-light-a0)' }}
+                            >
+                              <BookOpen className="w-5 h-5" />
+                              View as Paper
+                            </button>
+                            <button
+                              onClick={() => exportSavedExamPdf(false)}
+                              disabled={exportingSavedExamPdf !== null}
+                              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                            >
+                              <Download className="w-5 h-5" />
+                              {exportingSavedExamPdf === 'exam' ? 'Exporting Exam PDF…' : 'Export Exam PDF'}
+                            </button>
+                            <button
+                              onClick={() => exportSavedExamPdf(true)}
+                              disabled={exportingSavedExamPdf !== null}
+                              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ backgroundColor: 'var(--clr-btn-primary)', color: 'var(--clr-btn-primary-text)' }}
+                            >
+                              <Download className="w-5 h-5" />
+                              {exportingSavedExamPdf === 'solutions' ? 'Exporting Solutions PDF…' : 'Export Exam + Solutions PDF'}
+                            </button>
+                            <button
+                              onClick={() => { setSavedExamReviewMode(true); setSavedExamReviewIndex(0); }}
+                              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                              style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                            >
+                              <BookOpen className="w-5 h-5" />
+                              Review Questions
+                            </button>
+                          </div>
                         </div>
                       )
                     ) : (
@@ -7201,6 +7968,7 @@ export default function HSCGeneratorPage() {
                         filteredManageQuestionIds.every((id) => selectedManageQuestionIds.includes(id))
                       }
                       onChange={(e) => setAllManageSelections(e.target.checked, filteredManageQuestionIds)}
+                      className="h-6 w-6 min-h-6 min-w-6 cursor-pointer shrink-0"
                     />
                     Select all (filtered)
                   </label>
@@ -7222,6 +7990,22 @@ export default function HSCGeneratorPage() {
                     style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
                   >
                     {bulkActionLoading ? 'Working...' : 'Clear Marking Criteria'}
+                  </button>
+                  <button
+                    onClick={assignSelectedQuestionsToGroup}
+                    disabled={!selectedManageQuestionIds.length || bulkActionLoading}
+                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                  >
+                    Assign Next Group
+                  </button>
+                  <button
+                    onClick={clearSelectedQuestionGroups}
+                    disabled={!selectedManageQuestionIds.length || bulkActionLoading}
+                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                  >
+                    Clear Group
                   </button>
                   <button
                     onClick={() => setManageMissingImagesOnly((prev) => !prev)}
@@ -7369,9 +8153,33 @@ export default function HSCGeneratorPage() {
                       {manageSortDirection === 'asc' ? '↑' : '↓'}
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={applyManageFilters}
+                    disabled={loadingQuestions || !hasManageFilters}
+                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                  >
+                    {loadingQuestions ? 'Applying…' : 'Apply Filters'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetManageFilters}
+                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                    style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                  >
+                    Reset Filters
+                  </button>
                 </div>
 
-                {loadingQuestions ? (
+                {!manageFiltersApplied ? (
+                  <div className="text-center py-12 rounded-xl border" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                    <p style={{ color: 'var(--clr-surface-a40)' }}>No questions loaded yet.</p>
+                    <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>
+                      Apply at least one filter, then click Apply Filters.
+                    </p>
+                  </div>
+                ) : loadingQuestions ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="text-center">
                       <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" style={{ color: 'var(--clr-primary-a50)' }} />
@@ -7402,35 +8210,60 @@ export default function HSCGeneratorPage() {
                           filteredManageQuestions.map((q) => {
                             const isSelected = selectedManageQuestionIds.includes(q.id);
                             return (
-                              <button
+                              <div
                                 key={q.id}
-                                onClick={() => {
-                                  setSelectedManageQuestionId(q.id);
-                                  setManageQuestionDraft(q);
-                                  setManageQuestionEditMode(false);
-                                }}
-                                className="w-full text-left p-4 rounded-lg border transition-colors"
-                                style={{
-                                  backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
-                                  borderColor: 'var(--clr-surface-tonal-a20)',
-                                }}
+                                className="w-full flex items-stretch gap-3"
+                                onMouseEnter={() => continueManageDragSelection(q.id)}
                               >
-                                <div className="flex items-start gap-3">
+                                <div
+                                  className="w-10 rounded-lg border flex items-center justify-center select-none"
+                                  style={{
+                                    backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    beginManageDragSelection(q.id, !isSelected);
+                                  }}
+                                >
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      toggleManageSelection(q.id, e.target.checked);
+                                    readOnly
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      beginManageDragSelection(q.id, !isSelected);
                                     }}
-                                    className="mt-1"
+                                    className="h-6 w-6 min-h-6 min-w-6 cursor-pointer"
                                   />
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (typeof window !== 'undefined') {
+                                      manageListScrollYRef.current = window.scrollY;
+                                    }
+                                    setSelectedManageQuestionId(q.id);
+                                    setManageQuestionDraft(q);
+                                    setManageQuestionEditMode(false);
+                                  }}
+                                  className="flex-1 text-left p-4 rounded-lg border transition-colors"
+                                  style={{
+                                    backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                  }}
+                                >
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
                                       <span className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{q.subject}</span>
                                       {q.question_number && (
                                         <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
+                                      )}
+                                      {customExamGroupByQuestionId[q.id] && (
+                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}>
+                                          Group: {customExamGroupByQuestionId[q.id]}
+                                        </span>
                                       )}
                                       {!q.graph_image_data && q.graph_image_size === 'missing' && (
                                         <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-warning-a0)', color: 'var(--clr-light-a0)' }}>Missing Image</span>
@@ -7444,8 +8277,8 @@ export default function HSCGeneratorPage() {
                                     <p style={{ color: 'var(--clr-surface-a40)' }} className="text-sm">{q.topic}</p>
                                     <p className="text-xs mt-1 line-clamp-1 text-neutral-700">{q.question_text}</p>
                                   </div>
-                                </div>
-                              </button>
+                                </button>
+                              </div>
                             );
                           })
                         )}
@@ -7457,6 +8290,12 @@ export default function HSCGeneratorPage() {
                             setManageQuestionDraft(null);
                             setSelectedManageQuestionId(null);
                             setManageQuestionEditMode(false);
+                            if (typeof window !== 'undefined') {
+                              const savedScrollY = manageListScrollYRef.current;
+                              window.requestAnimationFrame(() => {
+                                window.scrollTo({ top: savedScrollY });
+                              });
+                            }
                           }}
                           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium cursor-pointer"
                           style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
@@ -7466,8 +8305,8 @@ export default function HSCGeneratorPage() {
                         </button>
 
                         <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                          <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-                            <div className="space-y-6">
+                          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+                            <div className="space-y-6 min-w-0 overflow-hidden">
                               <div className="flex items-start justify-between">
                                 <div>
                                   <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>
@@ -7482,7 +8321,7 @@ export default function HSCGeneratorPage() {
                                 </div>
                               </div>
 
-                              <div className="text-lg leading-relaxed space-y-4 font-serif text-neutral-800">
+                              <div className="text-lg leading-relaxed space-y-4 font-serif text-neutral-800 min-w-0 break-words">
                                 <QuestionTextWithDividers text={manageQuestionDraft.question_text || ''} />
                                 {manageQuestionDraft.graph_image_data && (
                                   <div className="my-4">
@@ -7533,7 +8372,7 @@ export default function HSCGeneratorPage() {
                               {manageQuestionDraft.marking_criteria && (
                                 <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                                   <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marking Criteria</h4>
-                                  <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800">
+                                  <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800 min-w-0 break-words">
                                     <LatexText text={manageQuestionDraft.marking_criteria} />
                                   </div>
                                 </div>
@@ -7542,7 +8381,7 @@ export default function HSCGeneratorPage() {
                               {manageQuestionDraft.sample_answer && (
                                 <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-success-a10)' }}>
                                   <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-success-a20)' }}>Sample Answer</h4>
-                                  <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800">
+                                  <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800 min-w-0 break-words">
                                     <LatexText text={manageQuestionDraft.sample_answer} />
                                   </div>
                                 </div>
@@ -7581,6 +8420,26 @@ export default function HSCGeneratorPage() {
                                     value={manageQuestionDraft.question_number || ''}
                                     onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, question_number: e.target.value })}
                                     placeholder="e.g., 11 (a)"
+                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  />
+                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Marks</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={manageQuestionDraft.marks ?? 0}
+                                    onChange={(e) => {
+                                      const parsed = Number.parseInt(e.target.value, 10);
+                                      setManageQuestionDraft({
+                                        ...manageQuestionDraft,
+                                        marks: Number.isNaN(parsed) ? 0 : Math.max(0, parsed),
+                                      });
+                                    }}
                                     className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
                                     style={{
                                       backgroundColor: 'var(--clr-surface-a0)',

@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     if (file) {
       // Check if it's an image (based on the Base64 prefix)
       if (file.startsWith('data:image')) {
-        // --- IMAGE HANDLING (GPT-4o Vision) ---
+        // --- IMAGE HANDLING (GPT-5.2 Vision) ---
         userMessageContent.push({
           type: "image_url",
           image_url: {
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 
     // 3. Call OpenAI
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.2",
       messages: [
         { role: "system", content: "You are a helpful assistant." },
         { role: "user", content: userMessageContent as any },

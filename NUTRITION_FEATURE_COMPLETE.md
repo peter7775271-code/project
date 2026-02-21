@@ -103,7 +103,7 @@ Table: `nutrition_entries`
 
 ### 5. **AI Analysis Engine**
 
-Uses OpenAI's GPT-4o model with:
+Uses OpenAI's GPT-5.2 model with:
 - Vision capabilities to read product labels from images
 - Nutritional analysis expertise
 - Ingredient health assessment
@@ -167,7 +167,7 @@ Code changes are ready to deploy:
 ## Key Features
 
 🎯 **Accurate Analysis**
-- Uses GPT-4o vision to read product labels
+- Uses GPT-5.2 vision to read product labels
 - Analyzes ingredients for health impact
 - Extracts nutritional information
 

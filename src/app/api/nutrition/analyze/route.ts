@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
 
     // Call OpenAI to analyze nutrition
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5.2',
       messages: [
         {
           role: 'system',
@@ -228,7 +228,7 @@ Ingredients health ratings:
     if (analysis.healthScore < 50) {
       try {
         const alternativeCompletion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-5.2',
           messages: [
             {
               role: 'system',

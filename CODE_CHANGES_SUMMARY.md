@@ -285,7 +285,7 @@ handleAnalyzeProduct()
     │         ← Return { productName, productImage }
     │  └─ NO → Use productName or productImage as provided
     ├─ Validate: have productName + productImage?
-    └─ Call GPT-4o Vision for analysis
+    └─ Call GPT-5.2 Vision for analysis
        ├─ Extract health score
        ├─ If score < 50: generate alternative
        └─ Save to database

@@ -251,7 +251,7 @@ export const config = { maxDuration: 60 };
 - Source tracking (html-scrape vs screenshot)
 
 ### ✅ Integration
-- Works with GPT-4o analysis
+- Works with GPT-5.2 analysis
 - Health score calculation
 - Ingredient extraction
 - Alternative suggestions

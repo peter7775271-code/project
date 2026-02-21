@@ -4,7 +4,7 @@
 
 When users analyze a product with a low health score (< 50), the system automatically:
 1. Identifies that the product is unhealthy
-2. Calls OpenAI GPT-4o to suggest a healthier alternative
+2. Calls OpenAI GPT-5.2 to suggest a healthier alternative
 3. Analyzes the alternative product comprehensively
 4. Displays both with clear comparison and score improvement
 5. Saves both analyses for future reference
@@ -21,9 +21,9 @@ When users analyze a product with a low health score (< 50), the system automati
 
 **Key Code Flow:**
 ```
-1. Analyze original product with GPT-4o
+1. Analyze original product with GPT-5.2
    ↓
-2. Parse response → if score < 50 → Call GPT-4o again for alternative
+2. Parse response → if score < 50 → Call GPT-5.2 again for alternative
    ↓
 3. Parse alternative response
    ↓
@@ -160,12 +160,12 @@ AI Suggests: "Sparkling Water with Lemon"
 ### OpenAI Integration
 
 **First API Call - Original Product:**
-- Model: `gpt-4o`
+- Model: `gpt-5.2`
 - Vision: Yes (can analyze images)
 - Output: Health score, ingredients, macronutrients, summary, recommendations
 
 **Second API Call - Alternative (if score < 50):**
-- Model: `gpt-4o`
+- Model: `gpt-5.2`
 - Vision: No (text-based, using product name from first analysis)
 - Context: Original product name and score
 - Output: Alternative product name, reason, health score, ingredients, macronutrients, summary

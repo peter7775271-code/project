@@ -57,7 +57,7 @@ Backend: /api/nutrition/analyze
     │   ├─ Try HTML parsing (8 sec)
     │   ├─ Fallback screenshot (20 sec)
     │   └─ Return { productName, productImage }
-    └─ Continue with GPT-4o analysis
+   └─ Continue with GPT-5.2 analysis
     ↓
 Database: Save analysis
     ├─ Nutrition entry
