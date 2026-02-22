@@ -27,10 +27,18 @@ type ExportQuestion = {
   mcq_option_b?: string | null;
   mcq_option_c?: string | null;
   mcq_option_d?: string | null;
+  mcq_option_a_image?: string | null;
+  mcq_option_b_image?: string | null;
+  mcq_option_c_image?: string | null;
+  mcq_option_d_image?: string | null;
   mcq_correct_answer?: 'A' | 'B' | 'C' | 'D' | null;
   mcq_explanation?: string | null;
   graph_image_file?: string | null;
   sample_answer_image_file?: string | null;
+  mcq_option_a_image_file?: string | null;
+  mcq_option_b_image_file?: string | null;
+  mcq_option_c_image_file?: string | null;
+  mcq_option_d_image_file?: string | null;
 };
 
 const escapeLatexText = (value: string) =>
@@ -211,10 +219,27 @@ const attachQuestionImageAssets = async (questions: ExportQuestion[], tempDir: s
       ? await writeQuestionImageAsset(tempDir, `q-${index + 1}-solution`, question.sample_answer_image)
       : null;
 
+    const optionAImage = question.mcq_option_a_image
+      ? await writeQuestionImageAsset(tempDir, `q-${index + 1}-opt-a`, question.mcq_option_a_image)
+      : null;
+    const optionBImage = question.mcq_option_b_image
+      ? await writeQuestionImageAsset(tempDir, `q-${index + 1}-opt-b`, question.mcq_option_b_image)
+      : null;
+    const optionCImage = question.mcq_option_c_image
+      ? await writeQuestionImageAsset(tempDir, `q-${index + 1}-opt-c`, question.mcq_option_c_image)
+      : null;
+    const optionDImage = question.mcq_option_d_image
+      ? await writeQuestionImageAsset(tempDir, `q-${index + 1}-opt-d`, question.mcq_option_d_image)
+      : null;
+
     enriched.push({
       ...question,
       graph_image_file: graphImage,
       sample_answer_image_file: solutionImage,
+      mcq_option_a_image_file: optionAImage,
+      mcq_option_b_image_file: optionBImage,
+      mcq_option_c_image_file: optionCImage,
+      mcq_option_d_image_file: optionDImage,
     });
   }
 
@@ -234,7 +259,7 @@ const buildExamLatex = ({
   questions: ExportQuestion[];
   compileSafeMode?: boolean;
 }) => {
-  const normalizeBody = compileSafeMode ? normalizeLatexBody : normalizeLatexBody;
+  const normalizeBody = normalizeLatexBody;
   const renderBody = (value: string) => {
     const normalized = normalizeBody(String(value || ''));
     return normalized;
@@ -258,15 +283,42 @@ const buildExamLatex = ({
       }
 
       if (questionType === 'multiple_choice') {
-        const options: Array<{ label: 'A' | 'B' | 'C' | 'D'; value: string }> = [
-          { label: 'A', value: renderBody(String(question.mcq_option_a || '').trim()) },
-          { label: 'B', value: renderBody(String(question.mcq_option_b || '').trim()) },
-          { label: 'C', value: renderBody(String(question.mcq_option_c || '').trim()) },
-          { label: 'D', value: renderBody(String(question.mcq_option_d || '').trim()) },
+        const options: Array<{ label: 'A' | 'B' | 'C' | 'D'; value: string; imageFile?: string | null }> = [
+          {
+            label: 'A',
+            value: renderBody(String(question.mcq_option_a || '').trim()),
+            imageFile: question.mcq_option_a_image_file,
+          },
+          {
+            label: 'B',
+            value: renderBody(String(question.mcq_option_b || '').trim()),
+            imageFile: question.mcq_option_b_image_file,
+          },
+          {
+            label: 'C',
+            value: renderBody(String(question.mcq_option_c || '').trim()),
+            imageFile: question.mcq_option_c_image_file,
+          },
+          {
+            label: 'D',
+            value: renderBody(String(question.mcq_option_d || '').trim()),
+            imageFile: question.mcq_option_d_image_file,
+          },
         ];
         lines.push('\\begin{enumerate}[label=\\textbf{(\\Alph*)}]');
         for (const option of options) {
-          lines.push(`\\item ${option.value || ' '}`);
+          lines.push('\\item');
+          if (option.value) {
+            lines.push(option.value);
+          }
+          if (option.imageFile) {
+            lines.push('\\begin{center}');
+            lines.push(`\\includegraphics[width=0.30\\textwidth]{${option.imageFile}}`);
+            lines.push('\\end{center}');
+          }
+          if (!option.value && !option.imageFile) {
+            lines.push(' ');
+          }
         }
         lines.push('\\end{enumerate}');
         lines.push('');
@@ -311,6 +363,7 @@ const buildExamLatex = ({
 \\usepackage{graphicx}
 \\usepackage{enumitem}
 \\usepackage{xcolor}
+\\usepackage[strings]{underscore}
 \\DeclareUnicodeCharacter{2220}{\\ensuremath{\\angle}}
 \\DeclareUnicodeCharacter{2264}{\\ensuremath{\\leq}}
 \\DeclareUnicodeCharacter{2265}{\\ensuremath{\\geq}}
@@ -370,7 +423,13 @@ export async function POST(request: Request) {
     const hasQuestionImages = questions.some((question) => {
       const hasDiagram = Boolean(String(question.graph_image_data || '').trim());
       const hasSolutionImage = includeSolutions && Boolean(String(question.sample_answer_image || '').trim());
-      return hasDiagram || hasSolutionImage;
+      const hasMcqOptionImage = [
+        question.mcq_option_a_image,
+        question.mcq_option_b_image,
+        question.mcq_option_c_image,
+        question.mcq_option_d_image,
+      ].some((source) => Boolean(String(source || '').trim()));
+      return hasDiagram || hasSolutionImage || hasMcqOptionImage;
     });
 
     const safeBase = downloadNameBase.replace(/[^a-z0-9\-_.]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');

@@ -3875,30 +3875,6 @@ export default function HSCGeneratorPage() {
     });
   };
 
-  const clearAllQuestions = async () => {
-    if (!confirm('This will permanently delete ALL questions. Continue?')) {
-      return;
-    }
-
-    try {
-      setLoadingQuestions(true);
-      const response = await fetch('/api/hsc/clear-questions', { method: 'POST' });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to clear questions');
-      }
-      setAllQuestions([]);
-      setCustomExamGroupByQuestionId({});
-      setSelectedManageQuestionId(null);
-      setManageQuestionDraft(null);
-    } catch (err) {
-      console.error('Error clearing questions:', err);
-      alert(err instanceof Error ? err.message : 'Failed to clear questions');
-    } finally {
-      setLoadingQuestions(false);
-    }
-  };
-
   const buildUpdatePayload = (draft: any) => ({
     questionId: draft.id,
     grade: draft.grade,
@@ -7947,16 +7923,6 @@ export default function HSCGeneratorPage() {
               <div className="max-w-6xl">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>Manage Questions</h2>
-                  <button
-                    onClick={clearAllQuestions}
-                    className="px-4 py-2 rounded-lg font-medium cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-danger-a0)',
-                      color: 'var(--clr-light-a0)',
-                    }}
-                  >
-                    Clear All Questions
-                  </button>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 mb-4">
