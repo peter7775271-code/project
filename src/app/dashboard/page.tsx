@@ -5142,7 +5142,7 @@ export default function HSCGeneratorPage() {
             </div>
           </header>
           <div ref={mainContentScrollRef} className={`flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar z-10 relative ${viewMode === 'paper' && showPaperQuestionNavigator ? 'lg:pr-[22rem]' : ''}`}>
-          <div className={`${viewMode === 'paper' ? 'max-w-[68rem] mx-auto w-full space-y-8 lg:translate-x-7' : 'max-w-5xl mx-auto space-y-8'}`}>
+          <div className={`${viewMode === 'paper' ? 'max-w-[68rem] mx-auto w-full space-y-8 lg:translate-x-3' : 'max-w-5xl mx-auto space-y-8'}`}>
             {viewMode === 'dashboard' && (
               <DashboardView
                 setViewMode={setViewMode}

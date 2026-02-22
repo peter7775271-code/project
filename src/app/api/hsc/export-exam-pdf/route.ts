@@ -436,6 +436,7 @@ export async function POST(request: Request) {
     const filename = `${safeBase || 'custom-exam'}${includeSolutions ? '-with-solutions' : ''}.pdf`;
 
     let pdfBuffer: Buffer;
+    let imagesOmittedInFallback = false;
     try {
       await access(PDFLATEX_PATH, constants.X_OK);
 
@@ -500,8 +501,8 @@ export async function POST(request: Request) {
     } catch (localCompileError: any) {
       console.warn('[export-exam-pdf] Local pdflatex failed, falling back to LATEX_TO_PDF_API_URL when possible', localCompileError);
       if (hasQuestionImages) {
-        const details = localCompileError instanceof Error ? localCompileError.message : String(localCompileError);
-        throw new Error(`Failed to compile PDF with embedded images. ${details}`);
+        imagesOmittedInFallback = true;
+        console.warn('[export-exam-pdf] Embedded images are omitted in API fallback because local pdflatex is unavailable.');
       }
       const tex = buildExamLatex({
         title,
@@ -532,6 +533,7 @@ export async function POST(request: Request) {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-store',
+        ...(imagesOmittedInFallback ? { 'X-PDF-Warning': 'Images omitted: local pdflatex unavailable on host runtime' } : {}),
       },
     });
   } catch (error) {
