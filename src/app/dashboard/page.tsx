@@ -4976,7 +4976,7 @@ export default function HSCGeneratorPage() {
       )}
 
       {/* Mobile Header */}
-      <div className="lg:hidden flex items-center justify-between px-3 py-2 border-b border-neutral-100 sticky top-0 z-50 bg-white/80 backdrop-blur-md">
+      <div className="lg:hidden flex items-center justify-between px-3 py-2 border-b border-neutral-100 sticky top-0 z-40 bg-white/80 backdrop-blur-md">
         <button
           type="button"
           onClick={() => router.push('/')}
@@ -4994,7 +4994,7 @@ export default function HSCGeneratorPage() {
         {/* Sidebar: on desktop collapses to icon strip when not hovered; full width when hovered */}
         <aside
           className={`
-            fixed inset-y-0 left-0 z-40 border-r border-neutral-100 flex flex-col bg-white
+            fixed inset-y-0 left-0 z-60 lg:z-40 border-r border-neutral-100 flex flex-col bg-white
             transition-all duration-250 ease-out
             ${mobileMenuOpen ? 'translate-x-0 w-[4.5rem]' : '-translate-x-full w-[4.5rem]'}
             ${sidebarHovered ? 'lg:translate-x-0 lg:w-[3.75rem] lg:opacity-90 xl:w-60 xl:opacity-100' : 'lg:translate-x-0 lg:w-[3.75rem] lg:opacity-90'}
