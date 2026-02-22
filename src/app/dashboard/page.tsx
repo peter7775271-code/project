@@ -4711,7 +4711,7 @@ export default function HSCGeneratorPage() {
   const isMultipleChoiceReview = question?.question_type === 'multiple_choice' || feedback?.mcq_correct_answer;
   const isMarking = appState === 'marking';
   const isPaperMode = viewMode === 'paper';
-  const isSidebarOpen = (!isIpad && sidebarHovered) || isSidebarPinned;
+  const isSidebarOpen = sidebarHovered || isSidebarPinned;
   const isSidebarExpanded = isSidebarOpen || mobileMenuOpen;
   const sidebarItemLayoutClass = isSidebarExpanded ? 'justify-start px-6' : 'justify-center px-0';
   const sidebarTextClass = isSidebarExpanded ? 'opacity-100 max-w-[140px]' : 'opacity-0 max-w-0 overflow-hidden';
@@ -5032,7 +5032,6 @@ export default function HSCGeneratorPage() {
             lg:pointer-events-auto
           `}
           onMouseEnter={() => {
-            if (isIpad) return;
             if (sidebarHideTimeoutRef.current) {
               clearTimeout(sidebarHideTimeoutRef.current);
               sidebarHideTimeoutRef.current = null;
@@ -5040,7 +5039,6 @@ export default function HSCGeneratorPage() {
             setSidebarHovered(true);
           }}
           onMouseLeave={() => {
-            if (isIpad) return;
             sidebarHideTimeoutRef.current = setTimeout(() => {
               setSidebarHovered(false);
               sidebarHideTimeoutRef.current = null;
