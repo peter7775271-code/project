@@ -4976,14 +4976,14 @@ export default function HSCGeneratorPage() {
       )}
 
       {/* Mobile Header */}
-      <div className="lg:hidden flex items-center justify-between p-4 border-b border-neutral-100 sticky top-0 z-50 bg-white/80 backdrop-blur-md">
+      <div className="lg:hidden flex items-center justify-between px-3 py-2 border-b border-neutral-100 sticky top-0 z-50 bg-white/80 backdrop-blur-md">
         <button
           type="button"
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 cursor-pointer"
+          className="flex items-center gap-1.5 cursor-pointer"
         >
-          <div className="w-8 h-8 bg-neutral-900 rounded-lg flex items-center justify-center text-white font-serif italic text-xl">∑</div>
-          <span className="font-bold text-lg text-neutral-800">Praxis AI</span>
+          <div className="w-7 h-7 bg-neutral-900 rounded-md flex items-center justify-center text-white font-serif italic text-lg">∑</div>
+          <span className="hidden sm:inline font-bold text-base text-neutral-800">Praxis AI</span>
         </button>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-neutral-600 hover:text-neutral-900 cursor-pointer">
           {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
