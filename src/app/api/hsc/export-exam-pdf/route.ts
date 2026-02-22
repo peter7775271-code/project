@@ -10,6 +10,9 @@ export const runtime = 'nodejs';
 const execFileAsync = promisify(execFile);
 const PDFLATEX_PATH = process.env.PDFLATEX_PATH ?? '/usr/bin/pdflatex';
 const LATEX_TO_PDF_API_URL = process.env.LATEX_TO_PDF_API_URL ?? 'https://latexonline.cc/compile';
+const IMAGE_FETCH_TIMEOUT_MS = Number(process.env.IMAGE_FETCH_TIMEOUT_MS ?? 15000);
+const PDF_COMPILE_TIMEOUT_MS = Number(process.env.PDF_COMPILE_TIMEOUT_MS ?? 45000);
+const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES ?? 10 * 1024 * 1024);
 
 type ExportQuestion = {
   question_number?: string | null;
@@ -150,6 +153,21 @@ const detectImageExt = (mimeOrPath: string) => {
 
 const isPdflatexImageExt = (ext: string) => ext === 'jpg' || ext === 'png';
 
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const isPdfBuffer = (buffer: Buffer) => buffer.length >= 5 && buffer.subarray(0, 5).toString('ascii') === '%PDF-';
+
+const safeUtf8Preview = (buffer: Buffer, maxLength = 500) =>
+  buffer.toString('utf8').replace(/\s+/g, ' ').slice(0, maxLength);
+
 const getRomanDisplayBase = (questionNumber: string | null | undefined) => {
   const raw = String(questionNumber || '').trim();
   const withRoman = raw.match(/^(\d+)\s*\(?([a-z])\)?\s*\(?((?:ix|iv|v?i{0,3}|x))\)?/i);
@@ -166,7 +184,17 @@ const writeQuestionImageAsset = async (tempDir: string, baseName: string, source
     if (!dataMatch) return null;
     const mime = dataMatch[1];
     const base64 = dataMatch[2];
-    const buffer = Buffer.from(base64, 'base64');
+    let buffer: Buffer;
+    try {
+      buffer = Buffer.from(base64, 'base64');
+    } catch {
+      console.warn('[export-exam-pdf] Skipping invalid base64 image payload');
+      return null;
+    }
+    if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) {
+      console.warn('[export-exam-pdf] Skipping embedded image due to size constraints');
+      return null;
+    }
     const ext = detectImageExt(mime);
     if (!isPdflatexImageExt(ext)) {
       console.warn(`[export-exam-pdf] Skipping unsupported embedded image format for pdflatex: ${ext}`);
@@ -178,8 +206,13 @@ const writeQuestionImageAsset = async (tempDir: string, baseName: string, source
   }
 
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    const response = await fetch(trimmed);
+    const response = await fetchWithTimeout(trimmed, {}, IMAGE_FETCH_TIMEOUT_MS);
     if (!response.ok) return null;
+    const contentLength = Number(response.headers.get('content-length') || '0');
+    if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
+      console.warn('[export-exam-pdf] Skipping remote image that exceeds size limit');
+      return null;
+    }
     const contentType = response.headers.get('content-type') || '';
     const ext = detectImageExt(contentType || trimmed);
     if (!isPdflatexImageExt(ext)) {
@@ -187,6 +220,10 @@ const writeQuestionImageAsset = async (tempDir: string, baseName: string, source
       return null;
     }
     const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) {
+      console.warn('[export-exam-pdf] Skipping remote image due to size constraints');
+      return null;
+    }
     const filename = `${baseName}.${ext}`;
     await writeFile(path.join(tempDir, filename), buffer);
     return filename;
@@ -259,10 +296,10 @@ const buildExamLatex = ({
   questions: ExportQuestion[];
   compileSafeMode?: boolean;
 }) => {
-  const normalizeBody = normalizeLatexBody;
+  const normalizeBody = compileSafeMode ? normalizePlainBody : normalizeLatexBody;
   const renderBody = (value: string) => {
     const normalized = normalizeBody(String(value || ''));
-    return normalized;
+    return compileSafeMode ? escapeLatexText(normalized) : normalized;
   };
   const body = questions
     .map((question, index) => {
@@ -504,25 +541,59 @@ export async function POST(request: Request) {
         imagesOmittedInFallback = true;
         console.warn('[export-exam-pdf] Embedded images are omitted in API fallback because local pdflatex is unavailable.');
       }
+      const compileViaLatexApi = async (texInput: string) => {
+        const params = new URLSearchParams({
+          text: texInput,
+          command: 'pdflatex',
+          force: 'true',
+          download: filename,
+        });
+
+        let response = await fetchWithTimeout(LATEX_TO_PDF_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params.toString(),
+        }, PDF_COMPILE_TIMEOUT_MS);
+
+        if (!response.ok && (response.status === 404 || response.status === 405 || response.status === 415)) {
+          response = await fetchWithTimeout(`${LATEX_TO_PDF_API_URL}?${params.toString()}`, {}, PDF_COMPILE_TIMEOUT_MS);
+        }
+
+        if (!response.ok) {
+          const details = await response.text().catch(() => 'LaTeX API request failed');
+          throw new Error(`LaTeX API error (${response.status}): ${details}`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const pdf = Buffer.from(arrayBuffer);
+        if (!isPdfBuffer(pdf)) {
+          throw new Error(`LaTeX API returned non-PDF payload: ${safeUtf8Preview(pdf)}`);
+        }
+        return pdf;
+      };
+
       const tex = buildExamLatex({
         title,
         subtitle,
         includeSolutions,
         questions,
       });
-      const params = new URLSearchParams({
-        text: tex,
-        command: 'pdflatex',
-        force: 'true',
-        download: filename,
-      });
-      const response = await fetch(`${LATEX_TO_PDF_API_URL}?${params.toString()}`);
-      if (!response.ok) {
-        const details = await response.text().catch(() => 'LaTeX API request failed');
-        throw new Error(`LaTeX API error (${response.status}): ${details}`);
+
+      try {
+        pdfBuffer = await compileViaLatexApi(tex);
+      } catch (apiCompileError: any) {
+        console.warn('[export-exam-pdf] API compile failed, retrying compile-safe mode', apiCompileError);
+        const safeTex = buildExamLatex({
+          title,
+          subtitle,
+          includeSolutions,
+          questions,
+          compileSafeMode: true,
+        });
+        pdfBuffer = await compileViaLatexApi(safeTex);
       }
-      const arrayBuffer = await response.arrayBuffer();
-      pdfBuffer = Buffer.from(arrayBuffer);
     }
 
     const pdfBody = new Uint8Array(pdfBuffer);
