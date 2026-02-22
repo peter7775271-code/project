@@ -14,7 +14,7 @@
   --clr-dark-a0: #000000;
   --clr-light-a0: #ffffff;
 
-  --clr-primary-a0: #b5a45d;
+  --clr-primary-a0: #EAE3CD;
   --clr-primary-a10: #c4b76d;
   --clr-primary-a20: #d3c97d;
   --clr-primary-a30: #e2dc8d;
@@ -342,6 +342,82 @@ body {
 .graph-image--small { width: 40%; }
 .graph-image--medium { width: 70%; }
 .graph-image--large { width: 100%; }
+
+.paper-question-card {
+  background-color: var(--clr-surface-a0);
+  border-color: var(--clr-surface-tonal-a20);
+  box-shadow: none;
+}
+
+.exam-question-meta {
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #52525b;
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.exam-question-body {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.14rem;
+  line-height: 1.55;
+  color: #18181b;
+}
+
+.paper-question-card .graph-image {
+  width: 34%;
+}
+
+.exam-question-body .latex-text,
+.exam-question-body .latex-text p,
+.exam-question-body .latex-text div {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.exam-question-text {
+  white-space: pre-wrap;
+}
+
+.exam-question-part {
+  margin-top: 1rem;
+}
+
+.exam-part-row {
+  display: grid;
+  grid-template-columns: 3.2ch 1fr;
+  column-gap: 0.9rem;
+  align-items: start;
+}
+
+.exam-part-label {
+  color: var(--clr-primary);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1em;
+  line-height: 1.25;
+  width: 3.2ch;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.exam-part-content {
+  border-left: 2px solid var(--clr-surface-tonal-a20);
+  padding-left: 0.8rem;
+  min-width: 0;
+}
+
+@media (max-width: 1024px) {
+  .exam-question-meta {
+    font-size: 0.85rem;
+  }
+
+  .exam-question-body {
+    font-size: 1rem;
+    line-height: 1.48;
+  }
+
+  .paper-question-card .graph-image {
+    width: 44%;
+  }
+}
 
 .latex-table table {
   width: 100%;

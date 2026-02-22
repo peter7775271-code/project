@@ -46,6 +46,7 @@ import {
   ArrowRight,
   GraduationCap,
   FileText,
+  Info,
 } from 'lucide-react';
 import { getStroke } from 'perfect-freehand';
 import type {
@@ -101,19 +102,14 @@ function QuestionTextWithDividers({ text }: { text: string }) {
   }
 
   return (
-    <div className="question-text-with-dividers space-y-4">
+    <div className="question-text-with-dividers exam-question-text space-y-6">
       {blocks.map((block, i) => (
-        <div key={i}>
-          {i > 0 && (
-            <hr className="my-4 border-t-2 border-neutral-200" />
-          )}
-          <div className="flex gap-3 items-baseline">
-            <span
-              className="shrink-0 px-2 py-0.5 rounded text-sm font-semibold bg-[var(--clr-primary-light)] text-[var(--clr-primary)] border border-[var(--clr-primary)]/30"
-            >
+        <div key={i} className="exam-question-part">
+          <div className="exam-part-row">
+            <span className="exam-part-label">
               {block.label}
             </span>
-            <div className="flex-1 min-w-0">
+            <div className="exam-part-content">
               <LatexText text={block.content} />
             </div>
           </div>
@@ -1884,6 +1880,7 @@ export default function HSCGeneratorPage() {
   const [paperQuestions, setPaperQuestions] = useState<Question[]>([]);
   const [paperIndex, setPaperIndex] = useState(0);
   const [showPaperQuestionNavigator, setShowPaperQuestionNavigator] = useState(false);
+  const [showQuestionInfo, setShowQuestionInfo] = useState(false);
   const [activePaper, setActivePaper] = useState<{ year: string; subject: string; grade: string; school: string; count: number } | null>(null);
   const [exportingPaperPdf, setExportingPaperPdf] = useState<'exam' | 'solutions' | null>(null);
   const [exportingSavedExamPdf, setExportingSavedExamPdf] = useState<'exam' | 'solutions' | null>(null);
@@ -4685,6 +4682,10 @@ export default function HSCGeneratorPage() {
     return () => window.clearInterval(intervalId);
   }, [examEndsAt]);
 
+  useEffect(() => {
+    setShowQuestionInfo(false);
+  }, [paperIndex, viewMode, question?.id]);
+
   const awardedMarks = typeof feedback?.score === 'number' ? feedback.score : null;
   const maxMarks = feedback?.maxMarks ?? 0;
   const isMultipleChoiceReview = question?.question_type === 'multiple_choice' || feedback?.mcq_correct_answer;
@@ -4995,8 +4996,8 @@ export default function HSCGeneratorPage() {
           className={`
             fixed inset-y-0 left-0 z-40 border-r border-neutral-100 flex flex-col bg-white
             transition-all duration-250 ease-out
-            ${mobileMenuOpen ? 'translate-x-0 w-20' : '-translate-x-full w-20'}
-            ${sidebarHovered ? 'lg:translate-x-0 lg:w-64 lg:opacity-100' : 'lg:translate-x-0 lg:w-16 lg:opacity-90'}
+            ${mobileMenuOpen ? 'translate-x-0 w-[4.5rem]' : '-translate-x-full w-[4.5rem]'}
+            ${sidebarHovered ? 'lg:translate-x-0 lg:w-[3.75rem] lg:opacity-90 xl:w-60 xl:opacity-100' : 'lg:translate-x-0 lg:w-[3.75rem] lg:opacity-90'}
             lg:pointer-events-auto
           `}
           onMouseEnter={() => {
@@ -5100,7 +5101,7 @@ export default function HSCGeneratorPage() {
             </div>
           </header>
           <div ref={mainContentScrollRef} className={`flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar z-10 relative ${viewMode === 'paper' && showPaperQuestionNavigator ? 'lg:pr-[22rem]' : ''}`}>
-          <div className="max-w-5xl mx-auto space-y-8">
+          <div className={`${viewMode === 'paper' ? 'max-w-[68rem] mx-auto w-full space-y-8 lg:translate-x-7' : 'max-w-5xl mx-auto space-y-8'}`}>
             {viewMode === 'dashboard' && (
               <DashboardView
                 setViewMode={setViewMode}
@@ -5625,51 +5626,20 @@ export default function HSCGeneratorPage() {
               </div>
             ) : (
               <>
-            {/* Header Area */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-              <div>
-                <h1 
-                  className="text-4xl font-bold mb-2"
-                  style={{ color: 'var(--clr-primary-a50)' }}
-                >{isPaperMode ? 'HSC Paper Attempt' : 'HSC Practice Generator'}</h1>
-                <p 
-                  className="text-lg"
-                  style={{ color: 'var(--clr-surface-a40)' }}
-                >{isPaperMode
-                  ? `${activePaper?.year || ''} ${activePaper?.subject || ''} • ${activePaper?.grade || ''}`
-                  : 'Practice exam-style questions and handwrite your answers.'}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                {isPaperMode ? (
-                  <>
-                    {examTimeRemainingLabel && (
-                      <div
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a10)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      >
-                        <Timer className="w-4 h-4" />
-                        {examTimeRemainingLabel}
-                      </div>
-                    )}
-                    <button
-                      onClick={examConditionsActive ? handleEndExam : () => startExamSimulation()}
-                      className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shadow-sm whitespace-nowrap cursor-pointer hover:opacity-90"
-                      style={{
-                        backgroundColor: examConditionsActive ? 'var(--clr-btn-danger)' : 'var(--clr-btn-primary)',
-                        color: examConditionsActive ? 'var(--clr-btn-danger-text)' : 'var(--clr-btn-primary-text)',
-                        border: '1px solid ' + (examConditionsActive ? 'var(--clr-btn-danger-hover)' : 'var(--clr-btn-primary-hover)'),
-                      }}
-                    >
-                      {examConditionsActive ? 'End Exam' : 'Simulate Exam Conditions'}
-                    </button>
-                  </>
-                ) : (
-                  <button 
+            {!isPaperMode && (
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div>
+                  <h1
+                    className="text-4xl font-bold mb-2"
+                    style={{ color: 'var(--clr-primary-a50)' }}
+                  >HSC Practice Generator</h1>
+                  <p
+                    className="text-lg"
+                    style={{ color: 'var(--clr-surface-a40)' }}
+                  >Practice exam-style questions and handwrite your answers.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
                     onClick={generateQuestion}
                     disabled={isGenerating || loading}
                     className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-70 disabled:hover:scale-100 whitespace-nowrap cursor-pointer"
@@ -5681,67 +5651,62 @@ export default function HSCGeneratorPage() {
                     <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
                     {isGenerating ? 'Loading...' : 'Generate'}
                   </button>
-                )}
+                </div>
               </div>
-            </div>
+            )}
 
             {isPaperMode && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => {
+                    setViewMode('papers');
+                    clearPaperState();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--clr-surface-a10)',
+                    borderColor: 'var(--clr-surface-tonal-a20)',
+                    color: 'var(--clr-primary-a50)',
+                  }}
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back to Papers
+                </button>
+                <div className="ml-auto flex items-center gap-2">
+                  <div className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>
+                    Question {paperIndex + 1} of {paperQuestions.length}
+                  </div>
                   <button
+                    type="button"
                     onClick={() => {
-                      setViewMode('papers');
-                      clearPaperState();
+                      const { startIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
+                      goToPaperQuestion(startIndex - 1);
                     }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition cursor-pointer"
+                    disabled={paperIndex === 0}
+                    aria-label="Previous question"
+                    className="h-10 w-10 inline-flex items-center justify-center rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     style={{
                       backgroundColor: 'var(--clr-surface-a10)',
                       borderColor: 'var(--clr-surface-tonal-a20)',
                       color: 'var(--clr-primary-a50)',
                     }}
                   >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to Papers
+                    <ChevronLeft className="w-5 h-5" />
                   </button>
-                  <div className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>
-                    Question {paperIndex + 1} of {paperQuestions.length}
-                  </div>
-                </div>
-                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--clr-surface-a20)' }}>
-                  <div
-                    className="h-full transition-all duration-500"
-                    style={{
-                      width: `${Math.round(paperProgress * 100)}%`,
-                      backgroundColor: 'var(--clr-btn-primary-hover)',
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-3">
                   <button
-                    onClick={() => {
-                      const { startIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
-                      goToPaperQuestion(startIndex - 1);
-                    }}
-                    disabled={paperIndex === 0}
-                    className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a10)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >Previous Question</button>
-                  <button
+                    type="button"
                     onClick={handleNextQuestion}
                     disabled={paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length}
-                    className="px-4 py-2 rounded-lg border text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
+                    aria-label="Next question"
+                    className="h-10 w-10 inline-flex items-center justify-center rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
                     style={{
                       backgroundColor: 'var(--clr-btn-primary)',
                       borderColor: 'var(--clr-btn-primary-hover)',
                       color: 'var(--clr-btn-primary-text)',
                     }}
-                  >Next Question</button>
-                </div>
-                <div className="flex justify-end">
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowPaperQuestionNavigator((prev) => !prev)}
@@ -5799,8 +5764,50 @@ export default function HSCGeneratorPage() {
 
             {/* Question Card */}
             <div className="relative">
-              <div 
-                className={`glass-card rounded-2xl p-6 lg:p-10 border border-neutral-100 transition-all duration-500 ${isGenerating ? 'blur-sm scale-[0.99] opacity-80' : 'blur-0 scale-100 opacity-100'}`}
+              {isPaperMode && (
+                <div className="absolute -left-14 top-8 z-20">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-label="Question information"
+                      onClick={() => setShowQuestionInfo((prev) => !prev)}
+                      className="h-11 w-11 inline-flex items-center justify-center rounded border shadow-sm transition cursor-pointer"
+                      style={{
+                        backgroundColor: 'var(--clr-surface-a0)',
+                        borderColor: 'var(--clr-surface-tonal-a20)',
+                        color: 'var(--clr-surface-a50)',
+                      }}
+                    >
+                      <Info className="w-5 h-5" />
+                    </button>
+                    {showQuestionInfo && question && (
+                      <div
+                        className="absolute left-14 top-0 z-30 w-72 rounded-xl border p-4 shadow-xl"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a0)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                        }}
+                      >
+                        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>
+                          Question Info
+                        </p>
+                        <div className="space-y-1.5 text-sm" style={{ color: 'var(--clr-primary-a50)' }}>
+                          <p><strong>Number:</strong> {question.question_number || '-'}</p>
+                          <p><strong>Marks:</strong> {question.marks ?? '-'}</p>
+                          <p><strong>Subject:</strong> {question.subject || '-'}</p>
+                          <p><strong>Topic:</strong> {question.topic || '-'}</p>
+                          <p><strong>Year:</strong> {question.year || '-'}</p>
+                          <p><strong>Type:</strong> {question.question_type === 'multiple_choice' ? 'Multiple Choice' : 'Written Response'}</p>
+                          <p><strong>Source:</strong> {question.school_name || 'HSC'}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div>
+                <div
+                className={`${isPaperMode ? 'paper-question-card rounded-md border p-6 lg:p-10' : 'glass-card rounded-2xl border border-neutral-100 p-6 lg:p-10'} transition-all duration-500 ${isGenerating ? 'blur-sm scale-[0.99] opacity-80' : 'blur-0 scale-100 opacity-100'}`}
               >
                 {loading ? (
                   <div className="flex items-center justify-center min-h-[300px]">
@@ -5823,51 +5830,64 @@ export default function HSCGeneratorPage() {
                   </div>
                 ) : question ? (
                   <>
-                    <div className="flex flex-col gap-4 border-b border-neutral-100 pb-6 mb-8">
-                      <div className="flex justify-between items-start gap-6">
-                        <div>
-                          <span className="block font-bold text-2xl text-neutral-900">Question {question.question_number || ''}</span>
-                          <span className="text-neutral-600 font-semibold text-lg block">{question.marks} Marks</span>
-                          <span className="text-neutral-500 text-base block mt-1">{question.topic}</span>
+                    {isPaperMode ? (
+                      <div className="mb-6">
+                        <div className="exam-question-meta mb-5">
+                          {question.marks} marks{question.topic ? ` • ${question.topic}` : ''}
                         </div>
-                        <div className="text-right flex flex-col items-end gap-2">
-                          {isDevMode && question.id && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                // If we're displaying a merged multi-part question, edit the underlying raw row by id
-                                const canonical =
-                                  allQuestions.find((q) => q?.id === question.id) ||
-                                  paperQuestions.find((q) => q?.id === question.id) ||
-                                  question;
-                                setInlineEditDraft({ ...canonical });
-                              }}
-                              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                              Edit question
-                            </button>
-                          )}
-                          <span className="text-lg font-semibold text-neutral-600 block">{question.subject}</span>
-                          <span className="text-neutral-400 font-medium uppercase tracking-widest text-xs block mt-1">
-                            {question.year} {question.school_name || 'HSC'}
-                          </span>
+                        <div className="exam-question-body text-neutral-900">
+                          <QuestionTextWithDividers text={question.question_text} />
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-4 border-b border-neutral-100 pb-6 mb-8">
+                          <div className="flex justify-between items-start gap-6">
+                            <div>
+                              <span className="block font-bold text-2xl text-neutral-900">Question {question.question_number || ''}</span>
+                              <span className="text-neutral-600 font-semibold text-lg block">{question.marks} Marks</span>
+                              <span className="text-neutral-500 text-base block mt-1">{question.topic}</span>
+                            </div>
+                            <div className="text-right flex flex-col items-end gap-2">
+                              {isDevMode && question.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const canonical =
+                                      allQuestions.find((q) => q?.id === question.id) ||
+                                      paperQuestions.find((q) => q?.id === question.id) ||
+                                      question;
+                                    setInlineEditDraft({ ...canonical });
+                                  }}
+                                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                  Edit question
+                                </button>
+                              )}
+                              <span className="text-lg font-semibold text-neutral-600 block">{question.subject}</span>
+                              <span className="text-neutral-400 font-medium uppercase tracking-widest text-xs block mt-1">
+                                {question.year} {question.school_name || 'HSC'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
 
-                    <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--clr-question-bg)', borderColor: 'var(--clr-question-border)' }}>
-                      <div className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap text-neutral-800">
-                        <QuestionTextWithDividers text={question.question_text} />
-                      </div>
-                    </div>
+                        <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--clr-question-bg)', borderColor: 'var(--clr-question-border)' }}>
+                          <div className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap text-neutral-800">
+                            <QuestionTextWithDividers text={question.question_text} />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
                     {question.graph_image_data && (
-                      <div className="mt-4 rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                      <div className={`${isPaperMode ? 'mt-6 p-0 border-0' : 'mt-4 rounded-xl border p-4'}`} style={isPaperMode ? undefined : { backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
                         <img
                           src={question.graph_image_data}
                           alt="Question graph"
-                          className={`rounded-lg border graph-image graph-image--${question.graph_image_size || 'medium'}`}
-                          style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                          className={`${isPaperMode ? 'graph-image graph-image--medium' : `rounded-lg border graph-image graph-image--${question.graph_image_size || 'medium'}`}`}
+                          style={isPaperMode ? undefined : { borderColor: 'var(--clr-surface-tonal-a20)' }}
                         />
                       </div>
                     )}
@@ -5877,6 +5897,7 @@ export default function HSCGeneratorPage() {
                     <p className="text-neutral-500">Loading question…</p>
                   </div>
                 )}
+              </div>
               </div>
             </div>
 
@@ -6521,6 +6542,35 @@ export default function HSCGeneratorPage() {
                     )}
 
                 </div>
+              </div>
+            )}
+
+            {isPaperMode && !examEnded && (
+              <div className="flex items-center justify-end gap-3">
+                {examTimeRemainingLabel && (
+                  <div
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold"
+                    style={{
+                      backgroundColor: 'var(--clr-surface-a10)',
+                      borderColor: 'var(--clr-surface-tonal-a20)',
+                      color: 'var(--clr-primary-a50)',
+                    }}
+                  >
+                    <Timer className="w-4 h-4" />
+                    {examTimeRemainingLabel}
+                  </div>
+                )}
+                <button
+                  onClick={examConditionsActive ? handleEndExam : () => startExamSimulation()}
+                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shadow-sm whitespace-nowrap cursor-pointer hover:opacity-90"
+                  style={{
+                    backgroundColor: examConditionsActive ? 'var(--clr-btn-danger)' : 'var(--clr-btn-primary)',
+                    color: examConditionsActive ? 'var(--clr-btn-danger-text)' : 'var(--clr-btn-primary-text)',
+                    border: '1px solid ' + (examConditionsActive ? 'var(--clr-btn-danger-hover)' : 'var(--clr-btn-primary-hover)'),
+                  }}
+                >
+                  {examConditionsActive ? 'End Exam' : 'Simulate Exam Conditions'}
+                </button>
               </div>
             )}
               </>
