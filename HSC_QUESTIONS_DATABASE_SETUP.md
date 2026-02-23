@@ -94,6 +94,23 @@ ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_option_c TEXT;
 ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_option_d TEXT;
 ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_correct_answer TEXT;
 ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS mcq_explanation TEXT;
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS subtopic TEXT;
+ALTER TABLE hsc_questions ADD COLUMN IF NOT EXISTS syllabus_dot_point TEXT;
+
+CREATE TABLE IF NOT EXISTS syllabus_taxonomy (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  grade TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  topic TEXT NOT NULL,
+  subtopic TEXT NOT NULL,
+  dot_point_text TEXT NOT NULL,
+  dot_point_code TEXT,
+  sort_order INTEGER,
+  created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_syllabus_taxonomy_unique
+ON syllabus_taxonomy(grade, subject, topic, subtopic, dot_point_text);
 ```
 
 ### Step 2: Configure Supabase Storage
@@ -124,10 +141,25 @@ Your tables should now be created. You'll see:
 | paper_number | INTEGER | Distinguishes multiple papers from same school/year |
 | paper_label | TEXT | Readable label like School 2023 Paper 2 |
 | topic | TEXT | Topic name (e.g., 'Complex Numbers') |
+| subtopic | TEXT | Subtopic name |
+| syllabus_dot_point | TEXT | NESA syllabus dot point selected for the question |
 | marks | INTEGER | Total marks for question |
 | question_number | TEXT | Optional question number (e.g., 11 or 11a)) |
 | question_text | TEXT | Full question in LaTeX format |
 | question_type | TEXT | 'written' or 'multiple_choice' (default: written) |
+
+### syllabus_taxonomy Table
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| grade | TEXT | Grade level (e.g., Year 12) |
+| subject | TEXT | Subject name |
+| topic | TEXT | Topic name |
+| subtopic | TEXT | Subtopic name |
+| dot_point_text | TEXT | Exact syllabus dot point text |
+| dot_point_code | TEXT | Optional syllabus code identifier |
+| sort_order | INTEGER | Optional display/prompt ordering |
+| created_at | TIMESTAMP | Row creation timestamp |
 | graph_image_data | TEXT | Optional data URL for pre-rendered graph (e.g., PNG) |
 | graph_image_size | TEXT | Optional size: small, medium, large (default: medium) |
 | marking_criteria | TEXT | Marking criteria in LaTeX format (optional) |

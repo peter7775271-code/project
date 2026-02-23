@@ -9,7 +9,8 @@ export const runtime = 'nodejs';
 
 const execFileAsync = promisify(execFile);
 const PDFLATEX_PATH = process.env.PDFLATEX_PATH ?? '/usr/bin/pdflatex';
-const LATEX_TO_PDF_API_URL = process.env.LATEX_TO_PDF_API_URL ?? 'https://latexonline.cc/compile';
+const LATEX_TO_PDF_API_URL = process.env.LATEX_TO_PDF_API_URL ?? 'https://latex.ytotech.com/builds/sync';
+const LATEX_TO_PDF_API_MODE = (process.env.LATEX_TO_PDF_API_MODE ?? 'auto').toLowerCase();
 const IMAGE_FETCH_TIMEOUT_MS = Number(process.env.IMAGE_FETCH_TIMEOUT_MS ?? 15000);
 const PDF_COMPILE_TIMEOUT_MS = Number(process.env.PDF_COMPILE_TIMEOUT_MS ?? 45000);
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES ?? 10 * 1024 * 1024);
@@ -548,7 +549,9 @@ export async function POST(request: Request) {
           force: 'true',
           download: filename,
         });
-        const postUrl = `${LATEX_TO_PDF_API_URL}${LATEX_TO_PDF_API_URL.includes('?') ? '&' : '?'}${queryParams.toString()}`;
+        const postUrlWithQuery = `${LATEX_TO_PDF_API_URL}${LATEX_TO_PDF_API_URL.includes('?') ? '&' : '?'}${queryParams.toString()}`;
+        const isYtoTechApi = LATEX_TO_PDF_API_MODE === 'ytotech' || LATEX_TO_PDF_API_URL.includes('latex.ytotech.com/builds/sync');
+        const postUrl = isYtoTechApi ? LATEX_TO_PDF_API_URL : postUrlWithQuery;
 
         const parsePdfResponse = async (response: Response) => {
           if (!response.ok) {
@@ -563,7 +566,24 @@ export async function POST(request: Request) {
           return pdf;
         };
 
-        const postAttempts: Array<{ name: string; init: RequestInit }> = [
+        const postAttempts: Array<{ name: string; init: RequestInit }> = [];
+
+        if (isYtoTechApi) {
+          const form = new FormData();
+          form.set('compiler', 'pdflatex');
+          form.set('main', 'main.tex');
+          form.append('resources[]', new Blob([texInput], { type: 'text/plain' }), 'main.tex');
+
+          postAttempts.push({
+            name: 'multipart-ytotech',
+            init: {
+              method: 'POST',
+              body: form,
+            },
+          });
+        }
+
+        postAttempts.push(
           {
             name: 'form-urlencoded',
             init: {
@@ -587,8 +607,8 @@ export async function POST(request: Request) {
               headers: { 'Content-Type': 'text/plain; charset=utf-8' },
               body: texInput,
             },
-          },
-        ];
+          }
+        );
 
         const postUnsupportedStatuses = new Set([404, 405, 415]);
         let lastPostError = '';
@@ -609,7 +629,7 @@ export async function POST(request: Request) {
         }
 
         if (texInput.length > MAX_GET_TEX_LENGTH) {
-          throw new Error(`LaTeX API POST not supported (${lastPostError || 'unknown'}), and payload is too large for GET fallback (${texInput.length} chars > ${MAX_GET_TEX_LENGTH}). Configure LATEX_TO_PDF_API_URL to a POST-capable compiler endpoint.`);
+          throw new Error(`LaTeX API POST not supported (${lastPostError || 'unknown'}), and payload is too large for GET fallback (${texInput.length} chars > ${MAX_GET_TEX_LENGTH}). Configure LATEX_TO_PDF_API_URL to a POST-capable compiler endpoint (for example https://latex.ytotech.com/builds/sync with LATEX_TO_PDF_API_MODE=ytotech).`);
         }
 
         const getParams = new URLSearchParams({

@@ -55,6 +55,7 @@ import type {
   ExcalidrawElement,
   ExcalidrawImperativeAPI,
 } from '@excalidraw/excalidraw';
+import SyllabusViewer from './SyllabusViewer';
 
 const Excalidraw = dynamic(
   async () => {
@@ -755,10 +756,10 @@ const parseCriteriaForDisplay = (criteriaText: string): CriteriaDisplayItem[] =>
       : underscoreMatch
         ? underscoreMatch[1].trim()
         : rest
-            .replace(/[\d.]+\s*marks?/gi, '')
-            .replace(/\b[\d.]+\s*$/, '')
-            .replace(/:\s*$/, '')
-            .trim();
+          .replace(/[\d.]+\s*marks?/gi, '')
+          .replace(/\b[\d.]+\s*$/, '')
+          .replace(/:\s*$/, '')
+          .trim();
 
     items.push({
       type: 'criteria',
@@ -778,7 +779,7 @@ const SUBJECTS: Subject[] = [
   { id: 'math-ext2', name: 'Mathematics Ext 2', icon: <Calculator className="w-5 h-5" /> },
 ];
 
-type SetViewMode = (m: 'dashboard' | 'analytics' | 'browse' | 'builder' | 'formulas' | 'saved' | 'history' | 'settings' | 'dev-questions' | 'papers' | 'paper') => void;
+type SetViewMode = (m: 'dashboard' | 'analytics' | 'browse' | 'builder' | 'formulas' | 'saved' | 'history' | 'syllabus' | 'settings' | 'dev-questions' | 'papers' | 'paper') => void;
 
 type HeatmapCell = {
   dateKey: string;
@@ -850,7 +851,7 @@ function DashboardView({
         <div className="glass-card p-6 rounded-2xl">
           <p className="text-neutral-400 text-[10px] font-bold uppercase tracking-widest mb-1">Response Speed</p>
           <h3 className="text-3xl font-bold italic">2.4m <span className="text-sm font-normal text-neutral-400 tracking-tighter italic">/ avg</span></h3>
-          <p className="text-[10px] text-green-600 mt-2 font-bold flex items-center"><Sparkles size={10} className="mr-1"/> Optimal for Calculus</p>
+          <p className="text-[10px] text-green-600 mt-2 font-bold flex items-center"><Sparkles size={10} className="mr-1" /> Optimal for Calculus</p>
         </div>
         <div className="glass-card p-6 rounded-2xl">
           <p className="text-neutral-400 text-[10px] font-bold uppercase tracking-widest mb-1">Study Streak</p>
@@ -894,9 +895,9 @@ function DashboardView({
             {heatmapCells.map((day) => {
               const intensity =
                 day.count >= 6 ? 'bg-[#b5a45d]' :
-                day.count >= 3 ? 'bg-[#b5a45d]/70' :
-                day.count > 0 ? 'bg-[#b5a45d]/40' :
-                day.inMonth ? 'bg-white border border-neutral-100' : 'bg-transparent border-transparent';
+                  day.count >= 3 ? 'bg-[#b5a45d]/70' :
+                    day.count > 0 ? 'bg-[#b5a45d]/40' :
+                      day.inMonth ? 'bg-white border border-neutral-100' : 'bg-transparent border-transparent';
               const title = day.inMonth
                 ? (day.count > 0
                   ? `${day.label}: ${day.count} question${day.count === 1 ? '' : 's'}`
@@ -1039,8 +1040,8 @@ function AnalyticsHubView({
             <div className="text-7xl font-bold mb-4 tracking-tighter italic">86.4%</div>
             <p className="text-neutral-400 text-sm max-w-xs mx-auto mb-8 font-light italic">Your current trend suggests a <span className="text-white font-bold underline decoration-[#b5a45d] underline-offset-4">Grade 9</span> outcome for the end-of-year boards.</p>
             <div className="flex space-x-3">
-              <div className="px-4 py-2 bg-white/5 rounded-full text-[10px] font-bold border border-white/10 flex items-center"><Trophy size={14} className="mr-2 text-[#b5a45d]"/> Top 1%</div>
-              <div className="px-4 py-2 bg-white/5 rounded-full text-[10px] font-bold border border-white/10 flex items-center"><History size={14} className="mr-2 text-[#b5a45d]"/> 1.2k Reps</div>
+              <div className="px-4 py-2 bg-white/5 rounded-full text-[10px] font-bold border border-white/10 flex items-center"><Trophy size={14} className="mr-2 text-[#b5a45d]" /> Top 1%</div>
+              <div className="px-4 py-2 bg-white/5 rounded-full text-[10px] font-bold border border-white/10 flex items-center"><History size={14} className="mr-2 text-[#b5a45d]" /> 1.2k Reps</div>
             </div>
           </div>
         </div>
@@ -1260,6 +1261,9 @@ const getTopics = (gradeValue: string, subjectValue: string) => {
   return TOPICS_BY_YEAR_SUBJECT[gradeKey]?.[subjectValue] || [];
 };
 
+const getPaperKey = (paper: { year: string; subject: string; grade: string; school: string }) =>
+  `${paper.year}__${paper.grade}__${paper.subject}__${paper.school}`;
+
 function BrowseView({
   setViewMode,
   availablePapers,
@@ -1317,23 +1321,23 @@ function BrowseView({
             (() => {
               const count = subjectExamCounts.get(sub.value) || 0;
               return (
-            <button
-              key={sub.value}
-              type="button"
-              onClick={() => setSelectedSubject(sub)}
-              className="glass-card p-10 rounded-[2.5rem] group cursor-pointer border-neutral-50 text-left"
-            >
-              <div className="w-16 h-16 bg-neutral-50 rounded-3xl mb-8 group-hover:bg-[#b5a45d]/10 group-hover:scale-110 transition-all duration-500 flex items-center justify-center">
-                <div className="w-8 h-8 rounded-full border-2 border-neutral-200 border-t-[#b5a45d] group-hover:rotate-180 transition-transform duration-700" />
-              </div>
-              <h3 className="font-bold text-xl mb-1 text-neutral-900">{sub.label}</h3>
-              <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest">Available exams</p>
-              <p className="text-2xl font-bold text-neutral-900 mt-1">{count}</p>
-              <div className="mt-6 flex items-center text-[#b5a45d] opacity-0 group-hover:opacity-100 transition-all">
-                <span className="text-[10px] font-bold uppercase tracking-widest mr-2">Select</span>
-                <ArrowRight size={14} />
-              </div>
-            </button>
+                <button
+                  key={sub.value}
+                  type="button"
+                  onClick={() => setSelectedSubject(sub)}
+                  className="glass-card p-10 rounded-[2.5rem] group cursor-pointer border-neutral-50 text-left"
+                >
+                  <div className="w-16 h-16 bg-neutral-50 rounded-3xl mb-8 group-hover:bg-[#b5a45d]/10 group-hover:scale-110 transition-all duration-500 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-full border-2 border-neutral-200 border-t-[#b5a45d] group-hover:rotate-180 transition-transform duration-700" />
+                  </div>
+                  <h3 className="font-bold text-xl mb-1 text-neutral-900">{sub.label}</h3>
+                  <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest">Available exams</p>
+                  <p className="text-2xl font-bold text-neutral-900 mt-1">{count}</p>
+                  <div className="mt-6 flex items-center text-[#b5a45d] opacity-0 group-hover:opacity-100 transition-all">
+                    <span className="text-[10px] font-bold uppercase tracking-widest mr-2">Select</span>
+                    <ArrowRight size={14} />
+                  </div>
+                </button>
               );
             })()
           ))}
@@ -1517,7 +1521,7 @@ function ExamBuilderView({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
           <div className="space-y-4">
             <label className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-400 flex items-center">
-              <BookOpen size={14} className="mr-2"/> Knowledge Area
+              <BookOpen size={14} className="mr-2" /> Knowledge Area
             </label>
             <select
               value={subject}
@@ -1531,7 +1535,7 @@ function ExamBuilderView({
           </div>
           <div className="space-y-4">
             <label className="text-[10px] font-bold tracking-[0.2em] uppercase text-neutral-400 flex items-center">
-              <GraduationCap size={14} className="mr-2"/> Curriculum Level
+              <GraduationCap size={14} className="mr-2" /> Curriculum Level
             </label>
             <select
               value={grade}
@@ -1564,9 +1568,8 @@ function ExamBuilderView({
               <button
                 type="button"
                 onClick={() => setSelectedTopics([])}
-                className={`w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
-                  allTopicsActive ? 'bg-neutral-900 text-white' : 'bg-neutral-50 border border-neutral-100 text-neutral-500'
-                }`}
+                className={`w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all ${allTopicsActive ? 'bg-neutral-900 text-white' : 'bg-neutral-50 border border-neutral-100 text-neutral-500'
+                  }`}
               >
                 All topics
               </button>
@@ -1581,9 +1584,8 @@ function ExamBuilderView({
                         key={t}
                         type="button"
                         onClick={() => toggleTopic(t)}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-                          active ? 'bg-[#b5a45d] text-white' : 'bg-neutral-50 border border-neutral-100 text-neutral-600'
-                        }`}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${active ? 'bg-[#b5a45d] text-white' : 'bg-neutral-50 border border-neutral-100 text-neutral-600'
+                          }`}
                       >
                         {t}
                       </button>
@@ -1608,7 +1610,7 @@ function ExamBuilderView({
         </div>
         {isSimMode && (
           <div className="p-6 bg-amber-50 rounded-2xl border border-amber-200/50 flex items-start space-x-4">
-            <div className="p-2 bg-white rounded-xl text-amber-600"><Zap size={20}/></div>
+            <div className="p-2 bg-white rounded-xl text-amber-600"><Zap size={20} /></div>
             <div>
               <h4 className="text-xs font-bold text-amber-900 uppercase tracking-widest mb-1">Simulator Active</h4>
               <p className="text-xs text-amber-800/70">Calculators disabled (unless required), strictly timed intervals, and 10-second penalty for window refocusing.</p>
@@ -1665,7 +1667,7 @@ function FormulaVaultView({ setViewMode }: { setViewMode: SetViewMode }) {
           <div key={f.title} className="glass-card p-8 rounded-3xl flex flex-col items-center text-center group cursor-pointer border-neutral-100">
             <div className="flex justify-between w-full mb-6">
               <span className="text-[9px] font-bold uppercase tracking-widest text-[#b5a45d] px-2 py-0.5 bg-[#b5a45d]/5 rounded">{f.subject}</span>
-              <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest flex items-center"><Zap size={10} className="mr-1"/> {f.usage} Uses</span>
+              <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest flex items-center"><Zap size={10} className="mr-1" /> {f.usage} Uses</span>
             </div>
             <h3 className="font-semibold text-lg mb-6 group-hover:text-[#b5a45d] transition-colors text-neutral-900">{f.title}</h3>
             <div className="p-6 bg-neutral-50 rounded-2xl w-full border border-neutral-100 group-hover:bg-white group-hover:shadow-inner transition-all overflow-x-auto">
@@ -1757,6 +1759,8 @@ export default function HSCGeneratorPage() {
     year: number;
     subject: string;
     topic: string;
+    subtopic?: string | null;
+    syllabus_dot_point?: string | null;
     school_name?: string | null;
     marks: number;
     question_number?: string | null;
@@ -1870,9 +1874,22 @@ export default function HSCGeneratorPage() {
   const [pdfGenerateCriteria, setPdfGenerateCriteria] = useState(false);
   const [pdfSchoolName, setPdfSchoolName] = useState('');
   const [pdfPaperNumber, setPdfPaperNumber] = useState('');
+  const [selectedSyllabusMappingPaper, setSelectedSyllabusMappingPaper] = useState('');
+  const [isMappingSyllabusDotPoints, setIsMappingSyllabusDotPoints] = useState(false);
+  const [syllabusMappingResult, setSyllabusMappingResult] = useState<string>('');
+  const [syllabusMappingStatus, setSyllabusMappingStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [syllabusMappingProgress, setSyllabusMappingProgress] = useState<{ current: number; total: number } | null>(null);
+  const [taxonomyGrouped, setTaxonomyGrouped] = useState<Record<string, Record<string, { id: string; text: string }[]>>>({});
+  const [taxonomyLoading, setTaxonomyLoading] = useState(false);
+  const [syllabusImportText, setSyllabusImportText] = useState('');
+  const [syllabusImportSubject, setSyllabusImportSubject] = useState('Mathematics');
+  const [syllabusImportGrade, setSyllabusImportGrade] = useState<'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12'>('Year 10');
+  const [syllabusImporting, setSyllabusImporting] = useState(false);
+  const [syllabusImportResult, setSyllabusImportResult] = useState('');
+  const [syllabusImportStatus, setSyllabusImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const pdfYearRef = useRef(pdfYear);
   pdfYearRef.current = pdfYear;
-  const [viewMode, setViewMode] = useState<'dashboard' | 'analytics' | 'browse' | 'builder' | 'formulas' | 'saved' | 'history' | 'settings' | 'dev-questions' | 'papers' | 'paper'>('dashboard');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'analytics' | 'browse' | 'builder' | 'formulas' | 'saved' | 'history' | 'syllabus' | 'settings' | 'dev-questions' | 'papers' | 'paper'>('dashboard');
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [userCreatedAt, setUserCreatedAt] = useState<string>('');
@@ -2236,24 +2253,24 @@ export default function HSCGeneratorPage() {
     const questionText = mergedCarrier
       ? String(mergedCarrier.question_text || '')
       : group
-          .map((q) => {
-            const roman = getRomanPart(q.question_number);
-            const label = roman || (q.question_number ?? 'Part');
-            return `${formatPartDividerPlaceholder(label)}\n\n${q.question_text}`;
-          })
-          .join('');
+        .map((q) => {
+          const roman = getRomanPart(q.question_number);
+          const label = roman || (q.question_number ?? 'Part');
+          return `${formatPartDividerPlaceholder(label)}\n\n${q.question_text}`;
+        })
+        .join('');
     // Marking criteria often already includes all subparts; concatenating per-part causes duplication.
     // For multi-part display groups, dedupe criteria blocks and do NOT add dividers.
     // If a mergedCarrier exists (corrupted-save case), prefer its criteria directly.
     const markingCriteria = mergedCarrier?.marking_criteria
       ? String(mergedCarrier.marking_criteria)
       : Array.from(
-          new Set(
-            group
-              .map((q) => (q.marking_criteria ?? '').trim())
-              .filter(Boolean)
-          )
-        ).join('\n\n');
+        new Set(
+          group
+            .map((q) => (q.marking_criteria ?? '').trim())
+            .filter(Boolean)
+        )
+      ).join('\n\n');
     const sampleAnswer = group
       .map((q, i) => (i === 0 ? (q.sample_answer ?? '') : `\n\n--- ${q.question_number ?? 'Part'} ---\n\n${q.sample_answer ?? ''}`))
       .join('');
@@ -2333,6 +2350,20 @@ export default function HSCGeneratorPage() {
       return a.school.localeCompare(b.school);
     });
   }, [allQuestions]);
+
+  useEffect(() => {
+    if (!availablePapers.length) {
+      setSelectedSyllabusMappingPaper('');
+      return;
+    }
+
+    setSelectedSyllabusMappingPaper((prev) => {
+      if (prev && availablePapers.some((paper) => getPaperKey(paper) === prev)) {
+        return prev;
+      }
+      return getPaperKey(availablePapers[0]);
+    });
+  }, [availablePapers]);
 
   const topicStats = useMemo<TopicStat[]>(() => {
     const map = new Map<string, { attempts: number; scoredAttempts: number; earnedMarks: number; totalMarks: number }>();
@@ -2609,13 +2640,134 @@ export default function HSCGeneratorPage() {
   }, [viewMode, devTab]);
 
   useEffect(() => {
-    if (viewMode === 'papers' || viewMode === 'paper' || viewMode === 'browse' || viewMode === 'builder') {
+    if (viewMode === 'papers' || viewMode === 'paper' || viewMode === 'browse' || viewMode === 'builder' || viewMode === 'settings') {
       if (!allQuestions.length && !loadingQuestions) {
         fetchAllQuestions();
       }
     }
   }, [viewMode, allQuestions.length, loadingQuestions]);
 
+  const runSyllabusDotPointMapping = async () => {
+    if (!selectedSyllabusMappingPaper) {
+      setSyllabusMappingStatus('error');
+      setSyllabusMappingResult('Select an exam first.');
+      return;
+    }
+
+    const selectedPaper = availablePapers.find((paper) => getPaperKey(paper) === selectedSyllabusMappingPaper);
+    if (!selectedPaper) {
+      setSyllabusMappingStatus('error');
+      setSyllabusMappingResult('Selected exam is no longer available.');
+      return;
+    }
+
+    try {
+      setIsMappingSyllabusDotPoints(true);
+      setSyllabusMappingStatus('idle');
+      setSyllabusMappingResult('');
+      setSyllabusMappingProgress({ current: 0, total: selectedPaper.count });
+
+      const response = await fetch('/api/hsc/map-syllabus-dot-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          year: selectedPaper.year,
+          grade: selectedPaper.grade,
+          subject: selectedPaper.subject,
+          school: selectedPaper.school,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = data?.error || `Mapping failed (${response.status})`;
+        setSyllabusMappingStatus('error');
+        setSyllabusMappingResult(message);
+        return;
+      }
+
+      const totals = data?.totals || {};
+      setSyllabusMappingProgress({ current: totals.questions || selectedPaper.count, total: totals.questions || selectedPaper.count });
+      setSyllabusMappingStatus('success');
+      setSyllabusMappingResult(
+        `Completed. Updated ${totals.updated || 0} of ${totals.questions || 0} questions (skipped ${totals.skipped || 0}, failed ${totals.failed || 0}).`
+      );
+      fetchAllQuestions();
+    } catch (err) {
+      const message = getFetchErrorMessage(err, 'Failed to map syllabus dot points');
+      setSyllabusMappingStatus('error');
+      setSyllabusMappingResult(message);
+    } finally {
+      setIsMappingSyllabusDotPoints(false);
+    }
+  };
+
+  const fetchTaxonomy = async (grade: string, subject: string) => {
+    if (!grade || !subject) {
+      setTaxonomyGrouped({});
+      return;
+    }
+    setTaxonomyLoading(true);
+    try {
+      const res = await fetch(`/api/hsc/taxonomy?grade=${encodeURIComponent(grade)}&subject=${encodeURIComponent(subject)}`);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.grouped) {
+        setTaxonomyGrouped(json.grouped);
+      } else {
+        setTaxonomyGrouped({});
+      }
+    } catch {
+      setTaxonomyGrouped({});
+    } finally {
+      setTaxonomyLoading(false);
+    }
+  };
+
+  const runSyllabusImport = async () => {
+    if (!syllabusImportText.trim()) {
+      setSyllabusImportStatus('error');
+      setSyllabusImportResult('Paste syllabus content first.');
+      return;
+    }
+
+    setSyllabusImporting(true);
+    setSyllabusImportStatus('idle');
+    setSyllabusImportResult('');
+
+    try {
+      // Prepend GRADE if user's text doesn't start with one
+      let rawText = syllabusImportText.trim();
+      if (!/^GRADE\s/im.test(rawText)) {
+        rawText = `GRADE ${syllabusImportGrade}\n${rawText}`;
+      }
+
+      const response = await fetch('/api/hsc/import-syllabus-dot-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rawText,
+          subject: syllabusImportSubject,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSyllabusImportStatus('error');
+        setSyllabusImportResult(data?.error || `Import failed (${response.status})`);
+        return;
+      }
+
+      const totals = data?.totals || {};
+      setSyllabusImportStatus('success');
+      const summary = `Imported ${totals.insertedRows || 0} rows across ${totals.blocks || 0} blocks (${totals.skippedBlocks || 0} skipped, ${totals.failedBlocks || 0} failed).`;
+      setSyllabusImportResult(data?.warning ? `${summary} ${data.warning}` : summary);
+    } catch (err) {
+      setSyllabusImportStatus('error');
+      setSyllabusImportResult(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setSyllabusImporting(false);
+    }
+  };
 
   useEffect(() => {
     if (devTab !== 'manage') return;
@@ -2698,10 +2850,10 @@ export default function HSCGeneratorPage() {
     const canvas = canvasRef.current;
     const rect = canvas?.getBoundingClientRect();
     if (!rect) return [0, 0];
-    
+
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     return [x, y];
   };
 
@@ -2932,7 +3084,7 @@ export default function HSCGeneratorPage() {
 
   const saveAttempt = async () => {
     if (!question || !feedback) return;
-    
+
     try {
       // For now, we'll store attempts in localStorage since we don't have user auth
       const attempt = {
@@ -2957,11 +3109,11 @@ export default function HSCGeneratorPage() {
         sampleAnswer: question.sample_answer,
         savedAt: new Date().toISOString(),
       };
-      
+
       const existingAttempts = JSON.parse(localStorage.getItem('savedAttempts') || '[]');
       existingAttempts.push(attempt);
       localStorage.setItem('savedAttempts', JSON.stringify(existingAttempts));
-      
+
       setSavedAttempts(existingAttempts);
       setError(null);
       setIsSaving(true);
@@ -3561,7 +3713,7 @@ export default function HSCGeneratorPage() {
         reader.onload = () => {
           const dataUrl = reader.result as string;
           setEditQuestion({ ...editQuestion, graphImageData: dataUrl });
-        };  
+        };
         reader.readAsDataURL(file);
         return;
       }
@@ -3880,6 +4032,8 @@ export default function HSCGeneratorPage() {
     year: draft.year,
     subject: draft.subject,
     topic: draft.topic,
+    subtopic: draft.subtopic || null,
+    syllabusDotPoint: draft.syllabus_dot_point || null,
     marks: draft.marks,
     questionNumber: draft.question_number,
     questionText: draft.question_text,
@@ -3978,7 +4132,7 @@ export default function HSCGeneratorPage() {
     strokesRef.current = [];
     currentStrokeRef.current = null;
     backgroundImageRef.current = null;
-    
+
     // Clear the canvas
     renderAllStrokes(false);
     setIsEraser(false);
@@ -4251,7 +4405,7 @@ export default function HSCGeneratorPage() {
     setSubmittedAnswer(null);
     setSelectedMcqAnswer(null);
     setTimeout(() => resetCanvas(400), 0);
-    
+
     // Clear history
     historyRef.current = [];
     redoStackRef.current = [];
@@ -4266,7 +4420,7 @@ export default function HSCGeneratorPage() {
       if (filterTopic) params.append('topic', filterTopic);
 
       const response = await fetchWithTimeout(`/api/hsc/questions?${params.toString()}`);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch question (${response.status})`);
       }
@@ -4728,7 +4882,7 @@ export default function HSCGeneratorPage() {
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
   }, [examRemainingMs]);
 
-  const viewModeLabel = viewMode === 'dashboard' ? 'Dashboard' : viewMode === 'analytics' ? 'Analytics Hub' : viewMode === 'browse' ? 'Browse Bank' : viewMode === 'builder' ? 'Exam Architect' : viewMode === 'formulas' ? 'Formula Vault' : viewMode === 'saved' ? 'Saved Content' : viewMode === 'history' ? 'My History' : viewMode === 'papers' || viewMode === 'paper' ? 'Exam' : viewMode === 'settings' ? 'Settings' : viewMode === 'dev-questions' ? 'Dev Mode' : String(viewMode).replace(/-/g, ' ');
+  const viewModeLabel = viewMode === 'dashboard' ? 'Dashboard' : viewMode === 'analytics' ? 'Analytics Hub' : viewMode === 'browse' ? 'Browse Bank' : viewMode === 'builder' ? 'Exam Architect' : viewMode === 'formulas' ? 'Formula Vault' : viewMode === 'saved' ? 'Saved Content' : viewMode === 'history' ? 'My History' : viewMode === 'syllabus' ? 'Syllabus' : viewMode === 'papers' || viewMode === 'paper' ? 'Exam' : viewMode === 'settings' ? 'Settings' : viewMode === 'dev-questions' ? 'Dev Mode' : String(viewMode).replace(/-/g, ' ');
   const paperDisplayGroups = useMemo(() => {
     const groups: Array<{ startIndex: number; endIndex: number; label: string }> = [];
     if (!paperQuestions.length) return groups;
@@ -5110,6 +5264,10 @@ export default function HSCGeneratorPage() {
                 ))}
               </div>
             )}
+            <button onClick={() => { setViewMode('syllabus'); setMobileMenuOpen(false); }} className={`w-full flex items-center space-x-3 py-4 transition-all duration-200 text-left cursor-pointer shrink-0 ${sidebarItemLayoutClass} ${viewMode === 'syllabus' ? 'sidebar-link-active font-semibold' : 'text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800'}`}>
+              <FileText size={18} className="shrink-0" />
+              <span className={`text-sm tracking-wide whitespace-nowrap transition-all duration-200 ${sidebarTextClass}`}>Syllabus</span>
+            </button>
             <div className="mt-auto border-t border-neutral-100">
               {isDevMode && (
                 <button onClick={() => setViewMode('dev-questions')} className={`w-full flex items-center space-x-3 py-4 text-left cursor-pointer text-amber-700 bg-amber-50 hover:bg-amber-100 font-medium text-sm shrink-0 ${sidebarItemLayoutClass}`}>
@@ -5142,3594 +5300,3895 @@ export default function HSCGeneratorPage() {
             </div>
           </header>
           <div ref={mainContentScrollRef} className={`flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar z-10 relative ${viewMode === 'paper' && showPaperQuestionNavigator ? 'lg:pr-[22rem]' : ''}`}>
-          <div className={`${viewMode === 'paper' ? 'max-w-[68rem] mx-auto w-full space-y-8 lg:translate-x-2' : 'max-w-5xl mx-auto space-y-8'}`}>
-            {viewMode === 'dashboard' && (
-              <DashboardView
-                setViewMode={setViewMode}
-                heatmapCells={heatmapCells}
-                studyStreak={studyStreak}
-                studentName={userName}
-                heatmapMonth={heatmapMonth}
-                heatmapYear={heatmapYear}
-                onHeatmapMonthChange={(month) => setHeatmapMonth(month)}
-              />
-            )}
-            {viewMode === 'analytics' && (
-              <AnalyticsHubView
-                topicStats={topicStats}
-                analyticsSummary={analyticsSummary}
-                analyticsLoading={analyticsLoading}
-                analyticsError={analyticsError}
-                onGenerateSummary={requestAnalyticsSummary}
-                onSelectTopic={setSyllabusTopic}
-                selectedTopic={syllabusTopic}
-                onCloseTopic={() => setSyllabusTopic(null)}
-              />
-            )}
-            {viewMode === 'browse' && (
-              <BrowseView
-                setViewMode={setViewMode}
-                availablePapers={availablePapers}
-                loadingQuestions={loadingQuestions}
-                startPaperAttempt={startPaperAttempt}
-              />
-            )}
-            {viewMode === 'builder' && (
-              <ExamBuilderView
-                onInitializeExam={initializeCustomExam}
-                isInitializing={isInitializingExam}
-              />
-            )}
-            {viewMode === 'formulas' && <FormulaVaultView setViewMode={setViewMode} />}
-            {viewMode === 'history' && <HistoryView />}
-            {viewMode === 'paper' && (
-              <>
-            {/* Exam Review Mode: one question at a time */}
-            {examEnded && examReviewMode && examAttempts.length > 0 ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <button
-                    onClick={() => { setExamReviewMode(false); }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a10)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to Overview
-                  </button>
-                  <span className="text-sm font-medium" style={{ color: 'var(--clr-surface-a40)' }}>
-                    Question {examReviewIndex + 1} of {examAttempts.length}
-                  </span>
-                </div>
-                <div className="flex gap-6">
-                  <aside
-                    className="w-52 flex-shrink-0 rounded-xl border p-3 space-y-1 overflow-y-auto max-h-[70vh]"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a10)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                    }}
-                  >
-                    <p className="text-xs font-bold uppercase tracking-widest mb-2 px-2" style={{ color: 'var(--clr-surface-a40)' }}>Questions</p>
-                    {examAttempts.map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setExamReviewIndex(i)}
-                        className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
-                        style={{
-                          backgroundColor: examReviewIndex === i ? 'var(--clr-primary-a0)' : 'transparent',
-                          color: examReviewIndex === i ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
-                        }}
-                      >
-                        Question {i + 1}
-                        {examAttempts[i]?.feedback != null && (
-                          <span className="ml-1 text-xs opacity-80">
-                            ({typeof examAttempts[i].feedback?.score === 'number' ? examAttempts[i].feedback.score : '—'}/{examAttempts[i].question?.marks ?? 0})
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </aside>
-                  <div className="flex-1 min-w-0">
-                {(() => {
-                  const attempt = examAttempts[examReviewIndex];
-                  if (!attempt) return null;
-                  const revQuestion = attempt.question;
-                  const revFeedback = attempt.feedback;
-                  const revSubmitted = attempt.submittedAnswer;
-                  const isMcq = revQuestion?.question_type === 'multiple_choice';
-                  const revAwarded = typeof revFeedback?.score === 'number' ? revFeedback.score : null;
-                  const revMax = revFeedback?.maxMarks ?? revQuestion?.marks ?? 0;
-                  const revCriteriaText = revFeedback?.marking_criteria ?? revQuestion?.marking_criteria ?? null;
-                  return (
-                    <div
-                      className="rounded-2xl overflow-hidden border shadow-2xl"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a10)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                      }}
-                    >
-                      {/* Report Header (same as generator) */}
-                      <div
-                        className="p-6 border-b flex flex-wrap items-center justify-between gap-6"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                        }}
-                      >
-                        <div>
-                          <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#1a1a1a' }}>
-                            {revFeedback ? (
-                              revAwarded === 0 ? (
-                                <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} />
-                              ) : revAwarded !== null && revAwarded < revMax ? (
-                                <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} />
-                              ) : (
-                                <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />
-                              )
-                            ) : null}
-                            {revFeedback ? 'Marking Complete' : 'Marking…'}
-                          </h3>
-                          <p className="text-sm mt-1" style={{ color: '#525252' }}>Assessed against NESA Guidelines</p>
-                        </div>
-                        <div className="flex items-center gap-6">
-                          <div className="text-right">
-                            <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: '#404040' }}>Score</span>
-                            <div className="flex items-baseline gap-1 justify-end">
-                              <span className="text-4xl font-bold" style={{ color: '#1a1a1a' }}>{revAwarded === null ? '--' : revAwarded}</span>
-                              <span className="text-xl font-medium" style={{ color: '#404040' }}>/{revMax}</span>
-                            </div>
-                            {isMcq && revFeedback && (
-                              <div className="mt-2 text-xs space-y-1">
-                                <div style={{ color: '#525252' }}>Selected: <strong style={{ color: '#1a1a1a' }}>{revFeedback.mcq_selected_answer ?? revSubmitted ?? '-'}</strong></div>
-                                <div style={{ color: '#525252' }}>Correct: <strong style={{ color: 'var(--clr-success-a0)' }}>{revFeedback.mcq_correct_answer ?? revQuestion?.mcq_correct_answer ?? '-'}</strong></div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Question */}
-                      <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
-                          {isDevMode && revQuestion?.id && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                // Prefer editing the underlying raw DB row by id (avoid saving merged display payloads)
-                                const canonical =
-                                  allQuestions.find((q) => q?.id === revQuestion.id) ||
-                                  paperQuestions.find((q) => q?.id === revQuestion.id) ||
-                                  revQuestion;
-                                setInlineEditDraft({ ...canonical });
-                              }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                              Edit
-                            </button>
-                          )}
-                        </div>
-                        <div
-                          className="font-serif rounded-lg border p-3"
-                          style={{ color: 'var(--clr-primary-a50)', borderColor: 'var(--clr-surface-tonal-a20)' }}
-                        >
-                          <QuestionTextWithDividers text={revQuestion?.question_text || ''} />
-                        </div>
-                      </div>
-
-                      {/* AI Feedback / MCQ Explanation */}
-                      {revFeedback && (
-                        <div
-                          className="p-6 border-b"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a10)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                          }}
-                        >
-                          <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}>
-                            <TrendingUp className="w-4 h-4" />
-                            {isMcq ? 'Answer Explanation' : 'AI Feedback'}
-                          </h4>
-                          <div className="text-base leading-relaxed space-y-3 text-neutral-800">
-                            {isMcq ? (
-                              revFeedback.mcq_explanation ? (
-                                <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} />
-                              ) : (
-                                <p className="italic text-neutral-600">Explanation not available.</p>
-                              )
-                            ) : revFeedback.ai_evaluation ? (
-                              <LatexText text={revFeedback.ai_evaluation} />
-                            ) : revFeedback._error ? (
-                              <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed. Please try again later.</p>
-                            ) : (
-                              <p className="italic text-neutral-600">AI evaluation is being processed...</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Marking Criteria (table, same as generator) */}
-                      {!isMcq && revCriteriaText && (
-                        <div
-                          className="p-6 border-b"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a10)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                          }}
-                        >
-                          <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}>
-                            <CheckCircle2 className="w-4 h-4" />
-                            Marking Criteria
-                          </h4>
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead>
-                                <tr className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                  <th className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Criteria</th>
-                                  <th className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24" style={{ color: 'var(--clr-surface-a40)' }}>Marks</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(() => {
-                                  const items = parseCriteriaForDisplay(revCriteriaText);
-                                  const rows: React.ReactNode[] = [];
-                                  let lastSubpart: string | null = null;
-                                  items.forEach((item, idx) => {
-                                    if (item.type === 'heading') {
-                                      lastSubpart = null;
-                                      rows.push(
-                                        <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                          <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{item.text}</td>
-                                        </tr>
-                                      );
-                                      return;
-                                    }
-                                    if (item.subpart && item.subpart !== lastSubpart) {
-                                      lastSubpart = item.subpart;
-                                      rows.push(
-                                        <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                          <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Part ({item.subpart})</td>
-                                        </tr>
-                                      );
-                                    }
-                                    rows.push(
-                                      <tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                        <td className="py-3 px-3 text-neutral-800"><LatexText text={item.text} /></td>
-                                        <td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a20)' }}>{item.marks}</td>
-                                      </tr>
-                                    );
-                                  });
-                                  return rows;
-                                })()}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Sample Solution (written only; MCQ explanation is shown above) */}
-                      {!isMcq && (revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? revQuestion?.sample_answer_image) && (
-                        <div
-                          className="p-8 border-t space-y-4"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                          }}
-                        >
-                          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}>
-                            <BookOpen className="w-5 h-5" />
-                            Sample Solution
-                          </h3>
-                          {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) ? (
-                            <div
-                              className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800"
-                              style={{ borderColor: 'var(--clr-success-a10)' }}
-                            >
-                              <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
-                            </div>
-                          ) : null}
-                          {revQuestion?.sample_answer_image ? (
-                            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
-                              <img src={revQuestion.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
-                            </div>
-                          ) : null}
-                        </div>
-                      )}
-
-                      {/* Your Submitted Answer */}
-                      {revSubmitted && (
-                        <div
-                          className="p-8 border-t space-y-4"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                          }}
-                        >
-                          <h3 className="font-bold text-lg flex items-center gap-2 text-neutral-800">
-                            <Eye className="w-5 h-5" />
-                            Your Submitted Answer
-                          </h3>
-                          <div
-                            className="rounded-lg p-4 border"
-                            style={{
-                              backgroundColor: 'var(--clr-surface-a10)',
-                              borderColor: 'var(--clr-surface-tonal-a20)',
-                            }}
-                          >
-                            {isMcq ? (
-                              <div className="space-y-3">
-                                <p className="text-sm font-semibold text-neutral-700 mb-3">Selected Answer: <span className="text-lg font-bold text-neutral-900">{revSubmitted}</span></p>
-                                {(() => {
-                                  const options = [
-                                    { label: 'A' as const, text: revQuestion?.mcq_option_a || '', image: revQuestion?.mcq_option_a_image || null },
-                                    { label: 'B' as const, text: revQuestion?.mcq_option_b || '', image: revQuestion?.mcq_option_b_image || null },
-                                    { label: 'C' as const, text: revQuestion?.mcq_option_c || '', image: revQuestion?.mcq_option_c_image || null },
-                                    { label: 'D' as const, text: revQuestion?.mcq_option_d || '', image: revQuestion?.mcq_option_d_image || null },
-                                  ];
-                                  const selectedOption = options.find(opt => opt.label === revSubmitted);
-                                  const correctAnswer = revFeedback?.mcq_correct_answer ?? revQuestion?.mcq_correct_answer;
-                                  const correctOption = options.find(opt => opt.label === correctAnswer);
-                                  return (
-                                    <div className="space-y-2">
-                                      {options.map((option) => {
-                                        const isSelected = option.label === revSubmitted;
-                                        const isCorrect = option.label === correctAnswer;
-                                        return (
-                                          <div
-                                            key={option.label}
-                                            className={`rounded-lg border-2 p-3 ${
-                                              isSelected && isCorrect
-                                                ? 'bg-green-50 border-green-300'
-                                                : isSelected
-                                                ? 'bg-red-50 border-red-300'
-                                                : isCorrect
-                                                ? 'bg-green-50 border-green-200'
-                                                : 'bg-white border-neutral-200'
-                                            }`}
-                                          >
-                                            <div className="flex items-start gap-3">
-                                              <span className={`font-bold text-sm ${
-                                                isSelected && isCorrect
-                                                  ? 'text-green-700'
-                                                  : isSelected
-                                                  ? 'text-red-700'
-                                                  : isCorrect
-                                                  ? 'text-green-600'
-                                                  : 'text-neutral-600'
-                                              }`}>
-                                                {option.label}.
-                                              </span>
-                                              <div className="flex-1 font-serif text-neutral-800">
-                                                {option.image ? (
-                                                  <img src={option.image} alt={`Option ${option.label}`} className="max-w-full object-contain rounded" style={{ maxHeight: `${mcqImageSize}px` }} />
-                                                ) : (
-                                                  <LatexText text={stripOuterBraces(option.text)} />
-                                                )}
-                                              </div>
-                                              {isSelected && (
-                                                <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: isCorrect ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: isCorrect ? 'rgb(21, 128, 61)' : 'rgb(153, 27, 27)' }}>
-                                                  {isCorrect ? '✓ Correct' : 'Your choice'}
-                                                </span>
-                                              )}
-                                              {!isSelected && isCorrect && (
-                                                <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700">
-                                                  Correct
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            ) : (
-                              <img src={revSubmitted} alt="Your answer" className="w-full rounded" style={{ border: '1px solid var(--clr-surface-tonal-a20)' }} />
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Nav: Previous / Next */}
-                      <div className="border-t p-6 flex gap-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+            <div className={`${viewMode === 'paper' ? 'max-w-[68rem] mx-auto w-full space-y-8 lg:translate-x-2' : 'max-w-5xl mx-auto space-y-8'}`}>
+              {viewMode === 'dashboard' && (
+                <DashboardView
+                  setViewMode={setViewMode}
+                  heatmapCells={heatmapCells}
+                  studyStreak={studyStreak}
+                  studentName={userName}
+                  heatmapMonth={heatmapMonth}
+                  heatmapYear={heatmapYear}
+                  onHeatmapMonthChange={(month) => setHeatmapMonth(month)}
+                />
+              )}
+              {viewMode === 'analytics' && (
+                <AnalyticsHubView
+                  topicStats={topicStats}
+                  analyticsSummary={analyticsSummary}
+                  analyticsLoading={analyticsLoading}
+                  analyticsError={analyticsError}
+                  onGenerateSummary={requestAnalyticsSummary}
+                  onSelectTopic={setSyllabusTopic}
+                  selectedTopic={syllabusTopic}
+                  onCloseTopic={() => setSyllabusTopic(null)}
+                />
+              )}
+              {viewMode === 'browse' && (
+                <BrowseView
+                  setViewMode={setViewMode}
+                  availablePapers={availablePapers}
+                  loadingQuestions={loadingQuestions}
+                  startPaperAttempt={startPaperAttempt}
+                />
+              )}
+              {viewMode === 'builder' && (
+                <ExamBuilderView
+                  onInitializeExam={initializeCustomExam}
+                  isInitializing={isInitializingExam}
+                />
+              )}
+              {viewMode === 'formulas' && <FormulaVaultView setViewMode={setViewMode} />}
+              {viewMode === 'history' && <HistoryView />}
+              {viewMode === 'paper' && (
+                <>
+                  {/* Exam Review Mode: one question at a time */}
+                  {examEnded && examReviewMode && examAttempts.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-3">
                         <button
-                          onClick={() => setExamReviewIndex((i) => Math.max(0, i - 1))}
-                          disabled={examReviewIndex === 0}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                          onClick={() => { setExamReviewMode(false); }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
                           style={{
                             backgroundColor: 'var(--clr-surface-a10)',
                             borderColor: 'var(--clr-surface-tonal-a20)',
                             color: 'var(--clr-primary-a50)',
                           }}
                         >
-                          <ChevronLeft className="w-4 h-4" />
-                          Previous
+                          <ArrowLeft className="w-4 h-4" />
+                          Back to Overview
                         </button>
-                        <button
-                          onClick={() => setExamReviewIndex((i) => Math.min(examAttempts.length - 1, i + 1))}
-                          disabled={examReviewIndex >= examAttempts.length - 1}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        <span className="text-sm font-medium" style={{ color: 'var(--clr-surface-a40)' }}>
+                          Question {examReviewIndex + 1} of {examAttempts.length}
+                        </span>
+                      </div>
+                      <div className="flex gap-6">
+                        <aside
+                          className="w-52 flex-shrink-0 rounded-xl border p-3 space-y-1 overflow-y-auto max-h-[70vh]"
                           style={{
-                            backgroundColor: 'var(--clr-primary-a0)',
-                            borderColor: 'var(--clr-primary-a0)',
-                            color: 'var(--clr-dark-a0)',
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
                           }}
                         >
-                          Next
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-                  </div>
-                </div>
-              </div>
-            ) : examEnded ? (
-              /* Exam Overview */
-              <div className="space-y-6">
-                <div className="flex items-center justify-between gap-3">
-                  <button
-                    onClick={() => { clearPaperState(); setViewMode('papers'); }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a10)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to Papers
-                  </button>
-                </div>
-                <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Exam Overview</h1>
-                {(() => {
-                  const totalPossible = examAttempts.reduce((sum, a) => sum + (a.question?.marks ?? 0), 0);
-                  const totalAwarded = examAttempts.reduce((sum, a) => sum + (typeof a.feedback?.score === 'number' ? a.feedback.score : 0), 0);
-                  const pct = totalPossible > 0 ? Math.round((totalAwarded / totalPossible) * 100) : 0;
-                  return (
-                    <>
-                      <div className="grid gap-4 sm:grid-cols-3">
-                        <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                          <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Total Score</div>
-                          <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{totalAwarded} / {totalPossible}</div>
-                        </div>
-                        <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                          <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Percentage</div>
-                          <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{pct}%</div>
-                        </div>
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marks per question</h3>
-                        <ul className="space-y-2">
-                          {examAttempts.map((a, i) => (
-                            <li key={i} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                              <span style={{ color: 'var(--clr-primary-a50)' }}>Q{i + 1}</span>
-                              <span style={{ color: 'var(--clr-primary-a50)' }}>
-                                {a.feedback ? (typeof a.feedback.score === 'number' ? a.feedback.score : '—') : 'Marking…'}
-                              </span>
-                              <span style={{ color: 'var(--clr-surface-a40)' }}>/ {a.question?.marks ?? 0}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                        <h3 className="text-sm font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>AI performance evaluation</h3>
-                        <p className="text-sm italic" style={{ color: 'var(--clr-surface-a50)' }}>Strengths and weaknesses analysis will appear here in a future update.</p>
-                      </div>
-                      <div className="flex justify-end gap-3">
-                        <button
-                          onClick={saveExam}
-                          className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
-                          style={{
-                            backgroundColor: 'var(--clr-info-a0)',
-                            color: 'var(--clr-light-a0)',
-                          }}
-                        >
-                          <Bookmark className="w-5 h-5" />
-                          Save Exam
-                        </button>
-                        <button
-                          onClick={() => { setExamReviewMode(true); setExamReviewIndex(0); }}
-                          className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
-                          style={{
-                            backgroundColor: 'var(--clr-primary-a0)',
-                            color: 'var(--clr-dark-a0)',
-                          }}
-                        >
-                          <BookOpen className="w-5 h-5" />
-                          Review Questions
-                        </button>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            ) : isPaperMode && showFinishExamPrompt ? (
-              <div className="rounded-2xl border p-8 text-center space-y-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                <p className="text-lg font-medium" style={{ color: 'var(--clr-primary-a50)' }}>You have completed all questions.</p>
-                <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>Click Finish Exam to see your results.</p>
-                <button
-                  onClick={endExam}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--clr-success-a10)',
-                    color: 'var(--clr-light-a0)',
-                  }}
-                >
-                  Finish Exam
-                </button>
-              </div>
-            ) : (
-              <>
-            {!isPaperMode && (
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div>
-                  <h1
-                    className="text-4xl font-bold mb-2"
-                    style={{ color: 'var(--clr-primary-a50)' }}
-                  >HSC Practice Generator</h1>
-                  <p
-                    className="text-lg"
-                    style={{ color: 'var(--clr-surface-a40)' }}
-                  >Practice exam-style questions and handwrite your answers.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={generateQuestion}
-                    disabled={isGenerating || loading}
-                    className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-70 disabled:hover:scale-100 whitespace-nowrap cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-primary-a0)',
-                      color: 'var(--clr-dark-a0)',
-                    }}
-                  >
-                    <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
-                    {isGenerating ? 'Loading...' : 'Generate'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {isPaperMode && (
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={() => {
-                    setViewMode('papers');
-                    clearPaperState();
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a10)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Back to Papers
-                </button>
-                <div className="ml-auto flex items-center gap-2">
-                  <div className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>
-                    Question {paperIndex + 1} of {paperQuestions.length}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const { startIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
-                      goToPaperQuestion(startIndex - 1);
-                    }}
-                    disabled={paperIndex === 0}
-                    aria-label="Previous question"
-                    className="h-10 w-10 inline-flex items-center justify-center rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a10)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNextQuestion}
-                    disabled={paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length}
-                    aria-label="Next question"
-                    className="h-10 w-10 inline-flex items-center justify-center rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
-                    style={{
-                      backgroundColor: 'var(--clr-btn-primary)',
-                      borderColor: 'var(--clr-btn-primary-hover)',
-                      color: 'var(--clr-btn-primary-text)',
-                    }}
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowPaperQuestionNavigator((prev) => !prev)}
-                    className="px-4 py-2 rounded-lg border text-sm font-semibold transition cursor-pointer"
-                    style={{
-                      backgroundColor: showPaperQuestionNavigator ? 'var(--clr-btn-primary)' : 'var(--clr-surface-a10)',
-                      borderColor: showPaperQuestionNavigator ? 'var(--clr-btn-primary-hover)' : 'var(--clr-surface-tonal-a20)',
-                      color: showPaperQuestionNavigator ? 'var(--clr-btn-primary-text)' : 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    {showPaperQuestionNavigator ? 'Hide Question List' : 'Show Question List'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {isPaperMode && showPaperQuestionNavigator && (
-              <aside
-                className="fixed right-4 top-24 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border shadow-xl"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a0)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                }}
-              >
-                <div
-                  className="px-4 py-3 border-b text-xs font-bold uppercase tracking-widest"
-                  style={{
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-surface-a40)',
-                  }}
-                >
-                  Questions ({paperDisplayGroups.length})
-                </div>
-                <div className="max-h-[70vh] overflow-y-auto p-2 space-y-1">
-                  {paperDisplayGroups.map((group, idx) => {
-                    const isActive = group.startIndex === activePaperGroupStartIndex;
-                    return (
-                      <button
-                        key={`${group.label}-${group.startIndex}-${idx}`}
-                        type="button"
-                        onClick={() => goToPaperQuestion(group.startIndex)}
-                        className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
-                        style={{
-                          backgroundColor: isActive ? 'var(--clr-btn-primary)' : 'transparent',
-                          color: isActive ? 'var(--clr-btn-primary-text)' : 'var(--clr-primary-a50)',
-                        }}
-                      >
-                        Question {group.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </aside>
-            )}
-
-            {/* Question Card */}
-            <div className="relative">
-              {isPaperMode && (
-                <div className="absolute right-4 top-4 z-20">
-                  <div className="relative">
-                    <button
-                      type="button"
-                      aria-label="Question information"
-                      onClick={() => setShowQuestionInfo((prev) => !prev)}
-                      className="h-11 w-11 inline-flex items-center justify-center rounded border shadow-sm transition cursor-pointer"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-surface-a50)',
-                      }}
-                    >
-                      <Info className="w-5 h-5" />
-                    </button>
-                    {showQuestionInfo && question && (
-                      <div
-                        className="absolute right-0 top-14 z-30 w-72 rounded-xl border p-4 shadow-xl"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                        }}
-                      >
-                        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>
-                          Question Info
-                        </p>
-                        <div className="space-y-1.5 text-sm" style={{ color: 'var(--clr-primary-a50)' }}>
-                          <p><strong>Number:</strong> {question.question_number || '-'}</p>
-                          <p><strong>Marks:</strong> {question.marks ?? '-'}</p>
-                          <p><strong>Subject:</strong> {question.subject || '-'}</p>
-                          <p><strong>Topic:</strong> {question.topic || '-'}</p>
-                          <p><strong>Year:</strong> {question.year || '-'}</p>
-                          <p><strong>Type:</strong> {question.question_type === 'multiple_choice' ? 'Multiple Choice' : 'Written Response'}</p>
-                          <p><strong>Source:</strong> {question.school_name || 'HSC'}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              <div>
-                <div
-                className={`${isPaperMode ? 'paper-question-card rounded-md border p-6 lg:p-10' : 'glass-card rounded-2xl border border-neutral-100 p-6 lg:p-10'} transition-all duration-500 ${isGenerating ? 'blur-sm scale-[0.99] opacity-80' : 'blur-0 scale-100 opacity-100'}`}
-              >
-                {loading ? (
-                  <div className="flex items-center justify-center min-h-[300px]">
-                    <div className="text-center">
-                      <RefreshCw className="w-8 h-8 text-neutral-400 animate-spin mx-auto mb-2" />
-                      <p className="text-neutral-500">Loading question...</p>
-                    </div>
-                  </div>
-                ) : error ? (
-                  <div className="flex items-center justify-center min-h-[300px]">
-                    <div className="text-center">
-                      <p className="text-red-600 font-medium">Error: {error}</p>
-                      <button 
-                        onClick={() => (isPaperMode ? goToPaperQuestion(paperIndex) : generateQuestion())}
-                        className="mt-4 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-                      >
-                        Try Again
-                      </button>
-                    </div>
-                  </div>
-                ) : question ? (
-                  <>
-                    {isPaperMode ? (
-                      <div className="mb-6">
-                        <div className="exam-question-meta mb-5">
-                          {question.marks} marks{question.topic ? ` • ${question.topic}` : ''}
-                        </div>
-                        <div className="exam-question-body text-neutral-900">
-                          <QuestionTextWithDividers text={question.question_text} />
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex flex-col gap-4 border-b border-neutral-100 pb-6 mb-8">
-                          <div className="flex justify-between items-start gap-6">
-                            <div>
-                              <span className="block font-bold text-2xl text-neutral-900">Question {question.question_number || ''}</span>
-                              <span className="text-neutral-600 font-semibold text-lg block">{question.marks} Marks</span>
-                              <span className="text-neutral-500 text-base block mt-1">{question.topic}</span>
-                            </div>
-                            <div className="text-right flex flex-col items-end gap-2">
-                              {isDevMode && question.id && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const canonical =
-                                      allQuestions.find((q) => q?.id === question.id) ||
-                                      paperQuestions.find((q) => q?.id === question.id) ||
-                                      question;
-                                    setInlineEditDraft({ ...canonical });
-                                  }}
-                                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                  Edit question
-                                </button>
-                              )}
-                              <span className="text-lg font-semibold text-neutral-600 block">{question.subject}</span>
-                              <span className="text-neutral-400 font-medium uppercase tracking-widest text-xs block mt-1">
-                                {question.year} {question.school_name || 'HSC'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--clr-question-bg)', borderColor: 'var(--clr-question-border)' }}>
-                          <div className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap text-neutral-800">
-                            <QuestionTextWithDividers text={question.question_text} />
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    {question.graph_image_data && (
-                      <div className={`${isPaperMode ? 'mt-6 p-0 border-0' : 'mt-4 rounded-xl border p-4'}`} style={isPaperMode ? undefined : { backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                        <img
-                          src={question.graph_image_data}
-                          alt="Question graph"
-                          className={`${isPaperMode ? 'graph-image graph-image--medium' : `rounded-lg border graph-image graph-image--${question.graph_image_size || 'medium'}`}`}
-                          style={isPaperMode ? undefined : { borderColor: 'var(--clr-surface-tonal-a20)' }}
-                        />
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex items-center justify-center min-h-[300px]">
-                    <p className="text-neutral-500">Loading question…</p>
-                  </div>
-                )}
-              </div>
-              </div>
-            </div>
-
-            {/* Multiple Choice Answer */}
-            {appState === 'idle' && question?.question_type === 'multiple_choice' && (
-              <div
-                className="border rounded-2xl shadow-2xl p-6"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                }}
-              >
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <label
-                    className="block text-sm font-semibold uppercase tracking-wide"
-                    style={{ color: 'var(--clr-surface-a40)' }}
-                  >Answer Options</label>
-                  {(() => {
-                    const hasImages = [question.mcq_option_a_image, question.mcq_option_b_image, question.mcq_option_c_image, question.mcq_option_d_image].some(Boolean);
-                    return hasImages ? (
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-neutral-600">Image size:</label>
-                        <input
-                          type="range"
-                          min="64"
-                          max="512"
-                          step="16"
-                          value={mcqImageSize}
-                          onChange={(e) => setMcqImageSize(Number(e.target.value))}
-                          className="w-24"
-                        />
-                        <span className="text-xs text-neutral-600 w-12">{mcqImageSize}px</span>
-                      </div>
-                    ) : null;
-                  })()}
-                </div>
-                <div className="space-y-3">
-                  {([
-                    { label: 'A' as const, text: stripOuterBraces(question.mcq_option_a || ''), image: question.mcq_option_a_image || null },
-                    { label: 'B' as const, text: stripOuterBraces(question.mcq_option_b || ''), image: question.mcq_option_b_image || null },
-                    { label: 'C' as const, text: stripOuterBraces(question.mcq_option_c || ''), image: question.mcq_option_c_image || null },
-                    { label: 'D' as const, text: stripOuterBraces(question.mcq_option_d || ''), image: question.mcq_option_d_image || null },
-                  ]).map((option) => (
-                    <button
-                      key={option.label}
-                      type="button"
-                      onClick={() => setSelectedMcqAnswer(option.label)}
-                      className="w-full text-left rounded-xl border px-4 py-3 transition-all cursor-pointer"
-                      style={{
-                        backgroundColor: selectedMcqAnswer === option.label
-                          ? 'var(--clr-primary-a0)'
-                          : 'var(--clr-surface-a0)',
-                        borderColor: selectedMcqAnswer === option.label
-                          ? 'var(--clr-primary-a0)'
-                          : 'var(--clr-surface-tonal-a20)',
-                        color: selectedMcqAnswer === option.label
-                          ? 'var(--clr-dark-a0)'
-                          : 'var(--clr-primary-a50)',
-                      }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className="font-bold text-sm">{option.label}.</span>
-                        <div className="flex-1 font-serif min-w-0">
-                          {option.image ? (
-                            <img src={option.image} alt={`Option ${option.label}`} className="max-w-full object-contain rounded" style={{ maxHeight: `${mcqImageSize}px`, borderColor: 'var(--clr-surface-tonal-a20)' }} />
-                          ) : (
-                            <LatexText text={option.text || ''} />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => submitAnswer()}
-                  disabled={isMarking}
-                  className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition text-sm disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
-                  style={{
-                    backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-btn-success)',
-                    color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-btn-success-text)',
-                    border: isMarking ? undefined : '1px solid var(--clr-btn-success-hover)',
-                  }}
-                >
-                  {isMarking ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                  {isMarking ? 'Submitting...' : 'Submit Answer'}
-                </button>
-              </div>
-            )}
-
-            {/* Drawing Canvas */}
-            {appState === 'idle' && question?.question_type !== 'multiple_choice' && (
-              <div 
-                className="border rounded-2xl shadow-2xl p-4"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                }}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                  <label 
-                    className="text-sm font-semibold uppercase tracking-wide"
-                    style={{ color: 'var(--clr-surface-a40)' }}
-                  >Answer Area</label>
-                  {isIpad && (
-                    <span className="text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
-                      Use two fingers to scroll.
-                    </span>
-                  )}
-                </div>
-                {/* Excalidraw answer area (toolbar and controls handled by Excalidraw itself) */}
-                <div
-                  className="rounded-xl bg-white border border-neutral-100"
-                  style={{ touchAction: 'none' }}
-                  onTouchMove={(e) => {
-                    if (isIpad && e.touches.length < 2) {
-                      e.preventDefault();
-                    }
-                  }}
-                >
-                  <div
-                    style={{
-                      height: `${canvasHeight}px`,
-                    }}
-                  >
-                    <Excalidraw
-                      theme="light"
-                      initialData={{
-                        appState: {
-                          currentItemStrokeWidth: 1,
-                        },
-                      }}
-                      excalidrawAPI={(api) => {
-                        excalidrawApiRef.current = api;
-                      }}
-                      onChange={(
-                        elements: readonly ExcalidrawElement[],
-                        appState: ExcalidrawAppState,
-                        files: BinaryFiles
-                      ) => {
-                        excalidrawSceneRef.current = {
-                          elements,
-                          appState,
-                          files,
-                        };
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Canvas Controls: Upload + Submit (below answer area) */}
-            {appState === 'idle' && question?.question_type !== 'multiple_choice' && (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex gap-2 sm:ml-auto">
-                  <label 
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold transition cursor-pointer text-sm"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Upload className="w-4 h-4" />
-                    <span>Upload</span>
-                    <input
-                      type="file"
-                      hidden
-                      accept="image/*"
-                      onChange={uploadImage}
-                    />
-                  </label>
-
-                  <button
-                    onClick={() => submitAnswer()}
-                    disabled={isMarking}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold transition text-sm flex-1 sm:flex-none justify-center disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
-                    style={{
-                      backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-btn-success)',
-                      color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-btn-success-text)',
-                      border: isMarking ? undefined : '1px solid var(--clr-btn-success-hover)',
-                    }}
-                  >
-                    {isMarking ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                    {isMarking ? 'Submitting...' : 'Submit'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Action Toolbar */}
-            {appState === 'idle' && !examConditionsActive && (
-              <div 
-                className="flex flex-wrap items-center justify-between gap-4 backdrop-blur-md p-4 rounded-2xl border"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                }}
-              >
-                <div className="flex gap-2 flex-wrap">
-                  <button 
-                    onClick={() => setShowAnswer(!showAnswer)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Eye className="w-4 h-4" />
-                    {showAnswer ? 'Hide' : 'Show'} Solution
-                  </button>
-                  {isPaperMode && (
-                    <>
-                      <button
-                        onClick={() => exportPaperPdf(false)}
-                        disabled={exportingPaperPdf !== null}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      >
-                        <Download className="w-4 h-4" />
-                        {exportingPaperPdf === 'exam' ? 'Exporting Exam PDF…' : 'Export Exam PDF'}
-                      </button>
-                      <button
-                        onClick={() => exportPaperPdf(true)}
-                        disabled={exportingPaperPdf !== null}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{
-                          backgroundColor: 'var(--clr-btn-primary)',
-                          color: 'var(--clr-btn-primary-text)',
-                          border: '1px solid var(--clr-btn-primary-hover)',
-                        }}
-                      >
-                        <Download className="w-4 h-4" />
-                        {exportingPaperPdf === 'solutions' ? 'Exporting Solutions PDF…' : 'Export Exam + Solutions PDF'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Marking State */}
-            {appState === 'marking' && (
-              <div
-                className="rounded-2xl p-8 shadow-2xl border flex items-center justify-center"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                }}
-              >
-                <div className="text-center">
-                  <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3" style={{ color: 'var(--clr-surface-a40)' }} />
-                  <p className="text-lg" style={{ color: 'var(--clr-surface-a40)' }}>
-                    Submitting for marking...
-                  </p>
-                  <p className="text-sm mt-1" style={{ color: 'var(--clr-surface-a50)' }}>
-                    Please wait while we assess your response.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Solution Panel */}
-            {showAnswer && appState === 'idle' && (
-              <div 
-                className="rounded-2xl p-8 shadow-2xl relative overflow-hidden border"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-success-a10)',
-                }}
-              >
-                <div 
-                  className="absolute top-0 left-0 w-1 h-full"
-                  style={{ backgroundColor: 'var(--clr-success-a10)' }}
-                />
-                <h3 
-                  className="font-bold text-xl mb-4"
-                  style={{ color: 'var(--clr-success-a20)' }}
-                >Sample Solution</h3>
-                <div className="font-serif text-lg leading-relaxed space-y-4 text-neutral-800">
-                  {question?.question_type === 'multiple_choice' ? (
-                    <>
-                      {question.mcq_correct_answer && (
-                        <p className="font-semibold">Correct Answer: {question.mcq_correct_answer}</p>
-                      )}
-                      {question.mcq_explanation ? (
-                        <LatexText text={stripOuterBraces(question.mcq_explanation)} />
-                      ) : (
-                        <p className="text-sm italic" style={{ color: 'var(--clr-surface-a40)' }}>
-                          Explanation not available.
-                        </p>
-                      )}
-                    </>
-                  ) : question?.sample_answer || question?.sample_answer_image ? (
-                    <>
-                      {question.sample_answer ? <LatexText text={question.sample_answer} /> : null}
-                      {question.sample_answer_image ? (
-                        <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
-                          <img src={question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
-                        </div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      <p>A detailed solution will appear here. Use this as a guide to check your working and understanding.</p>
-                      <p 
-                        className="text-sm italic"
-                        style={{ color: 'var(--clr-surface-a40)' }}
-                      >Use Next Question to see more.</p>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Reviewed Feedback */}
-            {appState === 'reviewed' && feedback && !examConditionsActive && (
-              <div className="animate-fade-in space-y-4">
-                
-                {/* Marking Report Card */}
-                <div 
-                  className="rounded-2xl overflow-hidden border shadow-2xl"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a10)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                  }}
-                >
-                    
-                    {/* Report Header */}
-                    <div 
-                      className="p-6 border-b flex flex-wrap items-center justify-between gap-6"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                      }}
-                    >
-                        <div>
-                            <h3 
-                              className="text-xl font-bold flex items-center gap-2"
-                              style={{ color: '#1a1a1a' }}
+                          <p className="text-xs font-bold uppercase tracking-widest mb-2 px-2" style={{ color: 'var(--clr-surface-a40)' }}>Questions</p>
+                          {examAttempts.map((_, i) => (
+                            <button
+                              key={i}
+                              onClick={() => setExamReviewIndex(i)}
+                              className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                              style={{
+                                backgroundColor: examReviewIndex === i ? 'var(--clr-primary-a0)' : 'transparent',
+                                color: examReviewIndex === i ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
+                              }}
                             >
-                                {awardedMarks === 0 ? (
-                                  <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} />
-                                ) : awardedMarks !== null && awardedMarks < maxMarks ? (
-                                  <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} />
-                                ) : (
-                                  <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />
-                                )}
-                                Marking Complete
-                            </h3>
-                            <p 
-                              className="text-sm mt-1"
-                              style={{ color: '#525252' }}
-                            >Assessed against NESA Guidelines</p>
-                        </div>
-                        
-                        <div className="flex items-center gap-6">
-                            <div className="text-right">
-                                <span 
-                                  className="block text-xs font-bold uppercase tracking-widest"
-                                  style={{ color: '#404040' }}
-                                >Score</span>
-                                <div className="flex items-baseline gap-1 justify-end">
-                                    <span 
-                                      className="text-4xl font-bold"
-                                      style={{ color: '#1a1a1a' }}
-                                    >{awardedMarks === null ? '--' : awardedMarks}</span>
-                                    <span 
-                                      className="text-xl font-medium"
-                                      style={{ color: '#404040' }}
-                                    >/{maxMarks}</span>
+                              Question {i + 1}
+                              {examAttempts[i]?.feedback != null && (
+                                <span className="ml-1 text-xs opacity-80">
+                                  ({typeof examAttempts[i].feedback?.score === 'number' ? examAttempts[i].feedback.score : '—'}/{examAttempts[i].question?.marks ?? 0})
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </aside>
+                        <div className="flex-1 min-w-0">
+                          {(() => {
+                            const attempt = examAttempts[examReviewIndex];
+                            if (!attempt) return null;
+                            const revQuestion = attempt.question;
+                            const revFeedback = attempt.feedback;
+                            const revSubmitted = attempt.submittedAnswer;
+                            const isMcq = revQuestion?.question_type === 'multiple_choice';
+                            const revAwarded = typeof revFeedback?.score === 'number' ? revFeedback.score : null;
+                            const revMax = revFeedback?.maxMarks ?? revQuestion?.marks ?? 0;
+                            const revCriteriaText = revFeedback?.marking_criteria ?? revQuestion?.marking_criteria ?? null;
+                            return (
+                              <div
+                                className="rounded-2xl overflow-hidden border shadow-2xl"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a10)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                }}
+                              >
+                                {/* Report Header (same as generator) */}
+                                <div
+                                  className="p-6 border-b flex flex-wrap items-center justify-between gap-6"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                  }}
+                                >
+                                  <div>
+                                    <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#1a1a1a' }}>
+                                      {revFeedback ? (
+                                        revAwarded === 0 ? (
+                                          <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} />
+                                        ) : revAwarded !== null && revAwarded < revMax ? (
+                                          <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} />
+                                        ) : (
+                                          <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />
+                                        )
+                                      ) : null}
+                                      {revFeedback ? 'Marking Complete' : 'Marking…'}
+                                    </h3>
+                                    <p className="text-sm mt-1" style={{ color: '#525252' }}>Assessed against NESA Guidelines</p>
+                                  </div>
+                                  <div className="flex items-center gap-6">
+                                    <div className="text-right">
+                                      <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: '#404040' }}>Score</span>
+                                      <div className="flex items-baseline gap-1 justify-end">
+                                        <span className="text-4xl font-bold" style={{ color: '#1a1a1a' }}>{revAwarded === null ? '--' : revAwarded}</span>
+                                        <span className="text-xl font-medium" style={{ color: '#404040' }}>/{revMax}</span>
+                                      </div>
+                                      {isMcq && revFeedback && (
+                                        <div className="mt-2 text-xs space-y-1">
+                                          <div style={{ color: '#525252' }}>Selected: <strong style={{ color: '#1a1a1a' }}>{revFeedback.mcq_selected_answer ?? revSubmitted ?? '-'}</strong></div>
+                                          <div style={{ color: '#525252' }}>Correct: <strong style={{ color: 'var(--clr-success-a0)' }}>{revFeedback.mcq_correct_answer ?? revQuestion?.mcq_correct_answer ?? '-'}</strong></div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                {isMultipleChoiceReview && (
-                                  <div className="mt-2 text-xs" style={{ color: '#525252' }}>
-                                    <div>Selected: <strong style={{ color: '#1a1a1a' }}>{feedback?.mcq_selected_answer || submittedAnswer || '-'}</strong></div>
-                                    <div>Correct: <strong style={{ color: 'var(--clr-success-a0)' }}>{feedback?.mcq_correct_answer || question?.mcq_correct_answer || '-'}</strong></div>
+
+                                {/* Question */}
+                                <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                  <div className="flex items-center justify-between gap-2 mb-2">
+                                    <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
+                                    {isDevMode && revQuestion?.id && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          // Prefer editing the underlying raw DB row by id (avoid saving merged display payloads)
+                                          const canonical =
+                                            allQuestions.find((q) => q?.id === revQuestion.id) ||
+                                            paperQuestions.find((q) => q?.id === revQuestion.id) ||
+                                            revQuestion;
+                                          setInlineEditDraft({ ...canonical });
+                                        }}
+                                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                        Edit
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div
+                                    className="font-serif rounded-lg border p-3"
+                                    style={{ color: 'var(--clr-primary-a50)', borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                  >
+                                    <QuestionTextWithDividers text={revQuestion?.question_text || ''} />
+                                  </div>
+                                </div>
+
+                                {/* AI Feedback / MCQ Explanation */}
+                                {revFeedback && (
+                                  <div
+                                    className="p-6 border-b"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a10)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                    }}
+                                  >
+                                    <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}>
+                                      <TrendingUp className="w-4 h-4" />
+                                      {isMcq ? 'Answer Explanation' : 'AI Feedback'}
+                                    </h4>
+                                    <div className="text-base leading-relaxed space-y-3 text-neutral-800">
+                                      {isMcq ? (
+                                        revFeedback.mcq_explanation ? (
+                                          <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} />
+                                        ) : (
+                                          <p className="italic text-neutral-600">Explanation not available.</p>
+                                        )
+                                      ) : revFeedback.ai_evaluation ? (
+                                        <LatexText text={revFeedback.ai_evaluation} />
+                                      ) : revFeedback._error ? (
+                                        <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed. Please try again later.</p>
+                                      ) : (
+                                        <p className="italic text-neutral-600">AI evaluation is being processed...</p>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* AI Feedback / MCQ Explanation Section */}
-                    <div 
-                      className="p-6 border-b"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a10)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                      }}
-                    >
-                        <h4 
-                          className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"
-                          style={{ color: 'var(--clr-surface-a40)' }}
-                        >
-                            <TrendingUp className="w-4 h-4" />
-                            {isMultipleChoiceReview ? 'Answer Explanation' : 'AI Feedback'}
-                        </h4>
-                        <div 
-                          className="text-base leading-relaxed space-y-3"
-                          style={{ color: 'var(--clr-primary-a50)' }}
-                        >
-                            {isMultipleChoiceReview ? (
-                              feedback?.mcq_explanation ? (
-                                <LatexText text={stripOuterBraces(feedback.mcq_explanation)} />
-                              ) : (
-                                <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>Explanation not available.</p>
-                              )
-                            ) : feedback.ai_evaluation ? (
-                              <LatexText text={feedback.ai_evaluation} />
-                            ) : (
-                              <p 
-                                className="italic"
-                                style={{ color: 'var(--clr-surface-a50)' }}
-                              >AI evaluation is being processed...</p>
-                            )}
-                        </div>
-                    </div>
+                                {/* Marking Criteria (table, same as generator) */}
+                                {!isMcq && revCriteriaText && (
+                                  <div
+                                    className="p-6 border-b"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a10)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                    }}
+                                  >
+                                    <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}>
+                                      <CheckCircle2 className="w-4 h-4" />
+                                      Marking Criteria
+                                    </h4>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full">
+                                        <thead>
+                                          <tr className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                            <th className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Criteria</th>
+                                            <th className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24" style={{ color: 'var(--clr-surface-a40)' }}>Marks</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {(() => {
+                                            const items = parseCriteriaForDisplay(revCriteriaText);
+                                            const rows: React.ReactNode[] = [];
+                                            let lastSubpart: string | null = null;
+                                            items.forEach((item, idx) => {
+                                              if (item.type === 'heading') {
+                                                lastSubpart = null;
+                                                rows.push(
+                                                  <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                                    <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{item.text}</td>
+                                                  </tr>
+                                                );
+                                                return;
+                                              }
+                                              if (item.subpart && item.subpart !== lastSubpart) {
+                                                lastSubpart = item.subpart;
+                                                rows.push(
+                                                  <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                                    <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Part ({item.subpart})</td>
+                                                  </tr>
+                                                );
+                                              }
+                                              rows.push(
+                                                <tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                                  <td className="py-3 px-3 text-neutral-800"><LatexText text={item.text} /></td>
+                                                  <td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a20)' }}>{item.marks}</td>
+                                                </tr>
+                                              );
+                                            });
+                                            return rows;
+                                          })()}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
 
-                    {/* Marking Criteria Section */}
-                    {!isMultipleChoiceReview && (
-                      <div 
-                        className="p-6 border-b"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a10)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                        }}
-                      >
-                          <h4 
-                            className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"
-                            style={{ color: 'var(--clr-surface-a40)' }}
-                          >
-                              <CheckCircle2 className="w-4 h-4" />
-                              Marking Criteria
-                          </h4>
-                          <div className="overflow-x-auto">
-                              <table className="w-full">
-                                  <thead>
-                                      <tr 
-                                        className="border-b"
-                                        style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                {/* Sample Solution (written only; MCQ explanation is shown above) */}
+                                {!isMcq && (revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? revQuestion?.sample_answer_image) && (
+                                  <div
+                                    className="p-8 border-t space-y-4"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                    }}
+                                  >
+                                    <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}>
+                                      <BookOpen className="w-5 h-5" />
+                                      Sample Solution
+                                    </h3>
+                                    {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) ? (
+                                      <div
+                                        className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800"
+                                        style={{ borderColor: 'var(--clr-success-a10)' }}
                                       >
-                                          <th 
-                                            className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider"
-                                            style={{ color: 'var(--clr-surface-a40)' }}
-                                          >Criteria</th>
-                                          <th 
-                                            className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24"
-                                            style={{ color: 'var(--clr-surface-a40)' }}
-                                          >Marks</th>
-                                      </tr>
-                                  </thead>
-                                  <tbody>
-                                      {(() => {
-                                          const criteriaText = feedback.marking_criteria;
-                                          const items = parseCriteriaForDisplay(criteriaText);
-                                          const rows: React.ReactNode[] = [];
-                                          let lastSubpart: string | null = null;
+                                        <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
+                                      </div>
+                                    ) : null}
+                                    {revQuestion?.sample_answer_image ? (
+                                      <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                        <img src={revQuestion.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                )}
 
-                                          items.forEach((item, idx) => {
-                                            if (item.type === 'heading') {
-                                              lastSubpart = null;
-                                              rows.push(
-                                                <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                                  <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>
-                                                    {item.text}
-                                                  </td>
-                                                </tr>
-                                              );
-                                              return;
-                                            }
-
-                                            if (item.subpart && item.subpart !== lastSubpart) {
-                                              lastSubpart = item.subpart;
-                                              rows.push(
-                                                <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                                  <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>
-                                                    Part ({item.subpart})
-                                                  </td>
-                                                </tr>
-                                              );
-                                            }
-
-                                            rows.push(
-                                              <tr 
-                                                key={`${item.key}-${idx}`} 
-                                                className="border-b transition-colors"
-                                                style={{ 
-                                                  borderColor: 'var(--clr-surface-tonal-a20)',
-                                                }}
-                                              >
-                                                <td 
-                                                  className="py-3 px-3"
-                                                  style={{ color: 'var(--clr-primary-a50)' }}
-                                                >
-                                                  <LatexText text={item.text} />
-                                                </td>
-                                                <td 
-                                                  className="py-3 px-3 text-right font-mono font-bold"
-                                                  style={{ color: 'var(--clr-success-a10)' }}
-                                                >
-                                                  {item.marks}
-                                                </td>
-                                              </tr>
+                                {/* Your Submitted Answer */}
+                                {revSubmitted && (
+                                  <div
+                                    className="p-8 border-t space-y-4"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                    }}
+                                  >
+                                    <h3 className="font-bold text-lg flex items-center gap-2 text-neutral-800">
+                                      <Eye className="w-5 h-5" />
+                                      Your Submitted Answer
+                                    </h3>
+                                    <div
+                                      className="rounded-lg p-4 border"
+                                      style={{
+                                        backgroundColor: 'var(--clr-surface-a10)',
+                                        borderColor: 'var(--clr-surface-tonal-a20)',
+                                      }}
+                                    >
+                                      {isMcq ? (
+                                        <div className="space-y-3">
+                                          <p className="text-sm font-semibold text-neutral-700 mb-3">Selected Answer: <span className="text-lg font-bold text-neutral-900">{revSubmitted}</span></p>
+                                          {(() => {
+                                            const options = [
+                                              { label: 'A' as const, text: revQuestion?.mcq_option_a || '', image: revQuestion?.mcq_option_a_image || null },
+                                              { label: 'B' as const, text: revQuestion?.mcq_option_b || '', image: revQuestion?.mcq_option_b_image || null },
+                                              { label: 'C' as const, text: revQuestion?.mcq_option_c || '', image: revQuestion?.mcq_option_c_image || null },
+                                              { label: 'D' as const, text: revQuestion?.mcq_option_d || '', image: revQuestion?.mcq_option_d_image || null },
+                                            ];
+                                            const selectedOption = options.find(opt => opt.label === revSubmitted);
+                                            const correctAnswer = revFeedback?.mcq_correct_answer ?? revQuestion?.mcq_correct_answer;
+                                            const correctOption = options.find(opt => opt.label === correctAnswer);
+                                            return (
+                                              <div className="space-y-2">
+                                                {options.map((option) => {
+                                                  const isSelected = option.label === revSubmitted;
+                                                  const isCorrect = option.label === correctAnswer;
+                                                  return (
+                                                    <div
+                                                      key={option.label}
+                                                      className={`rounded-lg border-2 p-3 ${isSelected && isCorrect
+                                                        ? 'bg-green-50 border-green-300'
+                                                        : isSelected
+                                                          ? 'bg-red-50 border-red-300'
+                                                          : isCorrect
+                                                            ? 'bg-green-50 border-green-200'
+                                                            : 'bg-white border-neutral-200'
+                                                        }`}
+                                                    >
+                                                      <div className="flex items-start gap-3">
+                                                        <span className={`font-bold text-sm ${isSelected && isCorrect
+                                                          ? 'text-green-700'
+                                                          : isSelected
+                                                            ? 'text-red-700'
+                                                            : isCorrect
+                                                              ? 'text-green-600'
+                                                              : 'text-neutral-600'
+                                                          }`}>
+                                                          {option.label}.
+                                                        </span>
+                                                        <div className="flex-1 font-serif text-neutral-800">
+                                                          {option.image ? (
+                                                            <img src={option.image} alt={`Option ${option.label}`} className="max-w-full object-contain rounded" style={{ maxHeight: `${mcqImageSize}px` }} />
+                                                          ) : (
+                                                            <LatexText text={stripOuterBraces(option.text)} />
+                                                          )}
+                                                        </div>
+                                                        {isSelected && (
+                                                          <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: isCorrect ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: isCorrect ? 'rgb(21, 128, 61)' : 'rgb(153, 27, 27)' }}>
+                                                            {isCorrect ? '✓ Correct' : 'Your choice'}
+                                                          </span>
+                                                        )}
+                                                        {!isSelected && isCorrect && (
+                                                          <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700">
+                                                            Correct
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
                                             );
-                                          });
+                                          })()}
+                                        </div>
+                                      ) : (
+                                        <img src={revSubmitted} alt="Your answer" className="w-full rounded" style={{ border: '1px solid var(--clr-surface-tonal-a20)' }} />
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
 
-                                          return rows;
-                                      })()}
-                                  </tbody>
-                              </table>
-                          </div>
+                                {/* Nav: Previous / Next */}
+                                <div className="border-t p-6 flex gap-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                  <button
+                                    onClick={() => setExamReviewIndex((i) => Math.max(0, i - 1))}
+                                    disabled={examReviewIndex === 0}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a10)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  >
+                                    <ChevronLeft className="w-4 h-4" />
+                                    Previous
+                                  </button>
+                                  <button
+                                    onClick={() => setExamReviewIndex((i) => Math.min(examAttempts.length - 1, i + 1))}
+                                    disabled={examReviewIndex >= examAttempts.length - 1}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                    style={{
+                                      backgroundColor: 'var(--clr-primary-a0)',
+                                      borderColor: 'var(--clr-primary-a0)',
+                                      color: 'var(--clr-dark-a0)',
+                                    }}
+                                  >
+                                    Next
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
                       </div>
-                    )}
-
-                    {/* Sample Solution Section (written questions only; MCQ explanation is shown above) */}
-                    {!isMultipleChoiceReview && (
-                      <div 
-                        className="p-8 border-t space-y-4"
+                    </div>
+                  ) : examEnded ? (
+                    /* Exam Overview */
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <button
+                          onClick={() => { clearPaperState(); setViewMode('papers'); }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                            color: 'var(--clr-primary-a50)',
+                          }}
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                          Back to Papers
+                        </button>
+                      </div>
+                      <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Exam Overview</h1>
+                      {(() => {
+                        const totalPossible = examAttempts.reduce((sum, a) => sum + (a.question?.marks ?? 0), 0);
+                        const totalAwarded = examAttempts.reduce((sum, a) => sum + (typeof a.feedback?.score === 'number' ? a.feedback.score : 0), 0);
+                        const pct = totalPossible > 0 ? Math.round((totalAwarded / totalPossible) * 100) : 0;
+                        return (
+                          <>
+                            <div className="grid gap-4 sm:grid-cols-3">
+                              <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Total Score</div>
+                                <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{totalAwarded} / {totalPossible}</div>
+                              </div>
+                              <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Percentage</div>
+                                <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{pct}%</div>
+                              </div>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marks per question</h3>
+                              <ul className="space-y-2">
+                                {examAttempts.map((a, i) => (
+                                  <li key={i} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                    <span style={{ color: 'var(--clr-primary-a50)' }}>Q{i + 1}</span>
+                                    <span style={{ color: 'var(--clr-primary-a50)' }}>
+                                      {a.feedback ? (typeof a.feedback.score === 'number' ? a.feedback.score : '—') : 'Marking…'}
+                                    </span>
+                                    <span style={{ color: 'var(--clr-surface-a40)' }}>/ {a.question?.marks ?? 0}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                              <h3 className="text-sm font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--clr-surface-a40)' }}>AI performance evaluation</h3>
+                              <p className="text-sm italic" style={{ color: 'var(--clr-surface-a50)' }}>Strengths and weaknesses analysis will appear here in a future update.</p>
+                            </div>
+                            <div className="flex justify-end gap-3">
+                              <button
+                                onClick={saveExam}
+                                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                                style={{
+                                  backgroundColor: 'var(--clr-info-a0)',
+                                  color: 'var(--clr-light-a0)',
+                                }}
+                              >
+                                <Bookmark className="w-5 h-5" />
+                                Save Exam
+                              </button>
+                              <button
+                                onClick={() => { setExamReviewMode(true); setExamReviewIndex(0); }}
+                                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                                style={{
+                                  backgroundColor: 'var(--clr-primary-a0)',
+                                  color: 'var(--clr-dark-a0)',
+                                }}
+                              >
+                                <BookOpen className="w-5 h-5" />
+                                Review Questions
+                              </button>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ) : isPaperMode && showFinishExamPrompt ? (
+                    <div className="rounded-2xl border p-8 text-center space-y-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                      <p className="text-lg font-medium" style={{ color: 'var(--clr-primary-a50)' }}>You have completed all questions.</p>
+                      <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>Click Finish Exam to see your results.</p>
+                      <button
+                        onClick={endExam}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold cursor-pointer"
                         style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
+                          backgroundColor: 'var(--clr-success-a10)',
+                          color: 'var(--clr-light-a0)',
                         }}
                       >
-                          <h3 
-                            className="font-bold text-lg flex items-center gap-2"
-                            style={{ color: 'var(--clr-success-a20)' }}
-                          >
-                              <BookOpen className="w-5 h-5" />
-                              Sample Solution
-                          </h3>
-                          {feedback.sample_answer ? (
-                            <div 
-                              className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800"
-                              style={{ borderColor: 'var(--clr-success-a10)' }}
+                        Finish Exam
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {!isPaperMode && (
+                        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                          <div>
+                            <h1
+                              className="text-4xl font-bold mb-2"
+                              style={{ color: 'var(--clr-primary-a50)' }}
+                            >HSC Practice Generator</h1>
+                            <p
+                              className="text-lg"
+                              style={{ color: 'var(--clr-surface-a40)' }}
+                            >Practice exam-style questions and handwrite your answers.</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={generateQuestion}
+                              disabled={isGenerating || loading}
+                              className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-70 disabled:hover:scale-100 whitespace-nowrap cursor-pointer"
+                              style={{
+                                backgroundColor: 'var(--clr-primary-a0)',
+                                color: 'var(--clr-dark-a0)',
+                              }}
                             >
-                              <LatexText text={feedback.sample_answer} />
-                            </div>
-                          ) : null}
-                          {feedback.question?.sample_answer_image ? (
-                            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
-                              <img src={feedback.question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
-                            </div>
-                          ) : null}
-                      </div>
-                    )}
+                              <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin' : ''}`} />
+                              {isGenerating ? 'Loading...' : 'Generate'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
-                    {/* Action Buttons */}
-                    <div 
-                      className="border-t p-6 flex flex-wrap items-center gap-3"
-                      style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                    >
-                        <button
-                            onClick={saveAttempt}
-                            disabled={isSaving}
-                            className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 cursor-pointer border`}
-                            style={{
-                              backgroundColor: isSaving ? 'var(--clr-surface-a20)' : 'var(--clr-btn-primary)',
-                              borderColor: isSaving ? 'var(--clr-surface-tonal-a20)' : 'var(--clr-btn-primary)',
-                              color: isSaving ? 'var(--clr-surface-a40)' : 'var(--clr-btn-primary-text)',
-                              cursor: isSaving ? 'not-allowed' : 'pointer',
-                              opacity: isSaving ? 0.7 : 1,
-                            }}
-                        >
-                            <Bookmark className={`w-4 h-4 transition-all ${
-                              isSaving ? 'fill-zinc-300' : ''
-                            }`} />
-                            {isSaving ? 'Saving...' : 'Save Answer'}
-                        </button>
-                        <button
+                      {isPaperMode && (
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
                             onClick={() => {
-                              setAppState('idle');
-                              setFeedback(null);
-                              setSubmittedAnswer(null);
-                              setUploadedFile(null);
-                              setTimeout(() => resetCanvas(canvasHeight), 50);
+                              setViewMode('papers');
+                              clearPaperState();
                             }}
-                            className="px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer border"
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition cursor-pointer"
                             style={{
                               backgroundColor: 'var(--clr-surface-a10)',
                               borderColor: 'var(--clr-surface-tonal-a20)',
                               color: 'var(--clr-primary-a50)',
                             }}
-                        >
-                            <Edit2 className="w-4 h-4" />
-                            Review & Try Again
-                        </button>
-                        <button
-                            onClick={handleNextQuestion}
-                            disabled={isPaperMode && (paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length)}
-                            className="ml-auto px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed border"
-                            style={{
-                              backgroundColor: 'var(--clr-btn-primary)',
-                              borderColor: 'var(--clr-btn-primary)',
-                              color: 'var(--clr-btn-primary-text)',
-                            }}
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            Next Question
-                        </button>
-                    </div>
-
-                    {/* Submitted Answer Section */}
-                    {submittedAnswer && (
-                      <div 
-                        className="p-8 border-t space-y-4"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                        }}
-                      >
-                        <h3 
-                          className="font-bold text-lg flex items-center gap-2"
-                          style={{ color: 'var(--clr-dark-a0)' }}
-                        >
-                          <Eye className="w-5 h-5" />
-                          Your Submitted Answer
-                        </h3>
-                        <div 
-                          className="rounded-lg p-4 border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a10)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                          }}
-                        >
-                          {isMultipleChoiceReview ? (
-                            <p className="font-semibold">Selected Answer: {submittedAnswer}</p>
-                          ) : (
-                            <img src={submittedAnswer} alt="Student answer" className="w-full rounded" style={{ borderColor: 'var(--clr-surface-tonal-a20)', border: '1px solid var(--clr-surface-tonal-a20)' }} />
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                </div>
-              </div>
-            )}
-
-            {isPaperMode && !examEnded && (
-              <div className="flex items-center justify-end gap-3">
-                {examTimeRemainingLabel && (
-                  <div
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a10)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <Timer className="w-4 h-4" />
-                    {examTimeRemainingLabel}
-                  </div>
-                )}
-                <button
-                  onClick={examConditionsActive ? handleEndExam : () => startExamSimulation()}
-                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shadow-sm whitespace-nowrap cursor-pointer hover:opacity-90"
-                  style={{
-                    backgroundColor: examConditionsActive ? 'var(--clr-btn-danger)' : 'var(--clr-btn-primary)',
-                    color: examConditionsActive ? 'var(--clr-btn-danger-text)' : 'var(--clr-btn-primary-text)',
-                    border: '1px solid ' + (examConditionsActive ? 'var(--clr-btn-danger-hover)' : 'var(--clr-btn-primary-hover)'),
-                  }}
-                >
-                  {examConditionsActive ? 'End Exam' : 'Simulate Exam Conditions'}
-                </button>
-              </div>
-            )}
-              </>
-              ) }
-              </>
-            )}
-            {viewMode === 'papers' && (
-              <>
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
-                  <div>
-                    <h1
-                      className="text-4xl font-bold mb-2"
-                      style={{ color: 'var(--clr-primary-a50)' }}
-                    >Browse HSC Papers</h1>
-                    <p
-                      className="text-lg"
-                      style={{ color: 'var(--clr-surface-a40)' }}
-                    >Select a paper to start a full exam attempt.</p>
-                  </div>
-                </div>
-
-                {loadingQuestions ? (
-                  <div className="flex items-center justify-center min-h-[240px]">
-                    <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--clr-surface-a40)' }} />
-                  </div>
-                ) : questionsFetchError ? (
-                  <div className="text-center py-16">
-                    <p className="text-lg" style={{ color: 'var(--clr-warning-a10)' }}>Could not load questions</p>
-                    <p className="text-sm mt-2 max-w-md mx-auto" style={{ color: 'var(--clr-surface-a50)' }}>{questionsFetchError}</p>
-                    <p className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local</p>
-                  </div>
-                ) : availablePapers.length === 0 ? (
-                  <div className="text-center py-16">
-                    <p className="text-lg" style={{ color: 'var(--clr-surface-a40)' }}>No papers available yet.</p>
-                    <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>Upload exam questions to create papers.</p>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {availablePapers.map((paper) => (
-                      <button
-                            key={`${paper.year}-${paper.grade}-${paper.subject}-${paper.school}`}
-                        onClick={() => startPaperAttempt(paper)}
-                        className="text-left border rounded-2xl p-6 transition-all hover:-translate-y-0.5 hover:shadow-xl cursor-pointer"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a10)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                        }}
-                      >
-                        <div className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>
-                          {paper.year}
-                        </div>
-                        <div className="text-xl font-semibold mt-2" style={{ color: 'var(--clr-primary-a50)' }}>
-                          {paper.subject}
-                        </div>
-                        <div className="text-sm mt-1" style={{ color: 'var(--clr-surface-a50)' }}>
-                          {paper.grade}
-                        </div>
-                            <div className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>
-                              {paper.school || 'HSC'}
-                            </div>
-                        <div className="text-xs mt-4" style={{ color: 'var(--clr-surface-a40)' }}>
-                          {paper.count} question{paper.count === 1 ? '' : 's'} available
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-            {viewMode === 'saved' && (
-              <>
-                {/* Saved Attempts View */}
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
-                  <div>
-                    <h1 
-                      className="text-4xl font-bold mb-2"
-                      style={{ color: 'var(--clr-primary-a50)' }}
-                    >My Saved Answers</h1>
-                    <p 
-                      className="text-lg"
-                      style={{ color: 'var(--clr-surface-a40)' }}
-                    >{savedAttempts.length} answer{savedAttempts.length !== 1 ? 's' : ''} saved</p>
-                  </div>
-                  <button 
-                    onClick={() => setViewMode('browse')}
-                    className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--clr-primary-a0)',
-                      color: 'var(--clr-dark-a0)',
-                    }}
-                  >
-                    <RefreshCw className="w-5 h-5" />
-                    Browse exams
-                  </button>
-                </div>
-
-                {selectedAttempt ? (
-                  <>
-                    <div className="flex items-center justify-between gap-3 mb-6">
-                      <button 
-                        onClick={() => { setSelectedAttempt(null); setSavedExamReviewMode(false); }}
-                        className="flex items-center gap-2 px-4 py-2 transition-colors cursor-pointer"
-                        style={{ color: 'var(--clr-surface-a40)' }}
-                      >
-                        <ArrowLeft className="w-4 h-4" />
-                        Back to list
-                      </button>
-                      <button
-                        onClick={() => removeSavedAttempt(selectedAttempt.id)}
-                        className="text-sm font-medium cursor-pointer"
-                        style={{ color: 'var(--clr-danger-a10)' }}
-                      >
-                        Unsave
-                      </button>
-                    </div>
-
-                    {selectedAttempt.type === 'exam' ? (
-                      savedExamReviewMode && selectedAttempt.examAttempts?.length > 0 ? (
-                        <div className="space-y-4">
-                          <button
-                            onClick={() => setSavedExamReviewMode(false)}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
-                            style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}
                           >
                             <ArrowLeft className="w-4 h-4" />
-                            Back to Overview
+                            Back to Papers
                           </button>
-                          <div className="flex gap-6">
-                            <aside className="w-52 flex-shrink-0 rounded-xl border p-3 space-y-1 overflow-y-auto max-h-[70vh]" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                              <p className="text-xs font-bold uppercase tracking-widest mb-2 px-2" style={{ color: 'var(--clr-surface-a40)' }}>Questions</p>
-                              {(selectedAttempt.examAttempts || []).map((_: any, i: number) => (
-                                <button
-                                  key={i}
-                                  onClick={() => setSavedExamReviewIndex(i)}
-                                  className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
-                                  style={{
-                                    backgroundColor: savedExamReviewIndex === i ? 'var(--clr-primary-a0)' : 'transparent',
-                                    color: savedExamReviewIndex === i ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
-                                  }}
-                                >
-                                  Question {i + 1}
-                                  {selectedAttempt.examAttempts[i]?.feedback != null && (
-                                    <span className="ml-1 text-xs opacity-80">
-                                      ({typeof selectedAttempt.examAttempts[i].feedback?.score === 'number' ? selectedAttempt.examAttempts[i].feedback.score : '—'}/{selectedAttempt.examAttempts[i].question?.marks ?? 0})
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            </aside>
-                            <div className="flex-1 min-w-0">
-                              {(() => {
-                                const attempt = selectedAttempt.examAttempts[savedExamReviewIndex];
-                                if (!attempt) return null;
-                                const revQuestion = attempt.question;
-                                const revFeedback = attempt.feedback;
-                                const revSubmitted = attempt.submittedAnswer;
-                                const isMcq = revQuestion?.question_type === 'multiple_choice';
-                                const revAwarded = typeof revFeedback?.score === 'number' ? revFeedback.score : null;
-                                const revMax = revFeedback?.maxMarks ?? revQuestion?.marks ?? 0;
-                                const revCriteriaText = revFeedback?.marking_criteria ?? revQuestion?.marking_criteria ?? null;
-                                return (
-                                  <div className="rounded-2xl overflow-hidden border shadow-2xl" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                    <div className="p-6 border-b flex flex-wrap items-center justify-between gap-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                      <div>
-                                        <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#1a1a1a' }}>
-                                          {revFeedback ? (revAwarded === 0 ? <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} /> : revAwarded !== null && revAwarded < revMax ? <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} /> : <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />) : null}
-                                          {revFeedback ? 'Marking Complete' : 'Marking…'}
-                                        </h3>
-                                        <p className="text-sm mt-1" style={{ color: '#525252' }}>Assessed against NESA Guidelines</p>
-                                      </div>
-                                      <div className="text-right">
-                                        <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: '#404040' }}>Score</span>
-                                        <div className="flex items-baseline gap-1 justify-end">
-                                          <span className="text-4xl font-bold" style={{ color: '#1a1a1a' }}>{revAwarded === null ? '--' : revAwarded}</span>
-                                          <span className="text-xl font-medium" style={{ color: '#404040' }}>/{revMax}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                      <div className="flex items-center justify-between gap-2 mb-2">
-                                        <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
-                                        {isDevMode && revQuestion?.id && (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setViewMode('dev-questions');
-                                              setDevTab('manage');
-                                              setSelectedManageQuestionId(revQuestion.id);
-                                              setManageQuestionDraft(revQuestion);
-                                              setManageQuestionEditMode(false);
-                                            }}
-                                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
-                                          >
-                                            <Edit2 className="w-3.5 h-3.5" />
-                                            Edit
-                                          </button>
-                                        )}
-                                      </div>
-                                      <div
-                                        className="font-serif rounded-lg border p-3"
-                                        style={{ color: 'var(--clr-primary-a50)', borderColor: 'var(--clr-surface-tonal-a20)' }}
-                                      >
-                                        <QuestionTextWithDividers text={revQuestion?.question_text || ''} />
-                                      </div>
-                                    </div>
-                                    {revFeedback && (
-                                      <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                        <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}><TrendingUp className="w-4 h-4" />{isMcq ? 'Answer Explanation' : 'AI Feedback'}</h4>
-                                        <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a50)' }}>
-                                          {isMcq ? (revFeedback.mcq_explanation ? <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} /> : <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>Explanation not available.</p>) : revFeedback.ai_evaluation ? <LatexText text={revFeedback.ai_evaluation} /> : revFeedback._error ? <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed.</p> : <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>AI evaluation is being processed...</p>}
-                                        </div>
-                                      </div>
-                                    )}
-                                    {!isMcq && revCriteriaText && (
-                                      <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                        <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}><CheckCircle2 className="w-4 h-4" />Marking Criteria</h4>
-                                        <div className="overflow-x-auto">
-                                          <table className="w-full">
-                                            <thead><tr className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><th className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Criteria</th><th className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24" style={{ color: 'var(--clr-surface-a40)' }}>Marks</th></tr></thead>
-                                            <tbody>
-                                              {(() => {
-                                                const items = parseCriteriaForDisplay(revCriteriaText);
-                                                const rows: React.ReactNode[] = [];
-                                                let lastSubpart: string | null = null;
-                                                items.forEach((item, idx) => {
-                                                  if (item.type === 'heading') {
-                                                    lastSubpart = null;
-                                                    rows.push(<tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{item.text}</td></tr>);
-                                                    return;
-                                                  }
-                                                  if (item.subpart && item.subpart !== lastSubpart) {
-                                                    lastSubpart = item.subpart;
-                                                    rows.push(<tr key={`sub-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Part ({item.subpart})</td></tr>);
-                                                  }
-                                                  rows.push(<tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td className="py-3 px-3" style={{ color: 'var(--clr-primary-a50)' }}><LatexText text={item.text} /></td><td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a10)' }}>{item.marks}</td></tr>);
-                                                });
-                                                return rows;
-                                              })()}
-                                            </tbody>
-                                          </table>
-                                        </div>
-                                      </div>
-                                    )}
-                                    {(revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? revQuestion?.sample_answer_image) && (
-                                      <div className="p-8 border-t space-y-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                        <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}><BookOpen className="w-5 h-5" />{isMcq ? 'Answer Explanation' : 'Sample Solution'}</h3>
-                                        {isMcq && revFeedback?.mcq_explanation ? (
-                                          <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800" style={{ borderColor: 'var(--clr-success-a10)' }}>
-                                            <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} />
-                                          </div>
-                                        ) : (revFeedback?.sample_answer ?? revQuestion?.sample_answer) || revQuestion?.sample_answer_image ? (
-                                          <>
-                                            {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) ? (
-                                              <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800" style={{ borderColor: 'var(--clr-success-a10)' }}>
-                                                <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
-                                              </div>
-                                            ) : null}
-                                            {revQuestion?.sample_answer_image ? (
-                                              <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
-                                                <img src={revQuestion.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
-                                              </div>
-                                            ) : null}
-                                          </>
-                                        ) : null}
-                                      </div>
-                                    )}
-                                    {revSubmitted && (
-                                      <div className="p-8 border-t space-y-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                        <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-info-a20)' }}><Eye className="w-5 h-5" />Your Submitted Answer</h3>
-                                        <div className="rounded-lg p-4 border" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                          {isMcq ? <p className="font-semibold">Selected Answer: {revSubmitted}</p> : <img src={revSubmitted} alt="Your answer" className="w-full rounded" style={{ border: '1px solid var(--clr-surface-tonal-a20)' }} />}
-                                        </div>
-                                      </div>
-                                    )}
-                                    <div className="border-t p-6 flex gap-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                      <button onClick={() => setSavedExamReviewIndex((i) => Math.max(0, i - 1))} disabled={savedExamReviewIndex === 0} className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}><ChevronLeft className="w-4 h-4" />Previous</button>
-                                      <button onClick={() => setSavedExamReviewIndex((i) => Math.min((selectedAttempt.examAttempts?.length ?? 1) - 1, i + 1))} disabled={savedExamReviewIndex >= (selectedAttempt.examAttempts?.length ?? 0) - 1} className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" style={{ backgroundColor: 'var(--clr-primary-a0)', borderColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}>Next<ChevronRight className="w-4 h-4" /></button>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
+                          <div className="ml-auto flex items-center gap-2">
+                            <div className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>
+                              Question {paperIndex + 1} of {paperQuestions.length}
                             </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-6 rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                          <h1 className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Saved Exam: {selectedAttempt.paperYear} {selectedAttempt.paperSubject}</h1>
-                          <div className="grid gap-4 sm:grid-cols-3">
-                            <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                              <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Total Score</div>
-                              <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{selectedAttempt.totalScore} / {selectedAttempt.totalPossible}</div>
-                            </div>
-                            <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                              <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Percentage</div>
-                              <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{selectedAttempt.totalPossible > 0 ? Math.round((selectedAttempt.totalScore / selectedAttempt.totalPossible) * 100) : 0}%</div>
-                            </div>
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marks per question</h3>
-                            <ul className="space-y-2">
-                              {(selectedAttempt.examAttempts || []).map((a: any, i: number) => (
-                                <li key={i} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                  <span style={{ color: 'var(--clr-primary-a50)' }}>Q{i + 1}</span>
-                                  <span style={{ color: 'var(--clr-primary-a50)' }}>{a.feedback ? (typeof a.feedback.score === 'number' ? a.feedback.score : '—') : '—'}</span>
-                                  <span style={{ color: 'var(--clr-surface-a40)' }}>/ {a.question?.marks ?? 0}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3">
                             <button
-                              onClick={() => openSavedExamAsPaper(selectedAttempt)}
-                              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
-                              style={{ backgroundColor: 'var(--clr-info-a0)', color: 'var(--clr-light-a0)' }}
+                              type="button"
+                              onClick={() => {
+                                const { startIndex } = getDisplayGroupAt(paperQuestions, paperIndex);
+                                goToPaperQuestion(startIndex - 1);
+                              }}
+                              disabled={paperIndex === 0}
+                              aria-label="Previous question"
+                              className="h-10 w-10 inline-flex items-center justify-center rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a10)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
                             >
-                              <BookOpen className="w-5 h-5" />
-                              View as Paper
+                              <ChevronLeft className="w-5 h-5" />
                             </button>
                             <button
-                              onClick={() => exportSavedExamPdf(false)}
-                              disabled={exportingSavedExamPdf !== null}
-                              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                              type="button"
+                              onClick={handleNextQuestion}
+                              disabled={paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length}
+                              aria-label="Next question"
+                              className="h-10 w-10 inline-flex items-center justify-center rounded-lg border transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
+                              style={{
+                                backgroundColor: 'var(--clr-btn-primary)',
+                                borderColor: 'var(--clr-btn-primary-hover)',
+                                color: 'var(--clr-btn-primary-text)',
+                              }}
                             >
-                              <Download className="w-5 h-5" />
-                              {exportingSavedExamPdf === 'exam' ? 'Exporting Exam PDF…' : 'Export Exam PDF'}
+                              <ChevronRight className="w-5 h-5" />
                             </button>
                             <button
-                              onClick={() => exportSavedExamPdf(true)}
-                              disabled={exportingSavedExamPdf !== null}
-                              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              style={{ backgroundColor: 'var(--clr-btn-primary)', color: 'var(--clr-btn-primary-text)' }}
+                              type="button"
+                              onClick={() => setShowPaperQuestionNavigator((prev) => !prev)}
+                              className="px-4 py-2 rounded-lg border text-sm font-semibold transition cursor-pointer"
+                              style={{
+                                backgroundColor: showPaperQuestionNavigator ? 'var(--clr-btn-primary)' : 'var(--clr-surface-a10)',
+                                borderColor: showPaperQuestionNavigator ? 'var(--clr-btn-primary-hover)' : 'var(--clr-surface-tonal-a20)',
+                                color: showPaperQuestionNavigator ? 'var(--clr-btn-primary-text)' : 'var(--clr-primary-a50)',
+                              }}
                             >
-                              <Download className="w-5 h-5" />
-                              {exportingSavedExamPdf === 'solutions' ? 'Exporting Solutions PDF…' : 'Export Exam + Solutions PDF'}
-                            </button>
-                            <button
-                              onClick={() => { setSavedExamReviewMode(true); setSavedExamReviewIndex(0); }}
-                              className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
-                              style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
-                            >
-                              <BookOpen className="w-5 h-5" />
-                              Review Questions
+                              {showPaperQuestionNavigator ? 'Hide Question List' : 'Show Question List'}
                             </button>
                           </div>
-                        </div>
-                      )
-                    ) : (
-                    <div 
-                      className="rounded-2xl border overflow-hidden shadow-2xl space-y-6 p-8"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a10)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                      }}
-                    >
-                      {/* Question */}
-                      <div className="space-y-2">
-                        <h3 
-                          className="text-sm font-bold uppercase tracking-widest"
-                          style={{ color: 'var(--clr-surface-a40)' }}
-                        >Question ({selectedAttempt.marks} marks)</h3>
-                        <div 
-                          className="font-serif text-lg"
-                          style={{ color: 'var(--clr-light-a0)' }}
-                        >
-                          <LatexText text={selectedAttempt.questionText} />
-                          {selectedAttempt.graphImageData && (
-                            <div className="my-4">
-                              <img
-                                src={selectedAttempt.graphImageData}
-                                alt="Question graph"
-                                className={`rounded-lg border graph-image graph-image--${selectedAttempt.graphImageSize || 'medium'}`}
-                                style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <div 
-                          className="text-sm mt-2"
-                          style={{ color: 'var(--clr-surface-a50)' }}
-                        >{selectedAttempt.subject} • {selectedAttempt.topic}</div>
-                      </div>
-
-                      {/* Divider */}
-                      <div 
-                        className="border-t"
-                        style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                      />
-
-                      {/* Student's Answer */}
-                      {selectedAttempt.submittedAnswer && (
-                        <div className="space-y-2">
-                          <h3 
-                            className="text-sm font-bold uppercase tracking-widest"
-                            style={{ color: 'var(--clr-info-a20)' }}
-                          >Your Answer</h3>
-                          {selectedAttempt.questionType === 'multiple_choice' ? (
-                            <div 
-                              className="rounded-lg border px-4 py-3"
-                              style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                            >
-                              <span className="font-semibold">Selected: {selectedAttempt.submittedAnswer}</span>
-                            </div>
-                          ) : (
-                            <img 
-                              src={selectedAttempt.submittedAnswer} 
-                              alt="Student answer" 
-                              className="w-full rounded-lg border"
-                              style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                            />
-                          )}
                         </div>
                       )}
 
-                      {/* AI Feedback / Explanation */}
-                      {(selectedAttempt.feedback?.ai_evaluation || selectedAttempt.feedback?.mcq_explanation) && (
-                        <div 
-                          className="space-y-3 p-6 rounded-lg border"
+                      {isPaperMode && showPaperQuestionNavigator && (
+                        <aside
+                          className="fixed right-4 top-24 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border shadow-xl"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a0)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <div
+                            className="px-4 py-3 border-b text-xs font-bold uppercase tracking-widest"
+                            style={{
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                              color: 'var(--clr-surface-a40)',
+                            }}
+                          >
+                            Questions ({paperDisplayGroups.length})
+                          </div>
+                          <div className="max-h-[70vh] overflow-y-auto p-2 space-y-1">
+                            {paperDisplayGroups.map((group, idx) => {
+                              const isActive = group.startIndex === activePaperGroupStartIndex;
+                              return (
+                                <button
+                                  key={`${group.label}-${group.startIndex}-${idx}`}
+                                  type="button"
+                                  onClick={() => goToPaperQuestion(group.startIndex)}
+                                  className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                                  style={{
+                                    backgroundColor: isActive ? 'var(--clr-btn-primary)' : 'transparent',
+                                    color: isActive ? 'var(--clr-btn-primary-text)' : 'var(--clr-primary-a50)',
+                                  }}
+                                >
+                                  Question {group.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </aside>
+                      )}
+
+                      {/* Question Card */}
+                      <div className="relative">
+                        {isPaperMode && (
+                          <div className="absolute right-4 top-4 z-20">
+                            <div className="relative">
+                              <button
+                                type="button"
+                                aria-label="Question information"
+                                onClick={() => setShowQuestionInfo((prev) => !prev)}
+                                className="h-11 w-11 inline-flex items-center justify-center rounded border shadow-sm transition cursor-pointer"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-surface-a50)',
+                                }}
+                              >
+                                <Info className="w-5 h-5" />
+                              </button>
+                              {showQuestionInfo && question && (
+                                <div
+                                  className="absolute right-0 top-14 z-30 w-72 rounded-xl border p-4 shadow-xl"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                  }}
+                                >
+                                  <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>
+                                    Question Info
+                                  </p>
+                                  <div className="space-y-1.5 text-sm" style={{ color: 'var(--clr-primary-a50)' }}>
+                                    <p><strong>Number:</strong> {question.question_number || '-'}</p>
+                                    <p><strong>Marks:</strong> {question.marks ?? '-'}</p>
+                                    <p><strong>Subject:</strong> {question.subject || '-'}</p>
+                                    <p><strong>Topic:</strong> {question.topic || '-'}</p>
+                                    <p><strong>Year:</strong> {question.year || '-'}</p>
+                                    <p><strong>Type:</strong> {question.question_type === 'multiple_choice' ? 'Multiple Choice' : 'Written Response'}</p>
+                                    <p><strong>Source:</strong> {question.school_name || 'HSC'}</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          <div
+                            className={`${isPaperMode ? 'paper-question-card rounded-md border p-6 lg:p-10' : 'glass-card rounded-2xl border border-neutral-100 p-6 lg:p-10'} transition-all duration-500 ${isGenerating ? 'blur-sm scale-[0.99] opacity-80' : 'blur-0 scale-100 opacity-100'}`}
+                          >
+                            {loading ? (
+                              <div className="flex items-center justify-center min-h-[300px]">
+                                <div className="text-center">
+                                  <RefreshCw className="w-8 h-8 text-neutral-400 animate-spin mx-auto mb-2" />
+                                  <p className="text-neutral-500">Loading question...</p>
+                                </div>
+                              </div>
+                            ) : error ? (
+                              <div className="flex items-center justify-center min-h-[300px]">
+                                <div className="text-center">
+                                  <p className="text-red-600 font-medium">Error: {error}</p>
+                                  <button
+                                    onClick={() => (isPaperMode ? goToPaperQuestion(paperIndex) : generateQuestion())}
+                                    className="mt-4 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                                  >
+                                    Try Again
+                                  </button>
+                                </div>
+                              </div>
+                            ) : question ? (
+                              <>
+                                {isPaperMode ? (
+                                  <div className="mb-6">
+                                    <div className="exam-question-meta mb-5">
+                                      {question.marks} marks{question.topic ? ` • ${question.topic}` : ''}
+                                    </div>
+                                    <div className="exam-question-body text-neutral-900">
+                                      <QuestionTextWithDividers text={question.question_text} />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex flex-col gap-4 border-b border-neutral-100 pb-6 mb-8">
+                                      <div className="flex justify-between items-start gap-6">
+                                        <div>
+                                          <span className="block font-bold text-2xl text-neutral-900">Question {question.question_number || ''}</span>
+                                          <span className="text-neutral-600 font-semibold text-lg block">{question.marks} Marks</span>
+                                          <span className="text-neutral-500 text-base block mt-1">{question.topic}</span>
+                                        </div>
+                                        <div className="text-right flex flex-col items-end gap-2">
+                                          {isDevMode && question.id && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const canonical =
+                                                  allQuestions.find((q) => q?.id === question.id) ||
+                                                  paperQuestions.find((q) => q?.id === question.id) ||
+                                                  question;
+                                                setInlineEditDraft({ ...canonical });
+                                              }}
+                                              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                                            >
+                                              <Edit2 className="w-4 h-4" />
+                                              Edit question
+                                            </button>
+                                          )}
+                                          <span className="text-lg font-semibold text-neutral-600 block">{question.subject}</span>
+                                          <span className="text-neutral-400 font-medium uppercase tracking-widest text-xs block mt-1">
+                                            {question.year} {question.school_name || 'HSC'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--clr-question-bg)', borderColor: 'var(--clr-question-border)' }}>
+                                      <div className="text-lg leading-relaxed space-y-4 font-serif whitespace-pre-wrap text-neutral-800">
+                                        <QuestionTextWithDividers text={question.question_text} />
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+
+                                {question.graph_image_data && (
+                                  <div className={`${isPaperMode ? 'mt-6 p-0 border-0' : 'mt-4 rounded-xl border p-4'}`} style={isPaperMode ? undefined : { backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                    <img
+                                      src={question.graph_image_data}
+                                      alt="Question graph"
+                                      className={`${isPaperMode ? 'graph-image graph-image--medium' : `rounded-lg border graph-image graph-image--${question.graph_image_size || 'medium'}`}`}
+                                      style={isPaperMode ? undefined : { borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                    />
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="flex items-center justify-center min-h-[300px]">
+                                <p className="text-neutral-500">Loading question…</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Multiple Choice Answer */}
+                      {appState === 'idle' && question?.question_type === 'multiple_choice' && (
+                        <div
+                          className="border rounded-2xl shadow-2xl p-6"
                           style={{
                             backgroundColor: 'var(--clr-surface-a10)',
                             borderColor: 'var(--clr-surface-tonal-a20)',
                           }}
                         >
-                          <h3 
-                            className="text-sm font-bold uppercase tracking-widest"
-                            style={{ color: 'var(--clr-info-a20)' }}
-                          >{selectedAttempt.questionType === 'multiple_choice' ? 'Answer Explanation' : 'AI Feedback'}</h3>
-                          <div 
-                            className="space-y-2"
-                            style={{ color: 'var(--clr-primary-a40)' }}
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <label
+                              className="block text-sm font-semibold uppercase tracking-wide"
+                              style={{ color: 'var(--clr-surface-a40)' }}
+                            >Answer Options</label>
+                            {(() => {
+                              const hasImages = [question.mcq_option_a_image, question.mcq_option_b_image, question.mcq_option_c_image, question.mcq_option_d_image].some(Boolean);
+                              return hasImages ? (
+                                <div className="flex items-center gap-2">
+                                  <label className="text-xs text-neutral-600">Image size:</label>
+                                  <input
+                                    type="range"
+                                    min="64"
+                                    max="512"
+                                    step="16"
+                                    value={mcqImageSize}
+                                    onChange={(e) => setMcqImageSize(Number(e.target.value))}
+                                    className="w-24"
+                                  />
+                                  <span className="text-xs text-neutral-600 w-12">{mcqImageSize}px</span>
+                                </div>
+                              ) : null;
+                            })()}
+                          </div>
+                          <div className="space-y-3">
+                            {([
+                              { label: 'A' as const, text: stripOuterBraces(question.mcq_option_a || ''), image: question.mcq_option_a_image || null },
+                              { label: 'B' as const, text: stripOuterBraces(question.mcq_option_b || ''), image: question.mcq_option_b_image || null },
+                              { label: 'C' as const, text: stripOuterBraces(question.mcq_option_c || ''), image: question.mcq_option_c_image || null },
+                              { label: 'D' as const, text: stripOuterBraces(question.mcq_option_d || ''), image: question.mcq_option_d_image || null },
+                            ]).map((option) => (
+                              <button
+                                key={option.label}
+                                type="button"
+                                onClick={() => setSelectedMcqAnswer(option.label)}
+                                className="w-full text-left rounded-xl border px-4 py-3 transition-all cursor-pointer"
+                                style={{
+                                  backgroundColor: selectedMcqAnswer === option.label
+                                    ? 'var(--clr-primary-a0)'
+                                    : 'var(--clr-surface-a0)',
+                                  borderColor: selectedMcqAnswer === option.label
+                                    ? 'var(--clr-primary-a0)'
+                                    : 'var(--clr-surface-tonal-a20)',
+                                  color: selectedMcqAnswer === option.label
+                                    ? 'var(--clr-dark-a0)'
+                                    : 'var(--clr-primary-a50)',
+                                }}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <span className="font-bold text-sm">{option.label}.</span>
+                                  <div className="flex-1 font-serif min-w-0">
+                                    {option.image ? (
+                                      <img src={option.image} alt={`Option ${option.label}`} className="max-w-full object-contain rounded" style={{ maxHeight: `${mcqImageSize}px`, borderColor: 'var(--clr-surface-tonal-a20)' }} />
+                                    ) : (
+                                      <LatexText text={option.text || ''} />
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => submitAnswer()}
+                            disabled={isMarking}
+                            className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition text-sm disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
+                            style={{
+                              backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-btn-success)',
+                              color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-btn-success-text)',
+                              border: isMarking ? undefined : '1px solid var(--clr-btn-success-hover)',
+                            }}
                           >
-                            <LatexText text={selectedAttempt.feedback.ai_evaluation || stripOuterBraces(selectedAttempt.feedback.mcq_explanation || '')} />
+                            {isMarking ? (
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                            {isMarking ? 'Submitting...' : 'Submit Answer'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Drawing Canvas */}
+                      {appState === 'idle' && question?.question_type !== 'multiple_choice' && (
+                        <div
+                          className="border rounded-2xl shadow-2xl p-4"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                            <label
+                              className="text-sm font-semibold uppercase tracking-wide"
+                              style={{ color: 'var(--clr-surface-a40)' }}
+                            >Answer Area</label>
+                            {isIpad && (
+                              <span className="text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
+                                Use two fingers to scroll.
+                              </span>
+                            )}
+                          </div>
+                          {/* Excalidraw answer area (toolbar and controls handled by Excalidraw itself) */}
+                          <div
+                            className="rounded-xl bg-white border border-neutral-100"
+                            style={{ touchAction: 'none' }}
+                            onTouchMove={(e) => {
+                              if (isIpad && e.touches.length < 2) {
+                                e.preventDefault();
+                              }
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: `${canvasHeight}px`,
+                              }}
+                            >
+                              <Excalidraw
+                                theme="light"
+                                initialData={{
+                                  appState: {
+                                    currentItemStrokeWidth: 1,
+                                  },
+                                }}
+                                excalidrawAPI={(api) => {
+                                  excalidrawApiRef.current = api;
+                                }}
+                                onChange={(
+                                  elements: readonly ExcalidrawElement[],
+                                  appState: ExcalidrawAppState,
+                                  files: BinaryFiles
+                                ) => {
+                                  excalidrawSceneRef.current = {
+                                    elements,
+                                    appState,
+                                    files,
+                                  };
+                                }}
+                              />
+                            </div>
                           </div>
                         </div>
                       )}
 
-                      {/* Marking Criteria */}
-                      {selectedAttempt.questionType !== 'multiple_choice' && selectedAttempt.feedback?.marking_criteria && (
-                        <div className="space-y-3">
-                          <h3 
-                            className="text-sm font-bold uppercase tracking-widest"
-                            style={{ color: 'var(--clr-surface-a40)' }}
-                          >Marking Criteria</h3>
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead>
-                                <tr 
-                                  className="border-b"
-                                  style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                      {/* Canvas Controls: Upload + Submit (below answer area) */}
+                      {appState === 'idle' && question?.question_type !== 'multiple_choice' && (
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <div className="flex gap-2 sm:ml-auto">
+                            <label
+                              className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold transition cursor-pointer text-sm"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              <Upload className="w-4 h-4" />
+                              <span>Upload</span>
+                              <input
+                                type="file"
+                                hidden
+                                accept="image/*"
+                                onChange={uploadImage}
+                              />
+                            </label>
+
+                            <button
+                              onClick={() => submitAnswer()}
+                              disabled={isMarking}
+                              className="flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold transition text-sm flex-1 sm:flex-none justify-center disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer hover:opacity-90"
+                              style={{
+                                backgroundColor: isMarking ? 'var(--clr-surface-a30)' : 'var(--clr-btn-success)',
+                                color: isMarking ? 'var(--clr-surface-a50)' : 'var(--clr-btn-success-text)',
+                                border: isMarking ? undefined : '1px solid var(--clr-btn-success-hover)',
+                              }}
+                            >
+                              {isMarking ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Send className="w-4 h-4" />
+                              )}
+                              {isMarking ? 'Submitting...' : 'Submit'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Toolbar */}
+                      {appState === 'idle' && !examConditionsActive && (
+                        <div
+                          className="flex flex-wrap items-center justify-between gap-4 backdrop-blur-md p-4 rounded-2xl border"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              onClick={() => setShowAnswer(!showAnswer)}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              <Eye className="w-4 h-4" />
+                              {showAnswer ? 'Hide' : 'Show'} Solution
+                            </button>
+                            {isPaperMode && (
+                              <>
+                                <button
+                                  onClick={() => exportPaperPdf(false)}
+                                  disabled={exportingPaperPdf !== null}
+                                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
                                 >
-                                  <th 
-                                    className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider"
-                                    style={{ color: 'var(--clr-surface-a40)' }}
-                                  >Criteria</th>
-                                  <th 
-                                    className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24"
-                                    style={{ color: 'var(--clr-surface-a40)' }}
-                                  >Marks</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(() => {
-                                  const criteriaText = selectedAttempt.feedback.marking_criteria;
-                                  const items = parseCriteriaForDisplay(criteriaText);
-                                  const rows: React.ReactNode[] = [];
-                                  let lastSubpart: string | null = null;
-
-                                  items.forEach((item, idx) => {
-                                    if (item.type === 'heading') {
-                                      lastSubpart = null;
-                                      rows.push(
-                                        <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                          <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>
-                                            {item.text}
-                                          </td>
-                                        </tr>
-                                      );
-                                      return;
-                                    }
-
-                                    if (item.subpart && item.subpart !== lastSubpart) {
-                                      lastSubpart = item.subpart;
-                                      rows.push(
-                                        <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                          <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>
-                                            Part ({item.subpart})
-                                          </td>
-                                        </tr>
-                                      );
-                                    }
-
-                                    rows.push(
-                                      <tr 
-                                        key={`${item.key}-${idx}`} 
-                                        className="border-b transition-colors"
-                                        style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                                      >
-                                        <td 
-                                          className="py-3 px-3"
-                                          style={{ color: 'var(--clr-light-a0)' }}
-                                        >
-                                          <LatexText text={item.text} />
-                                        </td>
-                                        <td 
-                                          className="py-3 px-3 text-right font-mono font-bold"
-                                          style={{ color: 'var(--clr-success-a10)' }}
-                                        >
-                                          {item.marks}
-                                        </td>
-                                      </tr>
-                                    );
-                                  });
-
-                                  return rows;
-                                })()}
-                              </tbody>
-                            </table>
+                                  <Download className="w-4 h-4" />
+                                  {exportingPaperPdf === 'exam' ? 'Exporting Exam PDF…' : 'Export Exam PDF'}
+                                </button>
+                                <button
+                                  onClick={() => exportPaperPdf(true)}
+                                  disabled={exportingPaperPdf !== null}
+                                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  style={{
+                                    backgroundColor: 'var(--clr-btn-primary)',
+                                    color: 'var(--clr-btn-primary-text)',
+                                    border: '1px solid var(--clr-btn-primary-hover)',
+                                  }}
+                                >
+                                  <Download className="w-4 h-4" />
+                                  {exportingPaperPdf === 'solutions' ? 'Exporting Solutions PDF…' : 'Export Exam + Solutions PDF'}
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
 
-                      {/* Sample Solution */}
-                      {selectedAttempt.sampleAnswer && (
-                        <div 
-                          className="space-y-3 p-6 rounded-lg border"
+                      {/* Marking State */}
+                      {appState === 'marking' && (
+                        <div
+                          className="rounded-2xl p-8 shadow-2xl border flex items-center justify-center"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <div className="text-center">
+                            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3" style={{ color: 'var(--clr-surface-a40)' }} />
+                            <p className="text-lg" style={{ color: 'var(--clr-surface-a40)' }}>
+                              Submitting for marking...
+                            </p>
+                            <p className="text-sm mt-1" style={{ color: 'var(--clr-surface-a50)' }}>
+                              Please wait while we assess your response.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Solution Panel */}
+                      {showAnswer && appState === 'idle' && (
+                        <div
+                          className="rounded-2xl p-8 shadow-2xl relative overflow-hidden border"
                           style={{
                             backgroundColor: 'var(--clr-surface-a10)',
                             borderColor: 'var(--clr-success-a10)',
                           }}
                         >
-                          <h3 
-                            className="text-sm font-bold uppercase tracking-widest"
+                          <div
+                            className="absolute top-0 left-0 w-1 h-full"
+                            style={{ backgroundColor: 'var(--clr-success-a10)' }}
+                          />
+                          <h3
+                            className="font-bold text-xl mb-4"
                             style={{ color: 'var(--clr-success-a20)' }}
                           >Sample Solution</h3>
-                          {selectedAttempt.sampleAnswer ? (
-                            <div 
-                              className="font-serif"
-                              style={{ color: 'var(--clr-light-a0)' }}
-                            >
-                              <LatexText text={selectedAttempt.sampleAnswer} />
-                            </div>
-                          ) : null}
-                          {selectedAttempt.question?.sample_answer_image ? (
-                            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
-                              <img src={selectedAttempt.question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
-                            </div>
-                          ) : null}
+                          <div className="font-serif text-lg leading-relaxed space-y-4 text-neutral-800">
+                            {question?.question_type === 'multiple_choice' ? (
+                              <>
+                                {question.mcq_correct_answer && (
+                                  <p className="font-semibold">Correct Answer: {question.mcq_correct_answer}</p>
+                                )}
+                                {question.mcq_explanation ? (
+                                  <LatexText text={stripOuterBraces(question.mcq_explanation)} />
+                                ) : (
+                                  <p className="text-sm italic" style={{ color: 'var(--clr-surface-a40)' }}>
+                                    Explanation not available.
+                                  </p>
+                                )}
+                              </>
+                            ) : question?.sample_answer || question?.sample_answer_image ? (
+                              <>
+                                {question.sample_answer ? <LatexText text={question.sample_answer} /> : null}
+                                {question.sample_answer_image ? (
+                                  <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                    <img src={question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : (
+                              <>
+                                <p>A detailed solution will appear here. Use this as a guide to check your working and understanding.</p>
+                                <p
+                                  className="text-sm italic"
+                                  style={{ color: 'var(--clr-surface-a40)' }}
+                                >Use Next Question to see more.</p>
+                              </>
+                            )}
+                          </div>
                         </div>
                       )}
-                    </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {/* Attempts List */}
-                    {savedAttempts.length === 0 ? (
-                      <div className="text-center py-16">
-                        <Bookmark 
-                          className="w-16 h-16 mx-auto mb-4"
-                          style={{ color: 'var(--clr-surface-a30)' }}
-                        />
-                        <p 
-                          className="text-lg"
-                          style={{ color: 'var(--clr-surface-a40)' }}
-                        >No saved answers yet</p>
-                        <p 
-                          className="text-sm mt-2"
-                          style={{ color: 'var(--clr-surface-a50)' }}
-                        >Submit and save an answer to see it here</p>
-                      </div>
-                    ) : (
-                      <div className="grid gap-4">
-                        {savedAttempts.map((attempt) => (
+
+                      {/* Reviewed Feedback */}
+                      {appState === 'reviewed' && feedback && !examConditionsActive && (
+                        <div className="animate-fade-in space-y-4">
+
+                          {/* Marking Report Card */}
                           <div
-                            key={attempt.id}
-                            className="border rounded-xl p-6 transition-colors space-y-3"
+                            className="rounded-2xl overflow-hidden border shadow-2xl"
                             style={{
                               backgroundColor: 'var(--clr-surface-a10)',
                               borderColor: 'var(--clr-surface-tonal-a20)',
                             }}
                           >
-                            <button
-                              onClick={() => { setSelectedAttempt(attempt); setSavedExamReviewMode(false); }}
-                              className="w-full text-left cursor-pointer"
+
+                            {/* Report Header */}
+                            <div
+                              className="p-6 border-b flex flex-wrap items-center justify-between gap-6"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                              }}
                             >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <h3 className="font-bold text-lg" style={{ color: 'var(--clr-primary-a50)' }}>
-                                    {attempt.type === 'exam' ? `${attempt.paperYear || ''} ${attempt.paperSubject || ''}` : attempt.subject}
-                                  </h3>
-                                  <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>
-                                    {attempt.type === 'exam' ? attempt.paperGrade : attempt.topic}
-                                  </p>
-                                </div>
-                                <div className="text-right flex-shrink-0 ml-4">
-                                  {attempt.type === 'exam' ? (
-                                    <>
-                                      <div className="text-2xl font-bold" style={{ color: 'var(--clr-success-a10)' }}>
-                                        {attempt.totalScore} / {attempt.totalPossible}
-                                      </div>
-                                      <div className="text-xs" style={{ color: 'var(--clr-surface-a50)' }}>Exam</div>
-                                    </>
+                              <div>
+                                <h3
+                                  className="text-xl font-bold flex items-center gap-2"
+                                  style={{ color: '#1a1a1a' }}
+                                >
+                                  {awardedMarks === 0 ? (
+                                    <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} />
+                                  ) : awardedMarks !== null && awardedMarks < maxMarks ? (
+                                    <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} />
                                   ) : (
-                                    <div className="text-2xl font-bold" style={{ color: 'var(--clr-success-a10)' }}>{attempt.marks}m</div>
+                                    <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />
                                   )}
-                                  <div className="text-xs" style={{ color: 'var(--clr-surface-a50)' }}>{new Date(attempt.savedAt).toLocaleDateString()}</div>
-                                </div>
+                                  Marking Complete
+                                </h3>
+                                <p
+                                  className="text-sm mt-1"
+                                  style={{ color: '#525252' }}
+                                >Assessed against NESA Guidelines</p>
                               </div>
-                              {attempt.type !== 'exam' && (
-                                <>
-                                  <div className="pt-2 border-t mt-2" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                    <p className="text-sm line-clamp-2" style={{ color: 'var(--clr-primary-a40)' }}>{attempt.questionText}</p>
+
+                              <div className="flex items-center gap-6">
+                                <div className="text-right">
+                                  <span
+                                    className="block text-xs font-bold uppercase tracking-widest"
+                                    style={{ color: '#404040' }}
+                                  >Score</span>
+                                  <div className="flex items-baseline gap-1 justify-end">
+                                    <span
+                                      className="text-4xl font-bold"
+                                      style={{ color: '#1a1a1a' }}
+                                    >{awardedMarks === null ? '--' : awardedMarks}</span>
+                                    <span
+                                      className="text-xl font-medium"
+                                      style={{ color: '#404040' }}
+                                    >/{maxMarks}</span>
                                   </div>
-                                  {(attempt.feedback?.ai_evaluation || attempt.feedback?.mcq_explanation) && (
-                                    <div className="pt-2">
-                                      <p className="text-xs text-zinc-500 line-clamp-1">
-                                        {stripOuterBraces(attempt.feedback.ai_evaluation || attempt.feedback.mcq_explanation || '').split('\n')[0]}
-                                      </p>
+                                  {isMultipleChoiceReview && (
+                                    <div className="mt-2 text-xs" style={{ color: '#525252' }}>
+                                      <div>Selected: <strong style={{ color: '#1a1a1a' }}>{feedback?.mcq_selected_answer || submittedAnswer || '-'}</strong></div>
+                                      <div>Correct: <strong style={{ color: 'var(--clr-success-a0)' }}>{feedback?.mcq_correct_answer || question?.mcq_correct_answer || '-'}</strong></div>
                                     </div>
                                   )}
-                                </>
-                              )}
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); removeSavedAttempt(attempt.id); }}
-                              className="text-sm font-medium cursor-pointer"
-                              style={{ color: 'var(--clr-danger-a10)' }}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* AI Feedback / MCQ Explanation Section */}
+                            <div
+                              className="p-6 border-b"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a10)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                              }}
                             >
-                              Unsave
-                            </button>
+                              <h4
+                                className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"
+                                style={{ color: 'var(--clr-surface-a40)' }}
+                              >
+                                <TrendingUp className="w-4 h-4" />
+                                {isMultipleChoiceReview ? 'Answer Explanation' : 'AI Feedback'}
+                              </h4>
+                              <div
+                                className="text-base leading-relaxed space-y-3"
+                                style={{ color: 'var(--clr-primary-a50)' }}
+                              >
+                                {isMultipleChoiceReview ? (
+                                  feedback?.mcq_explanation ? (
+                                    <LatexText text={stripOuterBraces(feedback.mcq_explanation)} />
+                                  ) : (
+                                    <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>Explanation not available.</p>
+                                  )
+                                ) : feedback.ai_evaluation ? (
+                                  <LatexText text={feedback.ai_evaluation} />
+                                ) : (
+                                  <p
+                                    className="italic"
+                                    style={{ color: 'var(--clr-surface-a50)' }}
+                                  >AI evaluation is being processed...</p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Marking Criteria Section */}
+                            {!isMultipleChoiceReview && (
+                              <div
+                                className="p-6 border-b"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a10)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                }}
+                              >
+                                <h4
+                                  className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"
+                                  style={{ color: 'var(--clr-surface-a40)' }}
+                                >
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  Marking Criteria
+                                </h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full">
+                                    <thead>
+                                      <tr
+                                        className="border-b"
+                                        style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                      >
+                                        <th
+                                          className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider"
+                                          style={{ color: 'var(--clr-surface-a40)' }}
+                                        >Criteria</th>
+                                        <th
+                                          className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24"
+                                          style={{ color: 'var(--clr-surface-a40)' }}
+                                        >Marks</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(() => {
+                                        const criteriaText = feedback.marking_criteria;
+                                        const items = parseCriteriaForDisplay(criteriaText);
+                                        const rows: React.ReactNode[] = [];
+                                        let lastSubpart: string | null = null;
+
+                                        items.forEach((item, idx) => {
+                                          if (item.type === 'heading') {
+                                            lastSubpart = null;
+                                            rows.push(
+                                              <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                                <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>
+                                                  {item.text}
+                                                </td>
+                                              </tr>
+                                            );
+                                            return;
+                                          }
+
+                                          if (item.subpart && item.subpart !== lastSubpart) {
+                                            lastSubpart = item.subpart;
+                                            rows.push(
+                                              <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                                <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>
+                                                  Part ({item.subpart})
+                                                </td>
+                                              </tr>
+                                            );
+                                          }
+
+                                          rows.push(
+                                            <tr
+                                              key={`${item.key}-${idx}`}
+                                              className="border-b transition-colors"
+                                              style={{
+                                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                              }}
+                                            >
+                                              <td
+                                                className="py-3 px-3"
+                                                style={{ color: 'var(--clr-primary-a50)' }}
+                                              >
+                                                <LatexText text={item.text} />
+                                              </td>
+                                              <td
+                                                className="py-3 px-3 text-right font-mono font-bold"
+                                                style={{ color: 'var(--clr-success-a10)' }}
+                                              >
+                                                {item.marks}
+                                              </td>
+                                            </tr>
+                                          );
+                                        });
+
+                                        return rows;
+                                      })()}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Sample Solution Section (written questions only; MCQ explanation is shown above) */}
+                            {!isMultipleChoiceReview && (
+                              <div
+                                className="p-8 border-t space-y-4"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                }}
+                              >
+                                <h3
+                                  className="font-bold text-lg flex items-center gap-2"
+                                  style={{ color: 'var(--clr-success-a20)' }}
+                                >
+                                  <BookOpen className="w-5 h-5" />
+                                  Sample Solution
+                                </h3>
+                                {feedback.sample_answer ? (
+                                  <div
+                                    className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800"
+                                    style={{ borderColor: 'var(--clr-success-a10)' }}
+                                  >
+                                    <LatexText text={feedback.sample_answer} />
+                                  </div>
+                                ) : null}
+                                {feedback.question?.sample_answer_image ? (
+                                  <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                    <img src={feedback.question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div
+                              className="border-t p-6 flex flex-wrap items-center gap-3"
+                              style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                            >
+                              <button
+                                onClick={saveAttempt}
+                                disabled={isSaving}
+                                className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 cursor-pointer border`}
+                                style={{
+                                  backgroundColor: isSaving ? 'var(--clr-surface-a20)' : 'var(--clr-btn-primary)',
+                                  borderColor: isSaving ? 'var(--clr-surface-tonal-a20)' : 'var(--clr-btn-primary)',
+                                  color: isSaving ? 'var(--clr-surface-a40)' : 'var(--clr-btn-primary-text)',
+                                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                                  opacity: isSaving ? 0.7 : 1,
+                                }}
+                              >
+                                <Bookmark className={`w-4 h-4 transition-all ${isSaving ? 'fill-zinc-300' : ''
+                                  }`} />
+                                {isSaving ? 'Saving...' : 'Save Answer'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setAppState('idle');
+                                  setFeedback(null);
+                                  setSubmittedAnswer(null);
+                                  setUploadedFile(null);
+                                  setTimeout(() => resetCanvas(canvasHeight), 50);
+                                }}
+                                className="px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a10)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                                Review & Try Again
+                              </button>
+                              <button
+                                onClick={handleNextQuestion}
+                                disabled={isPaperMode && (paperQuestions.length === 0 || getDisplayGroupAt(paperQuestions, paperIndex).endIndex >= paperQuestions.length)}
+                                className="ml-auto px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed border"
+                                style={{
+                                  backgroundColor: 'var(--clr-btn-primary)',
+                                  borderColor: 'var(--clr-btn-primary)',
+                                  color: 'var(--clr-btn-primary-text)',
+                                }}
+                              >
+                                <RefreshCw className="w-4 h-4" />
+                                Next Question
+                              </button>
+                            </div>
+
+                            {/* Submitted Answer Section */}
+                            {submittedAnswer && (
+                              <div
+                                className="p-8 border-t space-y-4"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                }}
+                              >
+                                <h3
+                                  className="font-bold text-lg flex items-center gap-2"
+                                  style={{ color: 'var(--clr-dark-a0)' }}
+                                >
+                                  <Eye className="w-5 h-5" />
+                                  Your Submitted Answer
+                                </h3>
+                                <div
+                                  className="rounded-lg p-4 border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a10)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                  }}
+                                >
+                                  {isMultipleChoiceReview ? (
+                                    <p className="font-semibold">Selected Answer: {submittedAnswer}</p>
+                                  ) : (
+                                    <img src={submittedAnswer} alt="Student answer" className="w-full rounded" style={{ borderColor: 'var(--clr-surface-tonal-a20)', border: '1px solid var(--clr-surface-tonal-a20)' }} />
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-
-            {/* Saved Attempts Modal - Removed, now using inline sidebar view */}
-
-      {/* Settings Page */}
-      {viewMode === 'settings' && (
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Settings</h1>
-            <button 
-              onClick={() => setViewMode('browse')}
-              className="p-2 rounded-lg cursor-pointer"
-              style={{ color: 'var(--clr-surface-a40)' }}
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-
-          <div className="flex-1 p-8 overflow-y-auto">
-            <div className="max-w-2xl">
-              <div 
-                className="p-6 rounded-2xl border"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a10)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                }}
-              >
-                <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>Account Information</h2>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Name</label>
-                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <input
-                        type="text"
-                        value={userNameDraft}
-                        onChange={(e) => setUserNameDraft(e.target.value)}
-                        placeholder="Enter your name"
-                        className="w-full px-4 py-2 rounded-lg border"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleSaveName}
-                        disabled={isSavingName || userNameDraft.trim() === userName}
-                        className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
-                        style={{
-                          backgroundColor: 'var(--clr-primary-a50)',
-                          color: 'var(--clr-surface-a0)',
-                        }}
-                      >
-                        {isSavingName ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Email</label>
-                    <p className="mt-1 text-lg" style={{ color: 'var(--clr-light-a0)' }}>{userEmail}</p>
-                  </div>
-                  
-                  <div>
-                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Date Joined</label>
-                    <p className="mt-1 text-lg" style={{ color: 'var(--clr-light-a0)' }}>
-                      {userCreatedAt ? new Date(userCreatedAt).toLocaleDateString('en-AU', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      }) : 'Not available'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {isDevMode && (
-                <div
-                  className="p-6 rounded-2xl border mt-6"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a10)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                  }}
-                >
-                  <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>PDF Intake</h2>
-                  <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
-                    Upload the exam PDF and/or the marking criteria PDF. The response will be used to create new questions automatically.
-                  </p>
-
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Grade</label>
-                        <select
-                          value={pdfGrade}
-                          onChange={(e) => {
-                            const nextGrade = e.target.value as 'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12';
-                            const nextSubjects = SUBJECTS_BY_YEAR[nextGrade];
-                            setPdfGrade(nextGrade);
-                            if (!nextSubjects.includes(pdfSubject)) {
-                              setPdfSubject(nextSubjects[0]);
-                            }
-                          }}
-                          className="mt-2 w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        >
-                          <option value="Year 7">Year 7</option>
-                          <option value="Year 8">Year 8</option>
-                          <option value="Year 9">Year 9</option>
-                          <option value="Year 10">Year 10</option>
-                          <option value="Year 11">Year 11</option>
-                          <option value="Year 12">Year 12</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Year</label>
-                        <select
-                          id="pdf-intake-year"
-                          value={pdfYear}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            pdfYearRef.current = v;
-                            setPdfYear(v);
-                          }}
-                          className="mt-2 w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        >
-                          {YEARS.map((year) => (
-                            <option key={year} value={year}>{year}</option>
-                          ))}
-                        </select>
-                        <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
-                          Accepted years: {MIN_EXAM_YEAR}–{CURRENT_EXAM_YEAR}
-                        </p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Subject</label>
-                        <select
-                          value={pdfSubject}
-                          onChange={(e) => setPdfSubject(e.target.value)}
-                          className="mt-2 w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        >
-                          {SUBJECTS_BY_YEAR[pdfGrade].map((subject) => (
-                            <option key={subject} value={subject}>{subject}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>School Name</label>
-                        <input
-                          type="text"
-                          value={pdfSchoolName}
-                          onChange={(e) => setPdfSchoolName(e.target.value)}
-                          placeholder="e.g., Riverside High School"
-                          className="mt-2 w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Paper Number (optional)</label>
-                        <input
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={pdfPaperNumber}
-                          onChange={(e) => setPdfPaperNumber(e.target.value)}
-                          placeholder="Auto if blank"
-                          className="mt-2 w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam PDF (optional)</label>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        onChange={(e) => setExamPdfFile(e.target.files?.[0] || null)}
-                        className="mt-2 w-full px-4 py-2 rounded-lg border"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      />
-                      {examPdfFile && (
-                        <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
-                          Selected: {examPdfFile.name}
-                        </p>
+                        </div>
                       )}
-                    </div>
 
+                      {isPaperMode && !examEnded && (
+                        <div className="flex items-center justify-end gap-3">
+                          {examTimeRemainingLabel && (
+                            <div
+                              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a10)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              <Timer className="w-4 h-4" />
+                              {examTimeRemainingLabel}
+                            </div>
+                          )}
+                          <button
+                            onClick={examConditionsActive ? handleEndExam : () => startExamSimulation()}
+                            className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shadow-sm whitespace-nowrap cursor-pointer hover:opacity-90"
+                            style={{
+                              backgroundColor: examConditionsActive ? 'var(--clr-btn-danger)' : 'var(--clr-btn-primary)',
+                              color: examConditionsActive ? 'var(--clr-btn-danger-text)' : 'var(--clr-btn-primary-text)',
+                              border: '1px solid ' + (examConditionsActive ? 'var(--clr-btn-danger-hover)' : 'var(--clr-btn-primary-hover)'),
+                            }}
+                          >
+                            {examConditionsActive ? 'End Exam' : 'Simulate Exam Conditions'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+              {viewMode === 'papers' && (
+                <>
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
                     <div>
-                      <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria PDF (optional)</label>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        onChange={(e) => setCriteriaPdfFile(e.target.files?.[0] || null)}
-                        className="mt-2 w-full px-4 py-2 rounded-lg border"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      />
+                      <h1
+                        className="text-4xl font-bold mb-2"
+                        style={{ color: 'var(--clr-primary-a50)' }}
+                      >Browse HSC Papers</h1>
+                      <p
+                        className="text-lg"
+                        style={{ color: 'var(--clr-surface-a40)' }}
+                      >Select a paper to start a full exam attempt.</p>
                     </div>
                   </div>
-                  <div className="mt-4">
-                    <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
-                      Exam Images (JPEG/PNG) – alternative to Exam PDF
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png"
-                      multiple
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        setExamImageFiles(files);
-                      }}
-                      className="mt-2 w-full px-4 py-2 rounded-lg border"
+
+                  {loadingQuestions ? (
+                    <div className="flex items-center justify-center min-h-[240px]">
+                      <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--clr-surface-a40)' }} />
+                    </div>
+                  ) : questionsFetchError ? (
+                    <div className="text-center py-16">
+                      <p className="text-lg" style={{ color: 'var(--clr-warning-a10)' }}>Could not load questions</p>
+                      <p className="text-sm mt-2 max-w-md mx-auto" style={{ color: 'var(--clr-surface-a50)' }}>{questionsFetchError}</p>
+                      <p className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local</p>
+                    </div>
+                  ) : availablePapers.length === 0 ? (
+                    <div className="text-center py-16">
+                      <p className="text-lg" style={{ color: 'var(--clr-surface-a40)' }}>No papers available yet.</p>
+                      <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>Upload exam questions to create papers.</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {availablePapers.map((paper) => (
+                        <button
+                          key={`${paper.year}-${paper.grade}-${paper.subject}-${paper.school}`}
+                          onClick={() => startPaperAttempt(paper)}
+                          className="text-left border rounded-2xl p-6 transition-all hover:-translate-y-0.5 hover:shadow-xl cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          <div className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>
+                            {paper.year}
+                          </div>
+                          <div className="text-xl font-semibold mt-2" style={{ color: 'var(--clr-primary-a50)' }}>
+                            {paper.subject}
+                          </div>
+                          <div className="text-sm mt-1" style={{ color: 'var(--clr-surface-a50)' }}>
+                            {paper.grade}
+                          </div>
+                          <div className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>
+                            {paper.school || 'HSC'}
+                          </div>
+                          <div className="text-xs mt-4" style={{ color: 'var(--clr-surface-a40)' }}>
+                            {paper.count} question{paper.count === 1 ? '' : 's'} available
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+              {viewMode === 'saved' && (
+                <>
+                  {/* Saved Attempts View */}
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+                    <div>
+                      <h1
+                        className="text-4xl font-bold mb-2"
+                        style={{ color: 'var(--clr-primary-a50)' }}
+                      >My Saved Answers</h1>
+                      <p
+                        className="text-lg"
+                        style={{ color: 'var(--clr-surface-a40)' }}
+                      >{savedAttempts.length} answer{savedAttempts.length !== 1 ? 's' : ''} saved</p>
+                    </div>
+                    <button
+                      onClick={() => setViewMode('browse')}
+                      className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all cursor-pointer"
                       style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
+                        backgroundColor: 'var(--clr-primary-a0)',
+                        color: 'var(--clr-dark-a0)',
                       }}
-                    />
-                    {examImageFiles.length > 0 && (
-                      <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
-                        Selected {examImageFiles.length} image{examImageFiles.length > 1 ? 's' : ''}.
-                      </p>
-                    )}
+                    >
+                      <RefreshCw className="w-5 h-5" />
+                      Browse exams
+                    </button>
+                  </div>
 
-                    <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
-                      <input
-                        type="checkbox"
-                        checked={pdfOverwrite}
-                        onChange={(e) => setPdfOverwrite(e.target.checked)}
-                      />
-                      Overwrite existing questions and marking criteria for this grade/year/subject/school/paper number
-                    </label>
+                  {selectedAttempt ? (
+                    <>
+                      <div className="flex items-center justify-between gap-3 mb-6">
+                        <button
+                          onClick={() => { setSelectedAttempt(null); setSavedExamReviewMode(false); }}
+                          className="flex items-center gap-2 px-4 py-2 transition-colors cursor-pointer"
+                          style={{ color: 'var(--clr-surface-a40)' }}
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                          Back to list
+                        </button>
+                        <button
+                          onClick={() => removeSavedAttempt(selectedAttempt.id)}
+                          className="text-sm font-medium cursor-pointer"
+                          style={{ color: 'var(--clr-danger-a10)' }}
+                        >
+                          Unsave
+                        </button>
+                      </div>
 
-                    <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
-                      <input
-                        type="checkbox"
-                        checked={pdfGenerateCriteria}
-                        onChange={(e) => setPdfGenerateCriteria(e.target.checked)}
-                      />
-                      Generate marking criteria from mark count
-                    </label>
+                      {selectedAttempt.type === 'exam' ? (
+                        savedExamReviewMode && selectedAttempt.examAttempts?.length > 0 ? (
+                          <div className="space-y-4">
+                            <button
+                              onClick={() => setSavedExamReviewMode(false)}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer"
+                              style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}
+                            >
+                              <ArrowLeft className="w-4 h-4" />
+                              Back to Overview
+                            </button>
+                            <div className="flex gap-6">
+                              <aside className="w-52 flex-shrink-0 rounded-xl border p-3 space-y-1 overflow-y-auto max-h-[70vh]" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                <p className="text-xs font-bold uppercase tracking-widest mb-2 px-2" style={{ color: 'var(--clr-surface-a40)' }}>Questions</p>
+                                {(selectedAttempt.examAttempts || []).map((_: any, i: number) => (
+                                  <button
+                                    key={i}
+                                    onClick={() => setSavedExamReviewIndex(i)}
+                                    className="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                                    style={{
+                                      backgroundColor: savedExamReviewIndex === i ? 'var(--clr-primary-a0)' : 'transparent',
+                                      color: savedExamReviewIndex === i ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
+                                    }}
+                                  >
+                                    Question {i + 1}
+                                    {selectedAttempt.examAttempts[i]?.feedback != null && (
+                                      <span className="ml-1 text-xs opacity-80">
+                                        ({typeof selectedAttempt.examAttempts[i].feedback?.score === 'number' ? selectedAttempt.examAttempts[i].feedback.score : '—'}/{selectedAttempt.examAttempts[i].question?.marks ?? 0})
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </aside>
+                              <div className="flex-1 min-w-0">
+                                {(() => {
+                                  const attempt = selectedAttempt.examAttempts[savedExamReviewIndex];
+                                  if (!attempt) return null;
+                                  const revQuestion = attempt.question;
+                                  const revFeedback = attempt.feedback;
+                                  const revSubmitted = attempt.submittedAnswer;
+                                  const isMcq = revQuestion?.question_type === 'multiple_choice';
+                                  const revAwarded = typeof revFeedback?.score === 'number' ? revFeedback.score : null;
+                                  const revMax = revFeedback?.maxMarks ?? revQuestion?.marks ?? 0;
+                                  const revCriteriaText = revFeedback?.marking_criteria ?? revQuestion?.marking_criteria ?? null;
+                                  return (
+                                    <div className="rounded-2xl overflow-hidden border shadow-2xl" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                      <div className="p-6 border-b flex flex-wrap items-center justify-between gap-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <div>
+                                          <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#1a1a1a' }}>
+                                            {revFeedback ? (revAwarded === 0 ? <XCircle className="w-6 h-6" style={{ color: 'var(--clr-danger-a10)' }} /> : revAwarded !== null && revAwarded < revMax ? <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-warning-a10)' }} /> : <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--clr-success-a10)' }} />) : null}
+                                            {revFeedback ? 'Marking Complete' : 'Marking…'}
+                                          </h3>
+                                          <p className="text-sm mt-1" style={{ color: '#525252' }}>Assessed against NESA Guidelines</p>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="block text-xs font-bold uppercase tracking-widest" style={{ color: '#404040' }}>Score</span>
+                                          <div className="flex items-baseline gap-1 justify-end">
+                                            <span className="text-4xl font-bold" style={{ color: '#1a1a1a' }}>{revAwarded === null ? '--' : revAwarded}</span>
+                                            <span className="text-xl font-medium" style={{ color: '#404040' }}>/{revMax}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <div className="flex items-center justify-between gap-2 mb-2">
+                                          <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>Question</h4>
+                                          {isDevMode && revQuestion?.id && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setViewMode('dev-questions');
+                                                setDevTab('manage');
+                                                setSelectedManageQuestionId(revQuestion.id);
+                                                setManageQuestionDraft(revQuestion);
+                                                setManageQuestionEditMode(false);
+                                              }}
+                                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                            >
+                                              <Edit2 className="w-3.5 h-3.5" />
+                                              Edit
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div
+                                          className="font-serif rounded-lg border p-3"
+                                          style={{ color: 'var(--clr-primary-a50)', borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                        >
+                                          <QuestionTextWithDividers text={revQuestion?.question_text || ''} />
+                                        </div>
+                                      </div>
+                                      {revFeedback && (
+                                        <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}><TrendingUp className="w-4 h-4" />{isMcq ? 'Answer Explanation' : 'AI Feedback'}</h4>
+                                          <div className="text-base leading-relaxed space-y-3" style={{ color: 'var(--clr-primary-a50)' }}>
+                                            {isMcq ? (revFeedback.mcq_explanation ? <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} /> : <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>Explanation not available.</p>) : revFeedback.ai_evaluation ? <LatexText text={revFeedback.ai_evaluation} /> : revFeedback._error ? <p className="italic" style={{ color: 'var(--clr-danger-a10)' }}>Marking failed.</p> : <p className="italic" style={{ color: 'var(--clr-surface-a50)' }}>AI evaluation is being processed...</p>}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {!isMcq && revCriteriaText && (
+                                        <div className="p-6 border-b" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <h4 className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--clr-surface-a40)' }}><CheckCircle2 className="w-4 h-4" />Marking Criteria</h4>
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full">
+                                              <thead><tr className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><th className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Criteria</th><th className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24" style={{ color: 'var(--clr-surface-a40)' }}>Marks</th></tr></thead>
+                                              <tbody>
+                                                {(() => {
+                                                  const items = parseCriteriaForDisplay(revCriteriaText);
+                                                  const rows: React.ReactNode[] = [];
+                                                  let lastSubpart: string | null = null;
+                                                  items.forEach((item, idx) => {
+                                                    if (item.type === 'heading') {
+                                                      lastSubpart = null;
+                                                      rows.push(<tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{item.text}</td></tr>);
+                                                      return;
+                                                    }
+                                                    if (item.subpart && item.subpart !== lastSubpart) {
+                                                      lastSubpart = item.subpart;
+                                                      rows.push(<tr key={`sub-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>Part ({item.subpart})</td></tr>);
+                                                    }
+                                                    rows.push(<tr key={`${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}><td className="py-3 px-3" style={{ color: 'var(--clr-primary-a50)' }}><LatexText text={item.text} /></td><td className="py-3 px-3 text-right font-mono font-bold" style={{ color: 'var(--clr-success-a10)' }}>{item.marks}</td></tr>);
+                                                  });
+                                                  return rows;
+                                                })()}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {(revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? revQuestion?.sample_answer_image) && (
+                                        <div className="p-8 border-t space-y-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-success-a20)' }}><BookOpen className="w-5 h-5" />{isMcq ? 'Answer Explanation' : 'Sample Solution'}</h3>
+                                          {isMcq && revFeedback?.mcq_explanation ? (
+                                            <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                              <LatexText text={stripOuterBraces(revFeedback.mcq_explanation)} />
+                                            </div>
+                                          ) : (revFeedback?.sample_answer ?? revQuestion?.sample_answer) || revQuestion?.sample_answer_image ? (
+                                            <>
+                                              {(revFeedback?.sample_answer ?? revQuestion?.sample_answer) ? (
+                                                <div className="font-serif text-base leading-relaxed space-y-3 pl-4 border-l-2 text-neutral-800" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                                  <LatexText text={revFeedback?.sample_answer ?? revQuestion?.sample_answer ?? ''} />
+                                                </div>
+                                              ) : null}
+                                              {revQuestion?.sample_answer_image ? (
+                                                <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                                  <img src={revQuestion.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                                                </div>
+                                              ) : null}
+                                            </>
+                                          ) : null}
+                                        </div>
+                                      )}
+                                      {revSubmitted && (
+                                        <div className="p-8 border-t space-y-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--clr-info-a20)' }}><Eye className="w-5 h-5" />Your Submitted Answer</h3>
+                                          <div className="rounded-lg p-4 border" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                            {isMcq ? <p className="font-semibold">Selected Answer: {revSubmitted}</p> : <img src={revSubmitted} alt="Your answer" className="w-full rounded" style={{ border: '1px solid var(--clr-surface-tonal-a20)' }} />}
+                                          </div>
+                                        </div>
+                                      )}
+                                      <div className="border-t p-6 flex gap-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                        <button onClick={() => setSavedExamReviewIndex((i) => Math.max(0, i - 1))} disabled={savedExamReviewIndex === 0} className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}><ChevronLeft className="w-4 h-4" />Previous</button>
+                                        <button onClick={() => setSavedExamReviewIndex((i) => Math.min((selectedAttempt.examAttempts?.length ?? 1) - 1, i + 1))} disabled={savedExamReviewIndex >= (selectedAttempt.examAttempts?.length ?? 0) - 1} className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" style={{ backgroundColor: 'var(--clr-primary-a0)', borderColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}>Next<ChevronRight className="w-4 h-4" /></button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-6 rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                            <h1 className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Saved Exam: {selectedAttempt.paperYear} {selectedAttempt.paperSubject}</h1>
+                            <div className="grid gap-4 sm:grid-cols-3">
+                              <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Total Score</div>
+                                <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{selectedAttempt.totalScore} / {selectedAttempt.totalPossible}</div>
+                              </div>
+                              <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Percentage</div>
+                                <div className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{selectedAttempt.totalPossible > 0 ? Math.round((selectedAttempt.totalScore / selectedAttempt.totalPossible) * 100) : 0}%</div>
+                              </div>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marks per question</h3>
+                              <ul className="space-y-2">
+                                {(selectedAttempt.examAttempts || []).map((a: any, i: number) => (
+                                  <li key={i} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                    <span style={{ color: 'var(--clr-primary-a50)' }}>Q{i + 1}</span>
+                                    <span style={{ color: 'var(--clr-primary-a50)' }}>{a.feedback ? (typeof a.feedback.score === 'number' ? a.feedback.score : '—') : '—'}</span>
+                                    <span style={{ color: 'var(--clr-surface-a40)' }}>/ {a.question?.marks ?? 0}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <button
+                                onClick={() => openSavedExamAsPaper(selectedAttempt)}
+                                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                                style={{ backgroundColor: 'var(--clr-info-a0)', color: 'var(--clr-light-a0)' }}
+                              >
+                                <BookOpen className="w-5 h-5" />
+                                View as Paper
+                              </button>
+                              <button
+                                onClick={() => exportSavedExamPdf(false)}
+                                disabled={exportingSavedExamPdf !== null}
+                                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                              >
+                                <Download className="w-5 h-5" />
+                                {exportingSavedExamPdf === 'exam' ? 'Exporting Exam PDF…' : 'Export Exam PDF'}
+                              </button>
+                              <button
+                                onClick={() => exportSavedExamPdf(true)}
+                                disabled={exportingSavedExamPdf !== null}
+                                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{ backgroundColor: 'var(--clr-btn-primary)', color: 'var(--clr-btn-primary-text)' }}
+                              >
+                                <Download className="w-5 h-5" />
+                                {exportingSavedExamPdf === 'solutions' ? 'Exporting Solutions PDF…' : 'Export Exam + Solutions PDF'}
+                              </button>
+                              <button
+                                onClick={() => { setSavedExamReviewMode(true); setSavedExamReviewIndex(0); }}
+                                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold cursor-pointer"
+                                style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                              >
+                                <BookOpen className="w-5 h-5" />
+                                Review Questions
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        <div
+                          className="rounded-2xl border overflow-hidden shadow-2xl space-y-6 p-8"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
+                        >
+                          {/* Question */}
+                          <div className="space-y-2">
+                            <h3
+                              className="text-sm font-bold uppercase tracking-widest"
+                              style={{ color: 'var(--clr-surface-a40)' }}
+                            >Question ({selectedAttempt.marks} marks)</h3>
+                            <div
+                              className="font-serif text-lg"
+                              style={{ color: 'var(--clr-light-a0)' }}
+                            >
+                              <LatexText text={selectedAttempt.questionText} />
+                              {selectedAttempt.graphImageData && (
+                                <div className="my-4">
+                                  <img
+                                    src={selectedAttempt.graphImageData}
+                                    alt="Question graph"
+                                    className={`rounded-lg border graph-image graph-image--${selectedAttempt.graphImageSize || 'medium'}`}
+                                    style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <div
+                              className="text-sm mt-2"
+                              style={{ color: 'var(--clr-surface-a50)' }}
+                            >{selectedAttempt.subject} • {selectedAttempt.topic}</div>
+                          </div>
 
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={submitPdfPair}
-                        disabled={pdfStatus === 'uploading'}
-                        className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                          {/* Divider */}
+                          <div
+                            className="border-t"
+                            style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                          />
+
+                          {/* Student's Answer */}
+                          {selectedAttempt.submittedAnswer && (
+                            <div className="space-y-2">
+                              <h3
+                                className="text-sm font-bold uppercase tracking-widest"
+                                style={{ color: 'var(--clr-info-a20)' }}
+                              >Your Answer</h3>
+                              {selectedAttempt.questionType === 'multiple_choice' ? (
+                                <div
+                                  className="rounded-lg border px-4 py-3"
+                                  style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                >
+                                  <span className="font-semibold">Selected: {selectedAttempt.submittedAnswer}</span>
+                                </div>
+                              ) : (
+                                <img
+                                  src={selectedAttempt.submittedAnswer}
+                                  alt="Student answer"
+                                  className="w-full rounded-lg border"
+                                  style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                />
+                              )}
+                            </div>
+                          )}
+
+                          {/* AI Feedback / Explanation */}
+                          {(selectedAttempt.feedback?.ai_evaluation || selectedAttempt.feedback?.mcq_explanation) && (
+                            <div
+                              className="space-y-3 p-6 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a10)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                              }}
+                            >
+                              <h3
+                                className="text-sm font-bold uppercase tracking-widest"
+                                style={{ color: 'var(--clr-info-a20)' }}
+                              >{selectedAttempt.questionType === 'multiple_choice' ? 'Answer Explanation' : 'AI Feedback'}</h3>
+                              <div
+                                className="space-y-2"
+                                style={{ color: 'var(--clr-primary-a40)' }}
+                              >
+                                <LatexText text={selectedAttempt.feedback.ai_evaluation || stripOuterBraces(selectedAttempt.feedback.mcq_explanation || '')} />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Marking Criteria */}
+                          {selectedAttempt.questionType !== 'multiple_choice' && selectedAttempt.feedback?.marking_criteria && (
+                            <div className="space-y-3">
+                              <h3
+                                className="text-sm font-bold uppercase tracking-widest"
+                                style={{ color: 'var(--clr-surface-a40)' }}
+                              >Marking Criteria</h3>
+                              <div className="overflow-x-auto">
+                                <table className="w-full">
+                                  <thead>
+                                    <tr
+                                      className="border-b"
+                                      style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                    >
+                                      <th
+                                        className="text-left py-2 px-3 text-xs font-bold uppercase tracking-wider"
+                                        style={{ color: 'var(--clr-surface-a40)' }}
+                                      >Criteria</th>
+                                      <th
+                                        className="text-right py-2 px-3 text-xs font-bold uppercase tracking-wider w-24"
+                                        style={{ color: 'var(--clr-surface-a40)' }}
+                                      >Marks</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(() => {
+                                      const criteriaText = selectedAttempt.feedback.marking_criteria;
+                                      const items = parseCriteriaForDisplay(criteriaText);
+                                      const rows: React.ReactNode[] = [];
+                                      let lastSubpart: string | null = null;
+
+                                      items.forEach((item, idx) => {
+                                        if (item.type === 'heading') {
+                                          lastSubpart = null;
+                                          rows.push(
+                                            <tr key={`part-${item.key}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                              <td colSpan={2} className="py-3 px-3 font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>
+                                                {item.text}
+                                              </td>
+                                            </tr>
+                                          );
+                                          return;
+                                        }
+
+                                        if (item.subpart && item.subpart !== lastSubpart) {
+                                          lastSubpart = item.subpart;
+                                          rows.push(
+                                            <tr key={`subpart-${item.subpart}-${idx}`} className="border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                              <td colSpan={2} className="py-2 px-3 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--clr-surface-a40)' }}>
+                                                Part ({item.subpart})
+                                              </td>
+                                            </tr>
+                                          );
+                                        }
+
+                                        rows.push(
+                                          <tr
+                                            key={`${item.key}-${idx}`}
+                                            className="border-b transition-colors"
+                                            style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                          >
+                                            <td
+                                              className="py-3 px-3"
+                                              style={{ color: 'var(--clr-light-a0)' }}
+                                            >
+                                              <LatexText text={item.text} />
+                                            </td>
+                                            <td
+                                              className="py-3 px-3 text-right font-mono font-bold"
+                                              style={{ color: 'var(--clr-success-a10)' }}
+                                            >
+                                              {item.marks}
+                                            </td>
+                                          </tr>
+                                        );
+                                      });
+
+                                      return rows;
+                                    })()}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Sample Solution */}
+                          {selectedAttempt.sampleAnswer && (
+                            <div
+                              className="space-y-3 p-6 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a10)',
+                                borderColor: 'var(--clr-success-a10)',
+                              }}
+                            >
+                              <h3
+                                className="text-sm font-bold uppercase tracking-widest"
+                                style={{ color: 'var(--clr-success-a20)' }}
+                              >Sample Solution</h3>
+                              {selectedAttempt.sampleAnswer ? (
+                                <div
+                                  className="font-serif"
+                                  style={{ color: 'var(--clr-light-a0)' }}
+                                >
+                                  <LatexText text={selectedAttempt.sampleAnswer} />
+                                </div>
+                              ) : null}
+                              {selectedAttempt.question?.sample_answer_image ? (
+                                <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--clr-success-a10)' }}>
+                                  <img src={selectedAttempt.question.sample_answer_image} alt="Sample solution" className="w-full h-auto" />
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Attempts List */}
+                      {savedAttempts.length === 0 ? (
+                        <div className="text-center py-16">
+                          <Bookmark
+                            className="w-16 h-16 mx-auto mb-4"
+                            style={{ color: 'var(--clr-surface-a30)' }}
+                          />
+                          <p
+                            className="text-lg"
+                            style={{ color: 'var(--clr-surface-a40)' }}
+                          >No saved answers yet</p>
+                          <p
+                            className="text-sm mt-2"
+                            style={{ color: 'var(--clr-surface-a50)' }}
+                          >Submit and save an answer to see it here</p>
+                        </div>
+                      ) : (
+                        <div className="grid gap-4">
+                          {savedAttempts.map((attempt) => (
+                            <div
+                              key={attempt.id}
+                              className="border rounded-xl p-6 transition-colors space-y-3"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a10)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                              }}
+                            >
+                              <button
+                                onClick={() => { setSelectedAttempt(attempt); setSavedExamReviewMode(false); }}
+                                className="w-full text-left cursor-pointer"
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <h3 className="font-bold text-lg" style={{ color: 'var(--clr-primary-a50)' }}>
+                                      {attempt.type === 'exam' ? `${attempt.paperYear || ''} ${attempt.paperSubject || ''}` : attempt.subject}
+                                    </h3>
+                                    <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>
+                                      {attempt.type === 'exam' ? attempt.paperGrade : attempt.topic}
+                                    </p>
+                                  </div>
+                                  <div className="text-right flex-shrink-0 ml-4">
+                                    {attempt.type === 'exam' ? (
+                                      <>
+                                        <div className="text-2xl font-bold" style={{ color: 'var(--clr-success-a10)' }}>
+                                          {attempt.totalScore} / {attempt.totalPossible}
+                                        </div>
+                                        <div className="text-xs" style={{ color: 'var(--clr-surface-a50)' }}>Exam</div>
+                                      </>
+                                    ) : (
+                                      <div className="text-2xl font-bold" style={{ color: 'var(--clr-success-a10)' }}>{attempt.marks}m</div>
+                                    )}
+                                    <div className="text-xs" style={{ color: 'var(--clr-surface-a50)' }}>{new Date(attempt.savedAt).toLocaleDateString()}</div>
+                                  </div>
+                                </div>
+                                {attempt.type !== 'exam' && (
+                                  <>
+                                    <div className="pt-2 border-t mt-2" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                      <p className="text-sm line-clamp-2" style={{ color: 'var(--clr-primary-a40)' }}>{attempt.questionText}</p>
+                                    </div>
+                                    {(attempt.feedback?.ai_evaluation || attempt.feedback?.mcq_explanation) && (
+                                      <div className="pt-2">
+                                        <p className="text-xs text-zinc-500 line-clamp-1">
+                                          {stripOuterBraces(attempt.feedback.ai_evaluation || attempt.feedback.mcq_explanation || '').split('\n')[0]}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); removeSavedAttempt(attempt.id); }}
+                                className="text-sm font-medium cursor-pointer"
+                                style={{ color: 'var(--clr-danger-a10)' }}
+                              >
+                                Unsave
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Saved Attempts Modal - Removed, now using inline sidebar view */}
+
+              {/* Syllabus Viewer */}
+              {viewMode === 'syllabus' && (
+                <SyllabusViewer onClose={() => setViewMode('browse')} isDevMode={isDevMode} />
+              )}
+
+              {/* Settings Page */}
+              {viewMode === 'settings' && (
+                <div className="flex-1 flex flex-col">
+                  <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                    <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Settings</h1>
+                    <button
+                      onClick={() => setViewMode('browse')}
+                      className="p-2 rounded-lg cursor-pointer"
+                      style={{ color: 'var(--clr-surface-a40)' }}
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 p-8 overflow-y-auto">
+                    <div className="max-w-2xl">
+                      <div
+                        className="p-6 rounded-2xl border"
                         style={{
-                          backgroundColor: 'var(--clr-primary-a0)',
-                          color: 'var(--clr-dark-a0)',
+                          backgroundColor: 'var(--clr-surface-a10)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
                         }}
                       >
-                        {pdfStatus === 'uploading' ? 'Uploading...' : 'Upload Files'}
-                      </button>
-                      {pdfMessage && (
-                        <span
-                          className="text-sm"
-                          style={{ color: pdfStatus === 'error' ? 'var(--clr-danger-a10)' : 'var(--clr-surface-a50)' }}
+                        <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>Account Information</h2>
+
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Name</label>
+                            <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                              <input
+                                type="text"
+                                value={userNameDraft}
+                                onChange={(e) => setUserNameDraft(e.target.value)}
+                                placeholder="Enter your name"
+                                className="w-full px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleSaveName}
+                                disabled={isSavingName || userNameDraft.trim() === userName}
+                                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+                                style={{
+                                  backgroundColor: 'var(--clr-primary-a50)',
+                                  color: 'var(--clr-surface-a0)',
+                                }}
+                              >
+                                {isSavingName ? 'Saving...' : 'Save'}
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Email</label>
+                            <p className="mt-1 text-lg" style={{ color: 'var(--clr-light-a0)' }}>{userEmail}</p>
+                          </div>
+
+                          <div>
+                            <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Date Joined</label>
+                            <p className="mt-1 text-lg" style={{ color: 'var(--clr-light-a0)' }}>
+                              {userCreatedAt ? new Date(userCreatedAt).toLocaleDateString('en-AU', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              }) : 'Not available'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        className="p-6 rounded-2xl border mt-6"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a10)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                        }}
+                      >
+                        <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>Syllabus Dot Point Mapping</h2>
+                        <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
+                          Select an exam paper and map each question to a subtopic and syllabus dot point using gpt-5-mini.
+                        </p>
+
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam</label>
+                            <select
+                              value={selectedSyllabusMappingPaper}
+                              onChange={(e) => setSelectedSyllabusMappingPaper(e.target.value)}
+                              disabled={isMappingSyllabusDotPoints || availablePapers.length === 0}
+                              className="mt-2 w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              {availablePapers.length === 0 ? (
+                                <option value="">No exam papers available</option>
+                              ) : (
+                                availablePapers.map((paper) => (
+                                  <option key={getPaperKey(paper)} value={getPaperKey(paper)}>
+                                    {paper.year} • {paper.grade} • {paper.subject} • {paper.school} ({paper.count} questions)
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={runSyllabusDotPointMapping}
+                              disabled={isMappingSyllabusDotPoints || availablePapers.length === 0}
+                              className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                              style={{
+                                backgroundColor: 'var(--clr-primary-a0)',
+                                color: 'var(--clr-dark-a0)',
+                              }}
+                            >
+                              {isMappingSyllabusDotPoints ? 'Mapping...' : 'Automate Syllabus Mapping'}
+                            </button>
+                            {syllabusMappingResult && (
+                              <span
+                                className="text-sm"
+                                style={{
+                                  color:
+                                    syllabusMappingStatus === 'error'
+                                      ? 'var(--clr-danger-a10)'
+                                      : syllabusMappingStatus === 'success'
+                                        ? 'var(--clr-success-a10)'
+                                        : 'var(--clr-surface-a50)',
+                                }}
+                              >
+                                {syllabusMappingResult}
+                              </span>
+                            )}
+                          </div>
+
+                          {isMappingSyllabusDotPoints && syllabusMappingProgress && (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                                <span>Processing questions…</span>
+                                <span>{syllabusMappingProgress.current} / {syllabusMappingProgress.total}</span>
+                              </div>
+                              <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--clr-surface-tonal-a20)' }}>
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{
+                                    width: `${syllabusMappingProgress.total > 0 ? Math.round((syllabusMappingProgress.current / syllabusMappingProgress.total) * 100) : 0}%`,
+                                    backgroundColor: 'var(--clr-primary-a0)',
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div
+                        className="p-6 rounded-2xl border mt-6"
+                        style={{
+                          backgroundColor: 'var(--clr-surface-a10)',
+                          borderColor: 'var(--clr-surface-tonal-a20)',
+                        }}
+                      >
+                        <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Syllabus Import</h2>
+                        <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
+                          Paste syllabus dot points to populate the taxonomy database. Use the format below.
+                        </p>
+
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Grade</label>
+                              <select
+                                value={syllabusImportGrade}
+                                onChange={(e) => setSyllabusImportGrade(e.target.value as typeof syllabusImportGrade)}
+                                disabled={syllabusImporting}
+                                className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              >
+                                {Object.keys(SUBJECTS_BY_YEAR).map((g) => (
+                                  <option key={g} value={g}>{g}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Subject</label>
+                              <select
+                                value={syllabusImportSubject}
+                                onChange={(e) => setSyllabusImportSubject(e.target.value)}
+                                disabled={syllabusImporting}
+                                className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              >
+                                {(SUBJECTS_BY_YEAR[syllabusImportGrade] || []).map((s) => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Syllabus Content</label>
+                            <textarea
+                              value={syllabusImportText}
+                              onChange={(e) => setSyllabusImportText(e.target.value)}
+                              disabled={syllabusImporting}
+                              rows={16}
+                              placeholder={`TOPIC Financial mathematics A\n\nSUBTOPIC Solve problems involving earning money\nPOINT_1 Solve problems involving wages given an hourly rate…\nPOINT_2 Calculate earnings from non-wage sources…\n\nSUBTOPIC Solve problems involving simple interest\nPOINT_1 Establish and use the formula $I = Prn$…`}
+                              className="mt-2 w-full px-4 py-3 rounded-lg border font-mono text-sm leading-relaxed"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                                resize: 'vertical',
+                              }}
+                            />
+                          </div>
+
+                          <details className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                            <summary className="cursor-pointer font-medium hover:underline">Format reference</summary>
+                            <pre className="mt-2 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed" style={{ backgroundColor: 'var(--clr-surface-a0)', color: 'var(--clr-surface-a50)' }}>
+                              {`TOPIC <topic name>
+
+SUBTOPIC <subtopic name>
+POINT_1 <dot point text, may include LaTeX>
+POINT_2 <dot point text>
+...
+
+SUBTOPIC <another subtopic>
+POINT_1 ...`}
+                            </pre>
+                            <p className="mt-2">
+                              The <strong>GRADE</strong> line is optional — if omitted, the grade selected above is used automatically.
+                              You can include multiple TOPIC blocks. Each TOPIC can have multiple SUBTOPICs.
+                            </p>
+                          </details>
+
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={runSyllabusImport}
+                              disabled={syllabusImporting || !syllabusImportText.trim()}
+                              className="px-5 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                              style={{
+                                backgroundColor: 'var(--clr-primary-a0)',
+                                color: 'var(--clr-dark-a0)',
+                              }}
+                            >
+                              {syllabusImporting ? 'Importing…' : 'Import Syllabus'}
+                            </button>
+                            {syllabusImportResult && (
+                              <span
+                                className="text-sm"
+                                style={{
+                                  color:
+                                    syllabusImportStatus === 'error'
+                                      ? 'var(--clr-danger-a10)'
+                                      : syllabusImportStatus === 'success'
+                                        ? 'var(--clr-success-a10)'
+                                        : 'var(--clr-surface-a50)',
+                                }}
+                              >
+                                {syllabusImportResult}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isDevMode && (
+                        <div
+                          className="p-6 rounded-2xl border mt-6"
+                          style={{
+                            backgroundColor: 'var(--clr-surface-a10)',
+                            borderColor: 'var(--clr-surface-tonal-a20)',
+                          }}
                         >
-                          {pdfMessage}
-                        </span>
+                          <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>PDF Intake</h2>
+                          <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
+                            Upload the exam PDF and/or the marking criteria PDF. The response will be used to create new questions automatically.
+                          </p>
+
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Grade</label>
+                                <select
+                                  value={pdfGrade}
+                                  onChange={(e) => {
+                                    const nextGrade = e.target.value as 'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12';
+                                    const nextSubjects = SUBJECTS_BY_YEAR[nextGrade];
+                                    setPdfGrade(nextGrade);
+                                    if (!nextSubjects.includes(pdfSubject)) {
+                                      setPdfSubject(nextSubjects[0]);
+                                    }
+                                  }}
+                                  className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                >
+                                  <option value="Year 7">Year 7</option>
+                                  <option value="Year 8">Year 8</option>
+                                  <option value="Year 9">Year 9</option>
+                                  <option value="Year 10">Year 10</option>
+                                  <option value="Year 11">Year 11</option>
+                                  <option value="Year 12">Year 12</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam Year</label>
+                                <select
+                                  id="pdf-intake-year"
+                                  value={pdfYear}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    pdfYearRef.current = v;
+                                    setPdfYear(v);
+                                  }}
+                                  className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                >
+                                  {YEARS.map((year) => (
+                                    <option key={year} value={year}>{year}</option>
+                                  ))}
+                                </select>
+                                <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                                  Accepted years: {MIN_EXAM_YEAR}–{CURRENT_EXAM_YEAR}
+                                </p>
+                              </div>
+                              <div>
+                                <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Subject</label>
+                                <select
+                                  value={pdfSubject}
+                                  onChange={(e) => setPdfSubject(e.target.value)}
+                                  className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                >
+                                  {SUBJECTS_BY_YEAR[pdfGrade].map((subject) => (
+                                    <option key={subject} value={subject}>{subject}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>School Name</label>
+                                <input
+                                  type="text"
+                                  value={pdfSchoolName}
+                                  onChange={(e) => setPdfSchoolName(e.target.value)}
+                                  placeholder="e.g., Riverside High School"
+                                  className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Paper Number (optional)</label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={pdfPaperNumber}
+                                  onChange={(e) => setPdfPaperNumber(e.target.value)}
+                                  placeholder="Auto if blank"
+                                  className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Exam PDF (optional)</label>
+                              <input
+                                type="file"
+                                accept="application/pdf"
+                                onChange={(e) => setExamPdfFile(e.target.files?.[0] || null)}
+                                className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              />
+                              {examPdfFile && (
+                                <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
+                                  Selected: {examPdfFile.name}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria PDF (optional)</label>
+                              <input
+                                type="file"
+                                accept="application/pdf"
+                                onChange={(e) => setCriteriaPdfFile(e.target.files?.[0] || null)}
+                                className="mt-2 w-full px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                              Exam Images (JPEG/PNG) – alternative to Exam PDF
+                            </label>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png"
+                              multiple
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                setExamImageFiles(files);
+                              }}
+                              className="mt-2 w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            />
+                            {examImageFiles.length > 0 && (
+                              <p className="mt-2 text-xs" style={{ color: 'var(--clr-surface-a50)' }}>
+                                Selected {examImageFiles.length} image{examImageFiles.length > 1 ? 's' : ''}.
+                              </p>
+                            )}
+
+                            <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
+                              <input
+                                type="checkbox"
+                                checked={pdfOverwrite}
+                                onChange={(e) => setPdfOverwrite(e.target.checked)}
+                              />
+                              Overwrite existing questions and marking criteria for this grade/year/subject/school/paper number
+                            </label>
+
+                            <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
+                              <input
+                                type="checkbox"
+                                checked={pdfGenerateCriteria}
+                                onChange={(e) => setPdfGenerateCriteria(e.target.checked)}
+                              />
+                              Generate marking criteria from mark count
+                            </label>
+
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={submitPdfPair}
+                                disabled={pdfStatus === 'uploading'}
+                                className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                                style={{
+                                  backgroundColor: 'var(--clr-primary-a0)',
+                                  color: 'var(--clr-dark-a0)',
+                                }}
+                              >
+                                {pdfStatus === 'uploading' ? 'Uploading...' : 'Upload Files'}
+                              </button>
+                              {pdfMessage && (
+                                <span
+                                  className="text-sm"
+                                  style={{ color: pdfStatus === 'error' ? 'var(--clr-danger-a10)' : 'var(--clr-surface-a50)' }}
+                                >
+                                  {pdfMessage}
+                                </span>
+                              )}
+                            </div>
+
+                            {pdfRawInputs && (
+                              <div className="mt-4">
+                                <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                                  Raw Model Input
+                                </label>
+                                <textarea
+                                  readOnly
+                                  value={pdfRawInputs}
+                                  rows={12}
+                                  className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {pdfChatGptResponse && (
+                              <div className="mt-4">
+                                <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                                  Model Response
+                                </label>
+                                <textarea
+                                  readOnly
+                                  value={pdfChatGptResponse}
+                                  rows={12}
+                                  className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    {pdfRawInputs && (
-                      <div className="mt-4">
-                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
-                          Raw Model Input
-                        </label>
-                        <textarea
-                          readOnly
-                          value={pdfRawInputs}
-                          rows={12}
-                          className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    {pdfChatGptResponse && (
-                      <div className="mt-4">
-                        <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
-                          Model Response
-                        </label>
-                        <textarea
-                          readOnly
-                          value={pdfChatGptResponse}
-                          rows={12}
-                          className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        />
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Dev Mode - Question Management Page */}
-      {viewMode === 'dev-questions' && (
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Developer Tools</h1>
-            <button 
-              onClick={() => setViewMode('browse')}
-              className="p-2 rounded-lg cursor-pointer"
-              style={{ color: 'var(--clr-surface-a40)' }}
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
+              {/* Dev Mode - Question Management Page */}
+              {viewMode === 'dev-questions' && (
+                <div className="flex-1 flex flex-col">
+                  <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                    <h1 className="text-3xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>Developer Tools</h1>
+                    <button
+                      onClick={() => setViewMode('browse')}
+                      className="p-2 rounded-lg cursor-pointer"
+                      style={{ color: 'var(--clr-surface-a40)' }}
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
 
-          {/* Tabs */}
-          <div className="flex gap-4 p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-            <button
-              onClick={() => setDevTab('add')}
-              className="px-4 py-2 rounded-lg font-medium transition cursor-pointer"
-              style={{
-                backgroundColor: devTab === 'add' ? 'var(--clr-primary-a0)' : 'transparent',
-                color: devTab === 'add' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
-                borderBottom: devTab === 'add' ? `2px solid var(--clr-primary-a0)` : 'none',
-              }}
-            >
-              Add Question
-            </button>
-            <button
-              onClick={() => setDevTab('manage')}
-              className="px-4 py-2 rounded-lg font-medium transition cursor-pointer"
-              style={{
-                backgroundColor: devTab === 'manage' ? 'var(--clr-primary-a0)' : 'transparent',
-                color: devTab === 'manage' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
-                borderBottom: devTab === 'manage' ? `2px solid var(--clr-primary-a0)` : 'none',
-              }}
-            >
-              Manage Questions ({allQuestions.length})
-            </button>
-            <button
-              onClick={() => setDevTab('review')}
-              className="px-4 py-2 rounded-lg font-medium transition cursor-pointer"
-              style={{
-                backgroundColor: devTab === 'review' ? 'var(--clr-primary-a0)' : 'transparent',
-                color: devTab === 'review' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
-                borderBottom: devTab === 'review' ? `2px solid var(--clr-primary-a0)` : 'none',
-              }}
-            >
-              Review solutions
-            </button>
-          </div>
-
-          <div className="flex-1 p-8 overflow-y-auto">
-            {devTab === 'add' && (
-              <div className="max-w-2xl">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Grade</label>
-                    <select 
-                      value={newQuestion.grade}
-                      onChange={(e) => {
-                        const nextGrade = e.target.value as 'Year 11' | 'Year 12';
-                        const nextSubject = SUBJECTS_BY_YEAR[nextGrade][0];
-                        const nextTopic = getTopics(nextGrade, nextSubject)[0] || '';
-                        setNewQuestion({
-                          ...newQuestion,
-                          grade: nextGrade,
-                          subject: nextSubject,
-                          topic: nextTopic,
-                        });
-                      }}
-                      className="w-full px-4 py-2 rounded-lg border"
+                  {/* Tabs */}
+                  <div className="flex gap-4 p-6 border-b" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                    <button
+                      onClick={() => setDevTab('add')}
+                      className="px-4 py-2 rounded-lg font-medium transition cursor-pointer"
                       style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
+                        backgroundColor: devTab === 'add' ? 'var(--clr-primary-a0)' : 'transparent',
+                        color: devTab === 'add' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
+                        borderBottom: devTab === 'add' ? `2px solid var(--clr-primary-a0)` : 'none',
                       }}
                     >
-                      <option>Year 11</option>
-                      <option>Year 12</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Year</label>
-                      <input 
-                        type="number" 
-                        value={newQuestion.year}
-                        onChange={(e) => setNewQuestion({...newQuestion, year: e.target.value})}
-                        className="w-full px-4 py-2 rounded-lg border"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Marks</label>
-                      <input 
-                        type="number" 
-                        value={newQuestion.marks}
-                        onChange={(e) => setNewQuestion({...newQuestion, marks: parseInt(e.target.value)})}
-                        className="w-full px-4 py-2 rounded-lg border"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Question Type</label>
-                    <select
-                      value={newQuestion.questionType}
-                      onChange={(e) => setNewQuestion({ ...newQuestion, questionType: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border"
+                      Add Question
+                    </button>
+                    <button
+                      onClick={() => setDevTab('manage')}
+                      className="px-4 py-2 rounded-lg font-medium transition cursor-pointer"
                       style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
+                        backgroundColor: devTab === 'manage' ? 'var(--clr-primary-a0)' : 'transparent',
+                        color: devTab === 'manage' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
+                        borderBottom: devTab === 'manage' ? `2px solid var(--clr-primary-a0)` : 'none',
                       }}
                     >
-                      <option value="written">Written Response</option>
-                      <option value="multiple_choice">Multiple Choice</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Subject</label>
-                    <select 
-                      value={newQuestion.subject}
-                      onChange={(e) => {
-                        const nextSubject = e.target.value;
-                        const nextTopics = getTopics(newQuestion.grade, nextSubject);
-                        setNewQuestion({
-                          ...newQuestion,
-                          subject: nextSubject,
-                          topic: nextTopics[0] || '',
-                        });
-                      }}
-                      className="w-full px-4 py-2 rounded-lg border"
+                      Manage Questions ({allQuestions.length})
+                    </button>
+                    <button
+                      onClick={() => setDevTab('review')}
+                      className="px-4 py-2 rounded-lg font-medium transition cursor-pointer"
                       style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
+                        backgroundColor: devTab === 'review' ? 'var(--clr-primary-a0)' : 'transparent',
+                        color: devTab === 'review' ? 'var(--clr-dark-a0)' : 'var(--clr-surface-a40)',
+                        borderBottom: devTab === 'review' ? `2px solid var(--clr-primary-a0)` : 'none',
                       }}
                     >
-                      {SUBJECTS_BY_YEAR[newQuestion.grade as 'Year 11' | 'Year 12']?.map((subject) => (
-                        <option key={subject} value={subject}>{subject}</option>
-                      ))}
-                    </select>
+                      Review solutions
+                    </button>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Topic</label>
-                    <select
-                      value={newQuestion.topic}
-                      onChange={(e) => setNewQuestion({...newQuestion, topic: e.target.value})}
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    >
-                      {(() => {
-                        const current = newQuestion.topic?.trim();
-                        const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
-                        return options.map((topic) => <option key={topic} value={topic}>{topic}</option>);
-                      })()}
-                    </select>
-                  </div>
+                  <div className="flex-1 p-8 overflow-y-auto">
+                    {devTab === 'add' && (
+                      <div className="max-w-2xl">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Grade</label>
+                            <select
+                              value={newQuestion.grade}
+                              onChange={(e) => {
+                                const nextGrade = e.target.value as 'Year 11' | 'Year 12';
+                                const nextSubject = SUBJECTS_BY_YEAR[nextGrade][0];
+                                const nextTopic = getTopics(nextGrade, nextSubject)[0] || '';
+                                setNewQuestion({
+                                  ...newQuestion,
+                                  grade: nextGrade,
+                                  subject: nextSubject,
+                                  topic: nextTopic,
+                                });
+                              }}
+                              className="w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              <option>Year 11</option>
+                              <option>Year 12</option>
+                            </select>
+                          </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Question Number</label>
-                    <input 
-                      type="text" 
-                      value={newQuestion.questionNumber}
-                      onChange={(e) => setNewQuestion({...newQuestion, questionNumber: e.target.value})}
-                      placeholder="e.g., 11 or 11a)"
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
-                  </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Year</label>
+                              <input
+                                type="number"
+                                value={newQuestion.year}
+                                onChange={(e) => setNewQuestion({ ...newQuestion, year: e.target.value })}
+                                className="w-full px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Marks</label>
+                              <input
+                                type="number"
+                                value={newQuestion.marks}
+                                onChange={(e) => setNewQuestion({ ...newQuestion, marks: parseInt(e.target.value) })}
+                                className="w-full px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              />
+                            </div>
+                          </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Question Text</label>
-                    <textarea 
-                      value={newQuestion.questionText}
-                      onChange={(e) => setNewQuestion({...newQuestion, questionText: e.target.value})}
-                      placeholder="Enter question (use $ for LaTeX)"
-                      rows={4}
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
-                  </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Question Type</label>
+                            <select
+                              value={newQuestion.questionType}
+                              onChange={(e) => setNewQuestion({ ...newQuestion, questionType: e.target.value })}
+                              className="w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              <option value="written">Written Response</option>
+                              <option value="multiple_choice">Multiple Choice</option>
+                            </select>
+                          </div>
 
-                  {newQuestion.questionType === 'multiple_choice' ? (
-                    <>
-                      <div className="space-y-4">
-                        <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option A</label>
-                          <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionA} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionA: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL (shows image instead of text)</label>
-                          <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionAImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionAImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                        </div>
-                        <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option B</label>
-                          <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionB} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionB: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
-                          <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionBImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionBImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                        </div>
-                        <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option C</label>
-                          <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionC} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionC: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
-                          <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionCImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionCImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                        </div>
-                        <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option D</label>
-                          <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionD} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionD: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
-                          <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionDImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionDImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                          <div>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Subject</label>
+                            <select
+                              value={newQuestion.subject}
+                              onChange={(e) => {
+                                const nextSubject = e.target.value;
+                                const nextTopics = getTopics(newQuestion.grade, nextSubject);
+                                setNewQuestion({
+                                  ...newQuestion,
+                                  subject: nextSubject,
+                                  topic: nextTopics[0] || '',
+                                });
+                              }}
+                              className="w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              {SUBJECTS_BY_YEAR[newQuestion.grade as 'Year 11' | 'Year 12']?.map((subject) => (
+                                <option key={subject} value={subject}>{subject}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Topic</label>
+                            <select
+                              value={newQuestion.topic}
+                              onChange={(e) => setNewQuestion({ ...newQuestion, topic: e.target.value })}
+                              className="w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              {(() => {
+                                const current = newQuestion.topic?.trim();
+                                const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
+                                return options.map((topic) => <option key={topic} value={topic}>{topic}</option>);
+                              })()}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Question Number</label>
+                            <input
+                              type="text"
+                              value={newQuestion.questionNumber}
+                              onChange={(e) => setNewQuestion({ ...newQuestion, questionNumber: e.target.value })}
+                              placeholder="e.g., 11 or 11a)"
+                              className="w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Question Text</label>
+                            <textarea
+                              value={newQuestion.questionText}
+                              onChange={(e) => setNewQuestion({ ...newQuestion, questionText: e.target.value })}
+                              placeholder="Enter question (use $ for LaTeX)"
+                              rows={4}
+                              className="w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            />
+                          </div>
+
+                          {newQuestion.questionType === 'multiple_choice' ? (
+                            <>
+                              <div className="space-y-4">
+                                <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option A</label>
+                                  <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionA} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionA: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL (shows image instead of text)</label>
+                                  <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionAImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionAImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                </div>
+                                <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option B</label>
+                                  <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionB} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionB: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                                  <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionBImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionBImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                </div>
+                                <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option C</label>
+                                  <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionC} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionC: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                                  <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionCImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionCImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                </div>
+                                <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--clr-primary-a50)' }}>Option D</label>
+                                  <input type="text" placeholder="Text (LaTeX)" value={newQuestion.mcqOptionD} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionD: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
+                                  <input type="url" placeholder="https://... or data:image/..." value={newQuestion.mcqOptionDImage} onChange={(e) => setNewQuestion({ ...newQuestion, mcqOptionDImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Correct Answer</label>
+                                  <select
+                                    value={newQuestion.mcqCorrectAnswer}
+                                    onChange={(e) => setNewQuestion({ ...newQuestion, mcqCorrectAnswer: e.target.value })}
+                                    className="w-full px-4 py-2 rounded-lg border"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  >
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                    <option value="D">D</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Answer Explanation</label>
+                                <textarea
+                                  value={newQuestion.mcqExplanation}
+                                  onChange={(e) => setNewQuestion({ ...newQuestion, mcqExplanation: e.target.value })}
+                                  placeholder="Enter explanation (use $ for LaTeX)"
+                                  rows={4}
+                                  className="w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Marking Criteria</label>
+                                <textarea
+                                  value={newQuestion.markingCriteria}
+                                  onChange={(e) => setNewQuestion({ ...newQuestion, markingCriteria: e.target.value })}
+                                  placeholder="Enter marking criteria (format: criteria - X marks)"
+                                  rows={3}
+                                  className="w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer (LaTeX)</label>
+                                <textarea
+                                  value={newQuestion.sampleAnswer}
+                                  onChange={(e) => setNewQuestion({ ...newQuestion, sampleAnswer: e.target.value })}
+                                  placeholder="Enter sample answer (use $ for LaTeX)"
+                                  rows={4}
+                                  className="w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer Image URL</label>
+                                <input
+                                  type="text"
+                                  value={newQuestion.sampleAnswerImage}
+                                  onChange={(e) => setNewQuestion({ ...newQuestion, sampleAnswerImage: e.target.value })}
+                                  placeholder="https://... or data:image/png;base64,..."
+                                  className="w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                />
+                                <p className="text-xs mt-1" style={{ color: 'var(--clr-surface-a40)' }}>If provided, image will be shown instead of LaTeX text</p>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium mb-2 mt-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer Image Size</label>
+                                <select
+                                  value={newQuestion.sampleAnswerImageSize}
+                                  onChange={(e) => setNewQuestion({ ...newQuestion, sampleAnswerImageSize: e.target.value as 'small' | 'medium' | 'large' })}
+                                  className="w-full px-4 py-2 rounded-lg border"
+                                  style={{
+                                    backgroundColor: 'var(--clr-surface-a0)',
+                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                    color: 'var(--clr-primary-a50)',
+                                  }}
+                                >
+                                  <option value="small">Small</option>
+                                  <option value="medium">Medium</option>
+                                  <option value="large">Large</option>
+                                </select>
+                              </div>
+                            </>
+                          )}
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Graph Image (data URL)</label>
+                            <textarea
+                              value={newQuestion.graphImageData}
+                              onChange={(e) => setNewQuestion({ ...newQuestion, graphImageData: e.target.value })}
+                              onPaste={handleGraphPaste}
+                              placeholder="Paste a data:image/png;base64,... URL (optional)"
+                              rows={3}
+                              className="w-full px-4 py-2 rounded-lg border"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            />
+                            <div className="mt-3">
+                              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Graph Size</label>
+                              <select
+                                value={newQuestion.graphImageSize}
+                                onChange={(e) => setNewQuestion({ ...newQuestion, graphImageSize: e.target.value })}
+                                className="w-full px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a0)',
+                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              >
+                                <option value="small">Small</option>
+                                <option value="medium">Medium</option>
+                                <option value="large">Large</option>
+                              </select>
+                            </div>
+                            <div className="mt-3 flex items-center gap-3">
+                              <label
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer"
+                                style={{
+                                  backgroundColor: 'var(--clr-surface-a20)',
+                                  color: 'var(--clr-primary-a50)',
+                                }}
+                              >
+                                Upload PNG
+                                <input type="file" accept="image/png" hidden onChange={handleGraphUpload} />
+                              </label>
+                              {newQuestion.graphImageData && (
+                                <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                                  Image loaded
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3 pt-4">
+                            <button
+                              onClick={addQuestionToDatabase}
+                              disabled={isAddingQuestion}
+                              className="flex-1 px-4 py-3 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                              style={{
+                                backgroundColor: 'var(--clr-success-a0)',
+                                color: 'var(--clr-light-a0)',
+                              }}
+                            >
+                              {isAddingQuestion ? 'Adding...' : 'Add Question'}
+                            </button>
+                            <button
+                              onClick={() => setViewMode('browse')}
+                              className="flex-1 px-4 py-3 rounded-lg font-medium cursor-pointer"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              Back
+                            </button>
+                          </div>
                         </div>
                       </div>
+                    )}
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Correct Answer</label>
+                    {devTab === 'manage' && (
+                      <div className="max-w-6xl">
+                        <div className="flex items-center justify-between mb-4">
+                          <h2 className="text-lg font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>Manage Questions</h2>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 mb-4">
+                          <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
+                            <input
+                              type="checkbox"
+                              checked={
+                                filteredManageQuestionIds.length > 0 &&
+                                filteredManageQuestionIds.every((id) => selectedManageQuestionIds.includes(id))
+                              }
+                              onChange={(e) => setAllManageSelections(e.target.checked, filteredManageQuestionIds)}
+                              className="h-6 w-6 min-h-6 min-w-6 cursor-pointer shrink-0"
+                            />
+                            Select all (filtered)
+                          </label>
+                          <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
+                            {selectedManageQuestionIds.length} selected • {filteredManageQuestions.length} showing of {allQuestions.length}
+                          </span>
+                          <button
+                            onClick={deleteSelectedQuestions}
+                            disabled={!selectedManageQuestionIds.length || bulkActionLoading}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                            style={{ backgroundColor: 'var(--clr-danger-a0)', color: 'var(--clr-light-a0)' }}
+                          >
+                            {bulkActionLoading ? 'Working...' : 'Delete Selected'}
+                          </button>
+                          <button
+                            onClick={clearSelectedMarkingCriteria}
+                            disabled={!selectedManageQuestionIds.length || bulkActionLoading}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                            style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                          >
+                            {bulkActionLoading ? 'Working...' : 'Clear Marking Criteria'}
+                          </button>
+                          <button
+                            onClick={assignSelectedQuestionsToGroup}
+                            disabled={!selectedManageQuestionIds.length || bulkActionLoading}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                            style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                          >
+                            Assign Next Group
+                          </button>
+                          <button
+                            onClick={clearSelectedQuestionGroups}
+                            disabled={!selectedManageQuestionIds.length || bulkActionLoading}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                            style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                          >
+                            Clear Group
+                          </button>
+                          <button
+                            onClick={() => setManageMissingImagesOnly((prev) => !prev)}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                            style={{
+                              backgroundColor: manageMissingImagesOnly ? 'var(--clr-warning-a0)' : 'var(--clr-surface-a20)',
+                              color: manageMissingImagesOnly ? 'var(--clr-light-a0)' : 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            {manageMissingImagesOnly ? 'Showing Missing Images' : 'Show Missing Images'}
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-8 gap-3 mb-6">
+                          <input
+                            type="text"
+                            value={manageSearchQuery}
+                            onChange={(e) => setManageSearchQuery(e.target.value)}
+                            placeholder="Search question number, topic, text..."
+                            className="lg:col-span-2 px-3 py-2 rounded-lg border text-sm"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a0)',
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                              color: 'var(--clr-primary-a50)',
+                            }}
+                          />
                           <select
-                            value={newQuestion.mcqCorrectAnswer}
-                            onChange={(e) => setNewQuestion({ ...newQuestion, mcqCorrectAnswer: e.target.value })}
-                            className="w-full px-4 py-2 rounded-lg border"
+                            value={manageFilterGrade}
+                            onChange={(e) => setManageFilterGrade(e.target.value)}
+                            className="px-3 py-2 rounded-lg border text-sm"
                             style={{
                               backgroundColor: 'var(--clr-surface-a0)',
                               borderColor: 'var(--clr-surface-tonal-a20)',
                               color: 'var(--clr-primary-a50)',
                             }}
                           >
-                            <option value="A">A</option>
-                            <option value="B">B</option>
-                            <option value="C">C</option>
-                            <option value="D">D</option>
+                            <option value="">All Grades</option>
+                            {manageFilterOptions.grades.map((grade) => (
+                              <option key={grade} value={grade}>{grade}</option>
+                            ))}
                           </select>
+                          <select
+                            value={manageFilterYear}
+                            onChange={(e) => setManageFilterYear(e.target.value)}
+                            className="px-3 py-2 rounded-lg border text-sm"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a0)',
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                              color: 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            <option value="">All Years</option>
+                            {manageFilterOptions.years.map((year) => (
+                              <option key={year} value={year}>{year}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={manageFilterSubject}
+                            onChange={(e) => setManageFilterSubject(e.target.value)}
+                            className="px-3 py-2 rounded-lg border text-sm"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a0)',
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                              color: 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            <option value="">All Subjects</option>
+                            {manageFilterOptions.subjects.map((subject) => (
+                              <option key={subject} value={subject}>{subject}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={manageFilterSchool}
+                            onChange={(e) => setManageFilterSchool(e.target.value)}
+                            className="px-3 py-2 rounded-lg border text-sm"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a0)',
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                              color: 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            <option value="">All Schools</option>
+                            {manageFilterOptions.schools.map((school) => (
+                              <option key={school} value={school}>{school}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={manageFilterTopic}
+                            onChange={(e) => setManageFilterTopic(e.target.value)}
+                            className="px-3 py-2 rounded-lg border text-sm"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a0)',
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                              color: 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            <option value="">All Topics</option>
+                            {manageFilterOptions.topics.map((topic) => (
+                              <option key={topic} value={topic}>{topic}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={manageFilterType}
+                            onChange={(e) => setManageFilterType(e.target.value as 'all' | 'written' | 'multiple_choice')}
+                            className="px-3 py-2 rounded-lg border text-sm"
+                            style={{
+                              backgroundColor: 'var(--clr-surface-a0)',
+                              borderColor: 'var(--clr-surface-tonal-a20)',
+                              color: 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            <option value="all">All Types</option>
+                            <option value="written">Written Response</option>
+                            <option value="multiple_choice">Multiple Choice</option>
+                          </select>
+                          <div className="flex gap-2">
+                            <select
+                              value={manageSortKey}
+                              onChange={(e) => setManageSortKey(e.target.value as typeof manageSortKey)}
+                              className="flex-1 px-3 py-2 rounded-lg border text-sm"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              <option value="question_number">Sort by Question #</option>
+                              <option value="year">Sort by Year</option>
+                              <option value="grade">Sort by Grade</option>
+                              <option value="subject">Sort by Subject</option>
+                              <option value="topic">Sort by Topic</option>
+                              <option value="school">Sort by School</option>
+                              <option value="marks">Sort by Marks</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setManageSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                              className="px-3 py-2 rounded-lg border text-sm font-medium"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                              }}
+                            >
+                              {manageSortDirection === 'asc' ? '↑' : '↓'}
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={applyManageFilters}
+                            disabled={loadingQuestions || !hasManageFilters}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                            style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                          >
+                            {loadingQuestions ? 'Applying…' : 'Apply Filters'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={resetManageFilters}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                            style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                          >
+                            Reset Filters
+                          </button>
                         </div>
-                      </div>
 
-                      <div>
-                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Answer Explanation</label>
-                        <textarea
-                          value={newQuestion.mcqExplanation}
-                          onChange={(e) => setNewQuestion({ ...newQuestion, mcqExplanation: e.target.value })}
-                          placeholder="Enter explanation (use $ for LaTeX)"
-                          rows={4}
-                          className="w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Marking Criteria</label>
-                        <textarea 
-                          value={newQuestion.markingCriteria}
-                          onChange={(e) => setNewQuestion({...newQuestion, markingCriteria: e.target.value})}
-                          placeholder="Enter marking criteria (format: criteria - X marks)"
-                          rows={3}
-                          className="w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer (LaTeX)</label>
-                        <textarea 
-                          value={newQuestion.sampleAnswer}
-                          onChange={(e) => setNewQuestion({...newQuestion, sampleAnswer: e.target.value})}
-                          placeholder="Enter sample answer (use $ for LaTeX)"
-                          rows={4}
-                          className="w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer Image URL</label>
-                        <input
-                          type="text"
-                          value={newQuestion.sampleAnswerImage}
-                          onChange={(e) => setNewQuestion({...newQuestion, sampleAnswerImage: e.target.value})}
-                          placeholder="https://... or data:image/png;base64,..."
-                          className="w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        />
-                        <p className="text-xs mt-1" style={{ color: 'var(--clr-surface-a40)' }}>If provided, image will be shown instead of LaTeX text</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2 mt-2" style={{ color: 'var(--clr-primary-a50)' }}>Sample Answer Image Size</label>
-                        <select
-                          value={newQuestion.sampleAnswerImageSize}
-                          onChange={(e) => setNewQuestion({ ...newQuestion, sampleAnswerImageSize: e.target.value as 'small' | 'medium' | 'large' })}
-                          className="w-full px-4 py-2 rounded-lg border"
-                          style={{
-                            backgroundColor: 'var(--clr-surface-a0)',
-                            borderColor: 'var(--clr-surface-tonal-a20)',
-                            color: 'var(--clr-primary-a50)',
-                          }}
-                        >
-                          <option value="small">Small</option>
-                          <option value="medium">Medium</option>
-                          <option value="large">Large</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Graph Image (data URL)</label>
-                    <textarea 
-                      value={newQuestion.graphImageData}
-                      onChange={(e) => setNewQuestion({...newQuestion, graphImageData: e.target.value})}
-                      onPaste={handleGraphPaste}
-                      placeholder="Paste a data:image/png;base64,... URL (optional)"
-                      rows={3}
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    />
-                    <div className="mt-3">
-                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-primary-a50)' }}>Graph Size</label>
-                      <select
-                        value={newQuestion.graphImageSize}
-                        onChange={(e) => setNewQuestion({ ...newQuestion, graphImageSize: e.target.value })}
-                        className="w-full px-4 py-2 rounded-lg border"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a0)',
-                          borderColor: 'var(--clr-surface-tonal-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      >
-                        <option value="small">Small</option>
-                        <option value="medium">Medium</option>
-                        <option value="large">Large</option>
-                      </select>
-                    </div>
-                    <div className="mt-3 flex items-center gap-3">
-                      <label
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer"
-                        style={{
-                          backgroundColor: 'var(--clr-surface-a20)',
-                          color: 'var(--clr-primary-a50)',
-                        }}
-                      >
-                        Upload PNG
-                        <input type="file" accept="image/png" hidden onChange={handleGraphUpload} />
-                      </label>
-                      {newQuestion.graphImageData && (
-                        <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
-                          Image loaded
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <button 
-                      onClick={addQuestionToDatabase}
-                      disabled={isAddingQuestion}
-                      className="flex-1 px-4 py-3 rounded-lg font-medium cursor-pointer disabled:opacity-50"
-                      style={{
-                        backgroundColor: 'var(--clr-success-a0)',
-                        color: 'var(--clr-light-a0)',
-                      }}
-                    >
-                      {isAddingQuestion ? 'Adding...' : 'Add Question'}
-                    </button>
-                    <button 
-                      onClick={() => setViewMode('browse')}
-                      className="flex-1 px-4 py-3 rounded-lg font-medium cursor-pointer"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    >
-                      Back
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {devTab === 'manage' && (
-              <div className="max-w-6xl">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>Manage Questions</h2>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 mb-4">
-                  <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
-                    <input
-                      type="checkbox"
-                      checked={
-                        filteredManageQuestionIds.length > 0 &&
-                        filteredManageQuestionIds.every((id) => selectedManageQuestionIds.includes(id))
-                      }
-                      onChange={(e) => setAllManageSelections(e.target.checked, filteredManageQuestionIds)}
-                      className="h-6 w-6 min-h-6 min-w-6 cursor-pointer shrink-0"
-                    />
-                    Select all (filtered)
-                  </label>
-                  <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
-                    {selectedManageQuestionIds.length} selected • {filteredManageQuestions.length} showing of {allQuestions.length}
-                  </span>
-                  <button
-                    onClick={deleteSelectedQuestions}
-                    disabled={!selectedManageQuestionIds.length || bulkActionLoading}
-                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-                    style={{ backgroundColor: 'var(--clr-danger-a0)', color: 'var(--clr-light-a0)' }}
-                  >
-                    {bulkActionLoading ? 'Working...' : 'Delete Selected'}
-                  </button>
-                  <button
-                    onClick={clearSelectedMarkingCriteria}
-                    disabled={!selectedManageQuestionIds.length || bulkActionLoading}
-                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-                    style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
-                  >
-                    {bulkActionLoading ? 'Working...' : 'Clear Marking Criteria'}
-                  </button>
-                  <button
-                    onClick={assignSelectedQuestionsToGroup}
-                    disabled={!selectedManageQuestionIds.length || bulkActionLoading}
-                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-                    style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
-                  >
-                    Assign Next Group
-                  </button>
-                  <button
-                    onClick={clearSelectedQuestionGroups}
-                    disabled={!selectedManageQuestionIds.length || bulkActionLoading}
-                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-                    style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
-                  >
-                    Clear Group
-                  </button>
-                  <button
-                    onClick={() => setManageMissingImagesOnly((prev) => !prev)}
-                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
-                    style={{
-                      backgroundColor: manageMissingImagesOnly ? 'var(--clr-warning-a0)' : 'var(--clr-surface-a20)',
-                      color: manageMissingImagesOnly ? 'var(--clr-light-a0)' : 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    {manageMissingImagesOnly ? 'Showing Missing Images' : 'Show Missing Images'}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-8 gap-3 mb-6">
-                  <input
-                    type="text"
-                    value={manageSearchQuery}
-                    onChange={(e) => setManageSearchQuery(e.target.value)}
-                    placeholder="Search question number, topic, text..."
-                    className="lg:col-span-2 px-3 py-2 rounded-lg border text-sm"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  />
-                  <select
-                    value={manageFilterGrade}
-                    onChange={(e) => setManageFilterGrade(e.target.value)}
-                    className="px-3 py-2 rounded-lg border text-sm"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <option value="">All Grades</option>
-                    {manageFilterOptions.grades.map((grade) => (
-                      <option key={grade} value={grade}>{grade}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={manageFilterYear}
-                    onChange={(e) => setManageFilterYear(e.target.value)}
-                    className="px-3 py-2 rounded-lg border text-sm"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <option value="">All Years</option>
-                    {manageFilterOptions.years.map((year) => (
-                      <option key={year} value={year}>{year}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={manageFilterSubject}
-                    onChange={(e) => setManageFilterSubject(e.target.value)}
-                    className="px-3 py-2 rounded-lg border text-sm"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <option value="">All Subjects</option>
-                    {manageFilterOptions.subjects.map((subject) => (
-                      <option key={subject} value={subject}>{subject}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={manageFilterSchool}
-                    onChange={(e) => setManageFilterSchool(e.target.value)}
-                    className="px-3 py-2 rounded-lg border text-sm"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <option value="">All Schools</option>
-                    {manageFilterOptions.schools.map((school) => (
-                      <option key={school} value={school}>{school}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={manageFilterTopic}
-                    onChange={(e) => setManageFilterTopic(e.target.value)}
-                    className="px-3 py-2 rounded-lg border text-sm"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <option value="">All Topics</option>
-                    {manageFilterOptions.topics.map((topic) => (
-                      <option key={topic} value={topic}>{topic}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={manageFilterType}
-                    onChange={(e) => setManageFilterType(e.target.value as 'all' | 'written' | 'multiple_choice')}
-                    className="px-3 py-2 rounded-lg border text-sm"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  >
-                    <option value="all">All Types</option>
-                    <option value="written">Written Response</option>
-                    <option value="multiple_choice">Multiple Choice</option>
-                  </select>
-                  <div className="flex gap-2">
-                    <select
-                      value={manageSortKey}
-                      onChange={(e) => setManageSortKey(e.target.value as typeof manageSortKey)}
-                      className="flex-1 px-3 py-2 rounded-lg border text-sm"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    >
-                      <option value="question_number">Sort by Question #</option>
-                      <option value="year">Sort by Year</option>
-                      <option value="grade">Sort by Grade</option>
-                      <option value="subject">Sort by Subject</option>
-                      <option value="topic">Sort by Topic</option>
-                      <option value="school">Sort by School</option>
-                      <option value="marks">Sort by Marks</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setManageSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
-                      className="px-3 py-2 rounded-lg border text-sm font-medium"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    >
-                      {manageSortDirection === 'asc' ? '↑' : '↓'}
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={applyManageFilters}
-                    disabled={loadingQuestions || !hasManageFilters}
-                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-                    style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
-                  >
-                    {loadingQuestions ? 'Applying…' : 'Apply Filters'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={resetManageFilters}
-                    className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
-                    style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
-                  >
-                    Reset Filters
-                  </button>
-                </div>
-
-                {!manageFiltersApplied ? (
-                  <div className="text-center py-12 rounded-xl border" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                    <p style={{ color: 'var(--clr-surface-a40)' }}>No questions loaded yet.</p>
-                    <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>
-                      Apply at least one filter, then click Apply Filters.
-                    </p>
-                  </div>
-                ) : loadingQuestions ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="text-center">
-                      <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" style={{ color: 'var(--clr-primary-a50)' }} />
-                      <p style={{ color: 'var(--clr-surface-a40)' }}>Loading questions...</p>
-                    </div>
-                  </div>
-                ) : allQuestions.length === 0 ? (
-                  <div className="text-center py-12">
-                    {questionsFetchError ? (
-                      <>
-                        <p style={{ color: 'var(--clr-warning-a10)' }}>Could not load questions</p>
-                        <p className="text-sm mt-2 max-w-md mx-auto" style={{ color: 'var(--clr-surface-a50)' }}>{questionsFetchError}</p>
-                        <p className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>Check .env.local for Supabase keys</p>
-                      </>
-                    ) : (
-                      <p style={{ color: 'var(--clr-surface-a40)' }}>No questions found</p>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    {!manageQuestionDraft ? (
-                      <div className="space-y-3">
-                        {filteredManageQuestions.length === 0 ? (
-                          <div className="text-center py-10">
-                            <p style={{ color: 'var(--clr-surface-a40)' }}>No questions match the current filters</p>
+                        {!manageFiltersApplied ? (
+                          <div className="text-center py-12 rounded-xl border" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                            <p style={{ color: 'var(--clr-surface-a40)' }}>No questions loaded yet.</p>
+                            <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>
+                              Apply at least one filter, then click Apply Filters.
+                            </p>
+                          </div>
+                        ) : loadingQuestions ? (
+                          <div className="flex items-center justify-center py-12">
+                            <div className="text-center">
+                              <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" style={{ color: 'var(--clr-primary-a50)' }} />
+                              <p style={{ color: 'var(--clr-surface-a40)' }}>Loading questions...</p>
+                            </div>
+                          </div>
+                        ) : allQuestions.length === 0 ? (
+                          <div className="text-center py-12">
+                            {questionsFetchError ? (
+                              <>
+                                <p style={{ color: 'var(--clr-warning-a10)' }}>Could not load questions</p>
+                                <p className="text-sm mt-2 max-w-md mx-auto" style={{ color: 'var(--clr-surface-a50)' }}>{questionsFetchError}</p>
+                                <p className="text-xs mt-2" style={{ color: 'var(--clr-surface-a40)' }}>Check .env.local for Supabase keys</p>
+                              </>
+                            ) : (
+                              <p style={{ color: 'var(--clr-surface-a40)' }}>No questions found</p>
+                            )}
                           </div>
                         ) : (
-                          filteredManageQuestions.map((q) => {
-                            const isSelected = selectedManageQuestionIds.includes(q.id);
-                            return (
-                              <div
-                                key={q.id}
-                                className="w-full flex items-stretch gap-3"
-                                onMouseEnter={() => continueManageDragSelection(q.id)}
-                              >
-                                <div
-                                  className="w-10 rounded-lg border flex items-center justify-center select-none"
-                                  style={{
-                                    backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
-                                    borderColor: 'var(--clr-surface-tonal-a20)',
-                                  }}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    beginManageDragSelection(q.id, !isSelected);
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    readOnly
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      beginManageDragSelection(q.id, !isSelected);
-                                    }}
-                                    className="h-6 w-6 min-h-6 min-w-6 cursor-pointer"
-                                  />
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (typeof window !== 'undefined') {
-                                      manageListScrollYRef.current = window.scrollY;
-                                    }
-                                    setSelectedManageQuestionId(q.id);
-                                    setManageQuestionDraft(q);
-                                    setManageQuestionEditMode(false);
-                                  }}
-                                  className="flex-1 text-left p-4 rounded-lg border transition-colors"
-                                  style={{
-                                    backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
-                                    borderColor: 'var(--clr-surface-tonal-a20)',
-                                  }}
-                                >
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{q.subject}</span>
-                                      {q.question_number && (
-                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
-                                      )}
-                                      {customExamGroupByQuestionId[q.id] && (
-                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}>
-                                          Group: {customExamGroupByQuestionId[q.id]}
-                                        </span>
-                                      )}
-                                      {!q.graph_image_data && q.graph_image_size === 'missing' && (
-                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-warning-a0)', color: 'var(--clr-light-a0)' }}>Missing Image</span>
-                                      )}
-                                      <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
-                                      {q.school_name && (
-                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.school_name}</span>
-                                      )}
-                                      <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
-                                    </div>
-                                    <p style={{ color: 'var(--clr-surface-a40)' }} className="text-sm">{q.topic}</p>
-                                    <p className="text-xs mt-1 line-clamp-1 text-neutral-700">{q.question_text}</p>
+                          <div>
+                            {!manageQuestionDraft ? (
+                              <div className="space-y-3">
+                                {filteredManageQuestions.length === 0 ? (
+                                  <div className="text-center py-10">
+                                    <p style={{ color: 'var(--clr-surface-a40)' }}>No questions match the current filters</p>
                                   </div>
-                                </button>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    ) : (
-                      <div className="space-y-6">
-                        <button
-                          onClick={() => {
-                            setManageQuestionDraft(null);
-                            setSelectedManageQuestionId(null);
-                            setManageQuestionEditMode(false);
-                            if (typeof window !== 'undefined') {
-                              const savedScrollY = manageListScrollYRef.current;
-                              window.requestAnimationFrame(() => {
-                                window.scrollTo({ top: savedScrollY });
-                              });
-                            }
-                          }}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium cursor-pointer"
-                          style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
-                        >
-                          <ArrowLeft className="w-4 h-4" />
-                          Back to list
-                        </button>
-
-                        <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
-                            <div className="space-y-6 min-w-0 overflow-hidden">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>
-                                    {manageQuestionDraft.year} {manageQuestionDraft.school_name || 'HSC'}
-                                  </span>
-                                  <h3 className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{manageQuestionDraft.subject}</h3>
-                                  <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>{manageQuestionDraft.topic}</p>
-                                </div>
-                                <div className="text-right">
-                                  <span className="block font-bold text-lg" style={{ color: 'var(--clr-primary-a50)' }}>Question {manageQuestionDraft.question_number || ''}</span>
-                                  <span className="text-sm" style={{ color: 'var(--clr-surface-a50)' }}>{manageQuestionDraft.marks} Marks</span>
-                                </div>
-                              </div>
-
-                              <div className="text-lg leading-relaxed space-y-4 font-serif text-neutral-800 min-w-0 break-words">
-                                <QuestionTextWithDividers text={manageQuestionDraft.question_text || ''} />
-                                {manageQuestionDraft.graph_image_data && (
-                                  <div className="my-4">
-                                    <img
-                                      src={manageQuestionDraft.graph_image_data}
-                                      alt="Question graph"
-                                      className={`rounded-lg border graph-image graph-image--${manageQuestionDraft.graph_image_size || 'medium'}`}
-                                      style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-
-                              {manageQuestionDraft.question_type === 'multiple_choice' && (
-                                <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Answer Options</h4>
-                                  <div className="space-y-3">
-                                    {[
-                                      { label: 'A', text: stripOuterBraces(manageQuestionDraft.mcq_option_a || ''), image: manageQuestionDraft.mcq_option_a_image || null },
-                                      { label: 'B', text: stripOuterBraces(manageQuestionDraft.mcq_option_b || ''), image: manageQuestionDraft.mcq_option_b_image || null },
-                                      { label: 'C', text: stripOuterBraces(manageQuestionDraft.mcq_option_c || ''), image: manageQuestionDraft.mcq_option_c_image || null },
-                                      { label: 'D', text: stripOuterBraces(manageQuestionDraft.mcq_option_d || ''), image: manageQuestionDraft.mcq_option_d_image || null },
-                                    ].map((opt) => (
-                                      <div key={opt.label} className="flex items-start gap-3 rounded-lg border px-4 py-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                        <span className="font-bold text-sm" style={{ color: 'var(--clr-primary-a50)' }}>{opt.label}.</span>
-                                        <div className="flex-1 font-serif min-w-0 text-neutral-800">
-                                          {opt.image ? (
-                                            <img src={opt.image} alt={`Option ${opt.label}`} className="max-h-28 max-w-full object-contain rounded" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }} />
-                                          ) : (
-                                            <LatexText text={opt.text || ''} />
-                                          )}
+                                ) : (
+                                  filteredManageQuestions.map((q) => {
+                                    const isSelected = selectedManageQuestionIds.includes(q.id);
+                                    return (
+                                      <div
+                                        key={q.id}
+                                        className="w-full flex items-stretch gap-3"
+                                        onMouseEnter={() => continueManageDragSelection(q.id)}
+                                      >
+                                        <div
+                                          className="w-10 rounded-lg border flex items-center justify-center select-none"
+                                          style={{
+                                            backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
+                                            borderColor: 'var(--clr-surface-tonal-a20)',
+                                          }}
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            beginManageDragSelection(q.id, !isSelected);
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            readOnly
+                                            onMouseDown={(e) => {
+                                              e.preventDefault();
+                                              beginManageDragSelection(q.id, !isSelected);
+                                            }}
+                                            className="h-6 w-6 min-h-6 min-w-6 cursor-pointer"
+                                          />
                                         </div>
-                                      </div>
-                                    ))}
-                                    {manageQuestionDraft.mcq_correct_answer && (
-                                      <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>Correct: <strong>{manageQuestionDraft.mcq_correct_answer}</strong></p>
-                                    )}
-                                    {manageQuestionDraft.mcq_explanation && (
-                                      <div className="mt-3 pt-3 border-t text-neutral-800" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                        <h5 className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Explanation</h5>
-                                        <LatexText text={stripOuterBraces(manageQuestionDraft.mcq_explanation)} />
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
 
-                              {manageQuestionDraft.marking_criteria && (
-                                <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marking Criteria</h4>
-                                  <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800 min-w-0 break-words">
-                                    <LatexText text={manageQuestionDraft.marking_criteria} />
-                                  </div>
-                                </div>
-                              )}
-
-                              {manageQuestionDraft.sample_answer && (
-                                <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-success-a10)' }}>
-                                  <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-success-a20)' }}>Sample Answer</h4>
-                                  <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800 min-w-0 break-words">
-                                    <LatexText text={manageQuestionDraft.sample_answer} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="space-y-3">
-                              <button
-                                onClick={() => setManageQuestionEditMode((prev) => !prev)}
-                                className="w-full px-4 py-2 rounded-lg font-medium cursor-pointer"
-                                style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
-                              >
-                                {manageQuestionEditMode ? 'Hide LaTeX Editor' : 'Edit LaTeX'}
-                              </button>
-                              <button
-                                onClick={saveManageQuestion}
-                                className="w-full px-4 py-2 rounded-lg font-medium cursor-pointer"
-                                style={{ backgroundColor: 'var(--clr-success-a0)', color: 'var(--clr-light-a0)' }}
-                              >
-                                Save Changes
-                              </button>
-                              <button
-                                onClick={() => deleteQuestion(manageQuestionDraft.id)}
-                                disabled={deletingQuestionId === manageQuestionDraft.id}
-                                className="w-full px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
-                                style={{ backgroundColor: 'var(--clr-danger-a0)', color: 'var(--clr-light-a0)' }}
-                              >
-                                {deletingQuestionId === manageQuestionDraft.id ? 'Deleting...' : 'Delete'}
-                              </button>
-
-                              {manageQuestionEditMode && (
-                                <div className="mt-4">
-                                  <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Question Number</label>
-                                  <input
-                                    type="text"
-                                    value={manageQuestionDraft.question_number || ''}
-                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, question_number: e.target.value })}
-                                    placeholder="e.g., 11 (a)"
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  />
-                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Marks</label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={manageQuestionDraft.marks ?? 0}
-                                    onChange={(e) => {
-                                      const parsed = Number.parseInt(e.target.value, 10);
-                                      setManageQuestionDraft({
-                                        ...manageQuestionDraft,
-                                        marks: Number.isNaN(parsed) ? 0 : Math.max(0, parsed),
-                                      });
-                                    }}
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  />
-                                  <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Topic (any year level)</label>
-                                  <select
-                                    value={manageQuestionDraft.topic || ''}
-                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, topic: e.target.value })}
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  >
-                                    {(() => {
-                                      const current = manageQuestionDraft.topic?.trim();
-                                      const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
-                                      return options.map((t) => <option key={t} value={t}>{t}</option>);
-                                    })()}
-                                  </select>
-                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Question (LaTeX)</label>
-                                  <textarea
-                                    value={manageQuestionDraft.question_text || ''}
-                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, question_text: e.target.value })}
-                                    rows={10}
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  />
-                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria (LaTeX)</label>
-                                  <textarea
-                                    value={manageQuestionDraft.marking_criteria || ''}
-                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, marking_criteria: e.target.value })}
-                                    rows={6}
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  />
-                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer (LaTeX)</label>
-                                  <textarea
-                                    value={manageQuestionDraft.sample_answer || ''}
-                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, sample_answer: e.target.value })}
-                                    rows={6}
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  />
-                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image URL</label>
-                                  <input
-                                    type="text"
-                                    value={manageQuestionDraft.sample_answer_image || ''}
-                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, sample_answer_image: e.target.value })}
-                                    placeholder="https://... or data:image/png;base64,..."
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  />
-                                  <p className="text-xs mt-1" style={{ color: 'var(--clr-surface-a40)' }}>If provided, image will be shown instead of LaTeX text</p>
-                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image Size</label>
-                                  <select
-                                    value={manageQuestionDraft.sample_answer_image_size || 'medium'}
-                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, sample_answer_image_size: e.target.value })}
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  >
-                                    <option value="small">Small</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="large">Large</option>
-                                  </select>
-                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image URL</label>
-                                  <input
-                                    type="text"
-                                    value={manageQuestionDraft.graph_image_data || ''}
-                                    onChange={(e) => {
-                                      const nextUrl = e.target.value;
-                                      setManageQuestionDraft({
-                                        ...manageQuestionDraft,
-                                        graph_image_data: nextUrl,
-                                        graph_image_size: nextUrl ? (manageQuestionDraft.graph_image_size || 'medium') : manageQuestionDraft.graph_image_size,
-                                      });
-                                    }}
-                                    placeholder="https://... or data:image/png;base64,..."
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  />
-                                  <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image Size</label>
-                                  <select
-                                    value={manageQuestionDraft.graph_image_size || 'medium'}
-                                    onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, graph_image_size: e.target.value })}
-                                    className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
-                                    style={{
-                                      backgroundColor: 'var(--clr-surface-a0)',
-                                      borderColor: 'var(--clr-surface-tonal-a20)',
-                                      color: 'var(--clr-primary-a50)',
-                                    }}
-                                  >
-                                    <option value="small">Small</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="large">Large</option>
-                                    <option value="missing">Missing</option>
-                                  </select>
-
-                                  {manageQuestionDraft.question_type === 'multiple_choice' && (
-                                    <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                                      <h5 className="text-sm font-bold mb-3" style={{ color: 'var(--clr-surface-a50)' }}>MCQ Options (text or image URL)</h5>
-                                      <div className="space-y-4">
-                                        {[
-                                          { key: 'A', text: 'mcq_option_a', image: 'mcq_option_a_image' },
-                                          { key: 'B', text: 'mcq_option_b', image: 'mcq_option_b_image' },
-                                          { key: 'C', text: 'mcq_option_c', image: 'mcq_option_c_image' },
-                                          { key: 'D', text: 'mcq_option_d', image: 'mcq_option_d_image' },
-                                        ].map(({ key, text, image }) => (
-                                          <div key={key} className="p-3 rounded border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                                            <label className="block text-xs font-medium mb-1">Option {key}</label>
-                                            <input type="text" placeholder="Text (LaTeX)" value={manageQuestionDraft[text] || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, [text]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                                            <input type="url" placeholder="Or image URL" value={manageQuestionDraft[image] || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, [image]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (typeof window !== 'undefined') {
+                                              manageListScrollYRef.current = window.scrollY;
+                                            }
+                                            setSelectedManageQuestionId(q.id);
+                                            setManageQuestionDraft(q);
+                                            setManageQuestionEditMode(false);
+                                          }}
+                                          className="flex-1 text-left p-4 rounded-lg border transition-colors"
+                                          style={{
+                                            backgroundColor: isSelected ? 'var(--clr-surface-a20)' : 'var(--clr-surface-a10)',
+                                            borderColor: 'var(--clr-surface-tonal-a20)',
+                                          }}
+                                        >
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <span className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>{q.subject}</span>
+                                              {q.question_number && (
+                                                <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.question_number}</span>
+                                              )}
+                                              {customExamGroupByQuestionId[q.id] && (
+                                                <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}>
+                                                  Group: {customExamGroupByQuestionId[q.id]}
+                                                </span>
+                                              )}
+                                              {!q.graph_image_data && q.graph_image_size === 'missing' && (
+                                                <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-warning-a0)', color: 'var(--clr-light-a0)' }}>Missing Image</span>
+                                              )}
+                                              <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.year}</span>
+                                              {q.school_name && (
+                                                <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.school_name}</span>
+                                              )}
+                                              <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>{q.marks}m</span>
+                                            </div>
+                                            <p style={{ color: 'var(--clr-surface-a40)' }} className="text-sm">{q.topic}</p>
+                                            <p className="text-xs mt-1 line-clamp-1 text-neutral-700">{q.question_text}</p>
                                           </div>
-                                        ))}
-                                        <div>
-                                          <label className="block text-xs font-medium mb-1">Correct Answer</label>
-                                          <select value={manageQuestionDraft.mcq_correct_answer || 'A'} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, mcq_correct_answer: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}>
-                                            <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
-                                          </select>
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium mb-1">Explanation (LaTeX)</label>
-                                          <textarea value={manageQuestionDraft.mcq_explanation || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, mcq_explanation: e.target.value })} rows={3} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                                        </div>
+                                        </button>
                                       </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {devTab === 'review' && (
-              <div className="max-w-4xl mx-auto">
-                <p className="text-sm mb-6" style={{ color: 'var(--clr-surface-a50)' }}>
-                  Sample solutions in order (same filters as Manage). Compare with your actual solutions to verify correctness.
-                </p>
-                {loadingQuestions ? (
-                  <div className="py-12 text-center" style={{ color: 'var(--clr-surface-a40)' }}>Loading questions…</div>
-                ) : filteredManageQuestions.length === 0 ? (
-                  <div className="py-12 text-center rounded-xl border" style={{ color: 'var(--clr-surface-a40)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                    No questions to review. Add questions or adjust filters in Manage.
-                  </div>
-                ) : (
-                  <div className="space-y-8">
-                    {filteredManageQuestions.map((q, index) => (
-                      <article
-                        key={q.id}
-                        className="rounded-2xl border overflow-hidden"
-                        style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}
-                      >
-                        <div className="px-5 py-3 border-b flex flex-wrap items-center gap-x-4 gap-y-1" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                          <span className="font-semibold text-neutral-800">
-                            #{index + 1} · Q{q.question_number ?? '?'}
-                          </span>
-                          <span className="text-sm text-neutral-600">{q.year} {q.school_name || 'HSC'}</span>
-                          <span className="text-sm text-neutral-600">{q.subject}</span>
-                          <span className="text-sm text-neutral-600">{q.topic}</span>
-                          {q.question_type === 'multiple_choice' && (
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>MCQ</span>
-                          )}
-                        </div>
-                        <div className="p-5">
-                          <details className="mb-4">
-                            <summary className="text-sm font-medium cursor-pointer" style={{ color: 'var(--clr-surface-a50)' }}>Question text</summary>
-                            <div className="mt-2 font-serif text-sm leading-relaxed text-neutral-800 border-l-2 pl-4" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                              <LatexText text={q.question_text || ''} />
-                            </div>
-                          </details>
-                          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--clr-success-a10)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                            <h4 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-success-a20)' }}>Sample solution</h4>
-                            {q.sample_answer ? (
-                              <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800">
-                                <LatexText text={q.sample_answer} />
-                              </div>
-                            ) : q.question_type === 'multiple_choice' ? (
-                              <div className="text-neutral-700">
-                                <p className="font-medium">Correct: {q.mcq_correct_answer ?? '—'}</p>
-                                {q.mcq_explanation && (
-                                  <div className="mt-2 font-serif text-sm">
-                                    <LatexText text={stripOuterBraces(q.mcq_explanation)} />
-                                  </div>
+                                    );
+                                  })
                                 )}
                               </div>
                             ) : (
-                              <p className="text-sm italic" style={{ color: 'var(--clr-surface-a40)' }}>No sample answer</p>
+                              <div className="space-y-6">
+                                <button
+                                  onClick={() => {
+                                    setManageQuestionDraft(null);
+                                    setSelectedManageQuestionId(null);
+                                    setManageQuestionEditMode(false);
+                                    if (typeof window !== 'undefined') {
+                                      const savedScrollY = manageListScrollYRef.current;
+                                      window.requestAnimationFrame(() => {
+                                        window.scrollTo({ top: savedScrollY });
+                                      });
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium cursor-pointer"
+                                  style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                                >
+                                  <ArrowLeft className="w-4 h-4" />
+                                  Back to list
+                                </button>
+
+                                <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                  <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+                                    <div className="space-y-6 min-w-0 overflow-hidden">
+                                      <div className="flex items-start justify-between">
+                                        <div>
+                                          <span className="text-xs uppercase tracking-widest" style={{ color: 'var(--clr-surface-a40)' }}>
+                                            {manageQuestionDraft.year} {manageQuestionDraft.school_name || 'HSC'}
+                                          </span>
+                                          <h3 className="text-2xl font-bold" style={{ color: 'var(--clr-primary-a50)' }}>{manageQuestionDraft.subject}</h3>
+                                          <p className="text-sm" style={{ color: 'var(--clr-surface-a40)' }}>{manageQuestionDraft.topic}</p>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="block font-bold text-lg" style={{ color: 'var(--clr-primary-a50)' }}>Question {manageQuestionDraft.question_number || ''}</span>
+                                          <span className="text-sm" style={{ color: 'var(--clr-surface-a50)' }}>{manageQuestionDraft.marks} Marks</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="text-lg leading-relaxed space-y-4 font-serif text-neutral-800 min-w-0 break-words">
+                                        <QuestionTextWithDividers text={manageQuestionDraft.question_text || ''} />
+                                        {manageQuestionDraft.graph_image_data && (
+                                          <div className="my-4">
+                                            <img
+                                              src={manageQuestionDraft.graph_image_data}
+                                              alt="Question graph"
+                                              className={`rounded-lg border graph-image graph-image--${manageQuestionDraft.graph_image_size || 'medium'}`}
+                                              style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {manageQuestionDraft.question_type === 'multiple_choice' && (
+                                        <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Answer Options</h4>
+                                          <div className="space-y-3">
+                                            {[
+                                              { label: 'A', text: stripOuterBraces(manageQuestionDraft.mcq_option_a || ''), image: manageQuestionDraft.mcq_option_a_image || null },
+                                              { label: 'B', text: stripOuterBraces(manageQuestionDraft.mcq_option_b || ''), image: manageQuestionDraft.mcq_option_b_image || null },
+                                              { label: 'C', text: stripOuterBraces(manageQuestionDraft.mcq_option_c || ''), image: manageQuestionDraft.mcq_option_c_image || null },
+                                              { label: 'D', text: stripOuterBraces(manageQuestionDraft.mcq_option_d || ''), image: manageQuestionDraft.mcq_option_d_image || null },
+                                            ].map((opt) => (
+                                              <div key={opt.label} className="flex items-start gap-3 rounded-lg border px-4 py-3" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                                <span className="font-bold text-sm" style={{ color: 'var(--clr-primary-a50)' }}>{opt.label}.</span>
+                                                <div className="flex-1 font-serif min-w-0 text-neutral-800">
+                                                  {opt.image ? (
+                                                    <img src={opt.image} alt={`Option ${opt.label}`} className="max-h-28 max-w-full object-contain rounded" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }} />
+                                                  ) : (
+                                                    <LatexText text={opt.text || ''} />
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                            {manageQuestionDraft.mcq_correct_answer && (
+                                              <p className="text-sm mt-2" style={{ color: 'var(--clr-surface-a50)' }}>Correct: <strong>{manageQuestionDraft.mcq_correct_answer}</strong></p>
+                                            )}
+                                            {manageQuestionDraft.mcq_explanation && (
+                                              <div className="mt-3 pt-3 border-t text-neutral-800" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                                <h5 className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--clr-surface-a40)' }}>Explanation</h5>
+                                                <LatexText text={stripOuterBraces(manageQuestionDraft.mcq_explanation)} />
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {manageQuestionDraft.marking_criteria && (
+                                        <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                          <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-surface-a40)' }}>Marking Criteria</h4>
+                                          <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800 min-w-0 break-words">
+                                            <LatexText text={manageQuestionDraft.marking_criteria} />
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {manageQuestionDraft.sample_answer && (
+                                        <div className="rounded-2xl border p-6" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-success-a10)' }}>
+                                          <h4 className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-success-a20)' }}>Sample Answer</h4>
+                                          <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800 min-w-0 break-words">
+                                            <LatexText text={manageQuestionDraft.sample_answer} />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                      <button
+                                        onClick={() => setManageQuestionEditMode((prev) => !prev)}
+                                        className="w-full px-4 py-2 rounded-lg font-medium cursor-pointer"
+                                        style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                                      >
+                                        {manageQuestionEditMode ? 'Hide LaTeX Editor' : 'Edit LaTeX'}
+                                      </button>
+                                      <button
+                                        onClick={saveManageQuestion}
+                                        className="w-full px-4 py-2 rounded-lg font-medium cursor-pointer"
+                                        style={{ backgroundColor: 'var(--clr-success-a0)', color: 'var(--clr-light-a0)' }}
+                                      >
+                                        Save Changes
+                                      </button>
+                                      <button
+                                        onClick={() => deleteQuestion(manageQuestionDraft.id)}
+                                        disabled={deletingQuestionId === manageQuestionDraft.id}
+                                        className="w-full px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                                        style={{ backgroundColor: 'var(--clr-danger-a0)', color: 'var(--clr-light-a0)' }}
+                                      >
+                                        {deletingQuestionId === manageQuestionDraft.id ? 'Deleting...' : 'Delete'}
+                                      </button>
+
+                                      {manageQuestionEditMode && (
+                                        <div className="mt-4">
+                                          <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Question Number</label>
+                                          <input
+                                            type="text"
+                                            value={manageQuestionDraft.question_number || ''}
+                                            onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, question_number: e.target.value })}
+                                            placeholder="e.g., 11 (a)"
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          />
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Marks</label>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            value={manageQuestionDraft.marks ?? 0}
+                                            onChange={(e) => {
+                                              const parsed = Number.parseInt(e.target.value, 10);
+                                              setManageQuestionDraft({
+                                                ...manageQuestionDraft,
+                                                marks: Number.isNaN(parsed) ? 0 : Math.max(0, parsed),
+                                              });
+                                            }}
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          />
+                                          <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>Topic</label>
+                                          <select
+                                            value={manageQuestionDraft.topic || ''}
+                                            onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, topic: e.target.value, subtopic: '', syllabus_dot_point: '' })}
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          >
+                                            {(() => {
+                                              const current = manageQuestionDraft.topic?.trim();
+                                              const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
+                                              return options.map((t: string) => <option key={t} value={t}>{t}</option>);
+                                            })()}
+                                          </select>
+
+                                          {/* Subtopic cascading dropdown */}
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Subtopic</label>
+                                          {Object.keys(taxonomyGrouped).length === 0 ? (
+                                            <div className="mt-2 flex items-center gap-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => fetchTaxonomy(manageQuestionDraft.grade, manageQuestionDraft.subject)}
+                                                disabled={taxonomyLoading}
+                                                className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50"
+                                                style={{ backgroundColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}
+                                              >
+                                                {taxonomyLoading ? 'Loading…' : 'Load taxonomy'}
+                                              </button>
+                                              <input
+                                                type="text"
+                                                value={manageQuestionDraft.subtopic || ''}
+                                                onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, subtopic: e.target.value })}
+                                                placeholder="Type subtopic or load taxonomy"
+                                                className="flex-1 px-4 py-2 rounded-lg border text-sm"
+                                                style={{
+                                                  backgroundColor: 'var(--clr-surface-a0)',
+                                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                                  color: 'var(--clr-primary-a50)',
+                                                }}
+                                              />
+                                            </div>
+                                          ) : (
+                                            <select
+                                              value={manageQuestionDraft.subtopic || ''}
+                                              onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, subtopic: e.target.value, syllabus_dot_point: '' })}
+                                              className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                              style={{
+                                                backgroundColor: 'var(--clr-surface-a0)',
+                                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                                color: 'var(--clr-primary-a50)',
+                                              }}
+                                            >
+                                              <option value="">— Select subtopic —</option>
+                                              {(() => {
+                                                const topicData = taxonomyGrouped[manageQuestionDraft.topic || ''] || {};
+                                                const subtopics = Object.keys(topicData);
+                                                const current = manageQuestionDraft.subtopic?.trim();
+                                                if (current && !subtopics.includes(current)) subtopics.unshift(current);
+                                                return subtopics.map((st: string) => <option key={st} value={st}>{st}</option>);
+                                              })()}
+                                            </select>
+                                          )}
+
+                                          {/* Dot Point cascading dropdown */}
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Syllabus Dot Point</label>
+                                          {(() => {
+                                            const topic = manageQuestionDraft.topic || '';
+                                            const subtopic = manageQuestionDraft.subtopic || '';
+                                            const dotPoints: { id: string; text: string }[] = (taxonomyGrouped[topic]?.[subtopic]) || [];
+                                            if (dotPoints.length > 0) {
+                                              return (
+                                                <select
+                                                  value={manageQuestionDraft.syllabus_dot_point || ''}
+                                                  onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, syllabus_dot_point: e.target.value })}
+                                                  className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                                  style={{
+                                                    backgroundColor: 'var(--clr-surface-a0)',
+                                                    borderColor: 'var(--clr-surface-tonal-a20)',
+                                                    color: 'var(--clr-primary-a50)',
+                                                  }}
+                                                >
+                                                  <option value="">— Select dot point —</option>
+                                                  {(() => {
+                                                    const dotPointTexts = dotPoints.map((dp) => dp.text);
+                                                    const current = manageQuestionDraft.syllabus_dot_point?.trim();
+                                                    const allDots = current && !dotPointTexts.includes(current) ? [current, ...dotPointTexts] : dotPointTexts;
+                                                    return allDots.map((dp: string) => <option key={dp} value={dp}>{dp}</option>);
+                                                  })()}
+                                                </select>
+                                              );
+                                            }
+                                            return (
+                                              <input
+                                                type="text"
+                                                value={manageQuestionDraft.syllabus_dot_point || ''}
+                                                onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, syllabus_dot_point: e.target.value })}
+                                                placeholder={subtopic ? 'No dot points in taxonomy — type manually' : 'Select a subtopic first, or type manually'}
+                                                className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                                style={{
+                                                  backgroundColor: 'var(--clr-surface-a0)',
+                                                  borderColor: 'var(--clr-surface-tonal-a20)',
+                                                  color: 'var(--clr-primary-a50)',
+                                                }}
+                                              />
+                                            );
+                                          })()}
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Question (LaTeX)</label>
+                                          <textarea
+                                            value={manageQuestionDraft.question_text || ''}
+                                            onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, question_text: e.target.value })}
+                                            rows={10}
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          />
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria (LaTeX)</label>
+                                          <textarea
+                                            value={manageQuestionDraft.marking_criteria || ''}
+                                            onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, marking_criteria: e.target.value })}
+                                            rows={6}
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          />
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer (LaTeX)</label>
+                                          <textarea
+                                            value={manageQuestionDraft.sample_answer || ''}
+                                            onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, sample_answer: e.target.value })}
+                                            rows={6}
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border font-mono text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          />
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image URL</label>
+                                          <input
+                                            type="text"
+                                            value={manageQuestionDraft.sample_answer_image || ''}
+                                            onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, sample_answer_image: e.target.value })}
+                                            placeholder="https://... or data:image/png;base64,..."
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          />
+                                          <p className="text-xs mt-1" style={{ color: 'var(--clr-surface-a40)' }}>If provided, image will be shown instead of LaTeX text</p>
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image Size</label>
+                                          <select
+                                            value={manageQuestionDraft.sample_answer_image_size || 'medium'}
+                                            onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, sample_answer_image_size: e.target.value })}
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          >
+                                            <option value="small">Small</option>
+                                            <option value="medium">Medium</option>
+                                            <option value="large">Large</option>
+                                          </select>
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image URL</label>
+                                          <input
+                                            type="text"
+                                            value={manageQuestionDraft.graph_image_data || ''}
+                                            onChange={(e) => {
+                                              const nextUrl = e.target.value;
+                                              setManageQuestionDraft({
+                                                ...manageQuestionDraft,
+                                                graph_image_data: nextUrl,
+                                                graph_image_size: nextUrl ? (manageQuestionDraft.graph_image_size || 'medium') : manageQuestionDraft.graph_image_size,
+                                              });
+                                            }}
+                                            placeholder="https://... or data:image/png;base64,..."
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          />
+                                          <label className="text-sm font-medium mt-4 block" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image Size</label>
+                                          <select
+                                            value={manageQuestionDraft.graph_image_size || 'medium'}
+                                            onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, graph_image_size: e.target.value })}
+                                            className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
+                                            style={{
+                                              backgroundColor: 'var(--clr-surface-a0)',
+                                              borderColor: 'var(--clr-surface-tonal-a20)',
+                                              color: 'var(--clr-primary-a50)',
+                                            }}
+                                          >
+                                            <option value="small">Small</option>
+                                            <option value="medium">Medium</option>
+                                            <option value="large">Large</option>
+                                            <option value="missing">Missing</option>
+                                          </select>
+
+                                          {manageQuestionDraft.question_type === 'multiple_choice' && (
+                                            <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                              <h5 className="text-sm font-bold mb-3" style={{ color: 'var(--clr-surface-a50)' }}>MCQ Options (text or image URL)</h5>
+                                              <div className="space-y-4">
+                                                {[
+                                                  { key: 'A', text: 'mcq_option_a', image: 'mcq_option_a_image' },
+                                                  { key: 'B', text: 'mcq_option_b', image: 'mcq_option_b_image' },
+                                                  { key: 'C', text: 'mcq_option_c', image: 'mcq_option_c_image' },
+                                                  { key: 'D', text: 'mcq_option_d', image: 'mcq_option_d_image' },
+                                                ].map(({ key, text, image }) => (
+                                                  <div key={key} className="p-3 rounded border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                                                    <label className="block text-xs font-medium mb-1">Option {key}</label>
+                                                    <input type="text" placeholder="Text (LaTeX)" value={manageQuestionDraft[text] || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, [text]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                                    <input type="url" placeholder="Or image URL" value={manageQuestionDraft[image] || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, [image]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                                  </div>
+                                                ))}
+                                                <div>
+                                                  <label className="block text-xs font-medium mb-1">Correct Answer</label>
+                                                  <select value={manageQuestionDraft.mcq_correct_answer || 'A'} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, mcq_correct_answer: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}>
+                                                    <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+                                                  </select>
+                                                </div>
+                                                <div>
+                                                  <label className="block text-xs font-medium mb-1">Explanation (LaTeX)</label>
+                                                  <textarea value={manageQuestionDraft.mcq_explanation || ''} onChange={(e) => setManageQuestionDraft({ ...manageQuestionDraft, mcq_explanation: e.target.value })} rows={3} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
-                        </div>
-                      </article>
-                    ))}
+                        )}
+                      </div>
+                    )}
+
+                    {devTab === 'review' && (
+                      <div className="max-w-4xl mx-auto">
+                        <p className="text-sm mb-6" style={{ color: 'var(--clr-surface-a50)' }}>
+                          Sample solutions in order (same filters as Manage). Compare with your actual solutions to verify correctness.
+                        </p>
+                        {loadingQuestions ? (
+                          <div className="py-12 text-center" style={{ color: 'var(--clr-surface-a40)' }}>Loading questions…</div>
+                        ) : filteredManageQuestions.length === 0 ? (
+                          <div className="py-12 text-center rounded-xl border" style={{ color: 'var(--clr-surface-a40)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                            No questions to review. Add questions or adjust filters in Manage.
+                          </div>
+                        ) : (
+                          <div className="space-y-8">
+                            {filteredManageQuestions.map((q, index) => (
+                              <article
+                                key={q.id}
+                                className="rounded-2xl border overflow-hidden"
+                                style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)' }}
+                              >
+                                <div className="px-5 py-3 border-b flex flex-wrap items-center gap-x-4 gap-y-1" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                                  <span className="font-semibold text-neutral-800">
+                                    #{index + 1} · Q{q.question_number ?? '?'}
+                                  </span>
+                                  <span className="text-sm text-neutral-600">{q.year} {q.school_name || 'HSC'}</span>
+                                  <span className="text-sm text-neutral-600">{q.subject}</span>
+                                  <span className="text-sm text-neutral-600">{q.topic}</span>
+                                  {q.question_type === 'multiple_choice' && (
+                                    <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-surface-a50)' }}>MCQ</span>
+                                  )}
+                                </div>
+                                <div className="p-5">
+                                  <details className="mb-4">
+                                    <summary className="text-sm font-medium cursor-pointer" style={{ color: 'var(--clr-surface-a50)' }}>Question text</summary>
+                                    <div className="mt-2 font-serif text-sm leading-relaxed text-neutral-800 border-l-2 pl-4" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                      <LatexText text={q.question_text || ''} />
+                                    </div>
+                                  </details>
+                                  <div className="rounded-xl border p-4" style={{ borderColor: 'var(--clr-success-a10)', backgroundColor: 'var(--clr-surface-a05)' }}>
+                                    <h4 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--clr-success-a20)' }}>Sample solution</h4>
+                                    {q.sample_answer ? (
+                                      <div className="font-serif text-base leading-relaxed space-y-2 text-neutral-800">
+                                        <LatexText text={q.sample_answer} />
+                                      </div>
+                                    ) : q.question_type === 'multiple_choice' ? (
+                                      <div className="text-neutral-700">
+                                        <p className="font-medium">Correct: {q.mcq_correct_answer ?? '—'}</p>
+                                        {q.mcq_explanation && (
+                                          <div className="mt-2 font-serif text-sm">
+                                            <LatexText text={stripOuterBraces(q.mcq_explanation)} />
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm italic" style={{ color: 'var(--clr-surface-a40)' }}>No sample answer</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+                </div>
+              )}
 
             </div>
           </div>
