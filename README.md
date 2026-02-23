@@ -11,6 +11,7 @@ A beginner-friendly full-stack web application built with Next.js, TypeScript, T
 - ✅ Protected dashboard page
 - ✅ Beautiful UI with Tailwind CSS
 - ✅ Fully responsive design
+- ✅ Progressive Web App (installable + offline fallback)
 
 ## Tech Stack
 
@@ -36,6 +37,27 @@ bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## PWA Setup & Testing
+
+This app is configured as a Progressive Web App using `@ducanh2912/next-pwa`.
+
+- App manifest is generated from `src/app/manifest.ts`
+- Service worker is generated at build time
+- Offline fallback page is available at `/~offline`
+
+To test PWA behavior locally, run the app in production mode:
+
+```bash
+npm run build
+npm run start
+```
+
+Then open Chrome DevTools → Application to verify:
+
+- Manifest is detected
+- Service worker is active
+- Install prompt is available (when criteria are met)
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ExcalidrawStyles from "./ExcalidrawStyles";
@@ -16,6 +16,19 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Praxis AI | Master the Exam, Own the Result",
   description: "Practice with thousands of official-style questions, build custom exams, and improve with AI-powered feedback.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    apple: "/icons/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Praxis AI",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#EAE3CD",
 };
 
 export default function RootLayout({

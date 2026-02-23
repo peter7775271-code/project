@@ -13,6 +13,7 @@ const LATEX_TO_PDF_API_URL = process.env.LATEX_TO_PDF_API_URL ?? 'https://latexo
 const IMAGE_FETCH_TIMEOUT_MS = Number(process.env.IMAGE_FETCH_TIMEOUT_MS ?? 15000);
 const PDF_COMPILE_TIMEOUT_MS = Number(process.env.PDF_COMPILE_TIMEOUT_MS ?? 45000);
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES ?? 10 * 1024 * 1024);
+const MAX_GET_TEX_LENGTH = Number(process.env.MAX_GET_TEX_LENGTH ?? 1800);
 
 type ExportQuestion = {
   question_number?: string | null;
@@ -542,36 +543,83 @@ export async function POST(request: Request) {
         console.warn('[export-exam-pdf] Embedded images are omitted in API fallback because local pdflatex is unavailable.');
       }
       const compileViaLatexApi = async (texInput: string) => {
-        const params = new URLSearchParams({
+        const queryParams = new URLSearchParams({
+          command: 'pdflatex',
+          force: 'true',
+          download: filename,
+        });
+        const postUrl = `${LATEX_TO_PDF_API_URL}${LATEX_TO_PDF_API_URL.includes('?') ? '&' : '?'}${queryParams.toString()}`;
+
+        const parsePdfResponse = async (response: Response) => {
+          if (!response.ok) {
+            const details = await response.text().catch(() => 'LaTeX API request failed');
+            throw new Error(`LaTeX API error (${response.status}): ${details}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          const pdf = Buffer.from(arrayBuffer);
+          if (!isPdfBuffer(pdf)) {
+            throw new Error(`LaTeX API returned non-PDF payload: ${safeUtf8Preview(pdf)}`);
+          }
+          return pdf;
+        };
+
+        const postAttempts: Array<{ name: string; init: RequestInit }> = [
+          {
+            name: 'form-urlencoded',
+            init: {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ text: texInput }).toString(),
+            },
+          },
+          {
+            name: 'json',
+            init: {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: texInput, command: 'pdflatex', force: true, download: filename }),
+            },
+          },
+          {
+            name: 'text-plain',
+            init: {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+              body: texInput,
+            },
+          },
+        ];
+
+        const postUnsupportedStatuses = new Set([404, 405, 415]);
+        let lastPostError = '';
+
+        for (const attempt of postAttempts) {
+          const response = await fetchWithTimeout(postUrl, attempt.init, PDF_COMPILE_TIMEOUT_MS);
+          if (response.ok) {
+            return parsePdfResponse(response);
+          }
+
+          if (postUnsupportedStatuses.has(response.status)) {
+            lastPostError = `${attempt.name} unsupported (${response.status})`;
+            continue;
+          }
+
+          const details = await response.text().catch(() => 'LaTeX API request failed');
+          throw new Error(`LaTeX API error (${response.status}) on ${attempt.name}: ${details}`);
+        }
+
+        if (texInput.length > MAX_GET_TEX_LENGTH) {
+          throw new Error(`LaTeX API POST not supported (${lastPostError || 'unknown'}), and payload is too large for GET fallback (${texInput.length} chars > ${MAX_GET_TEX_LENGTH}). Configure LATEX_TO_PDF_API_URL to a POST-capable compiler endpoint.`);
+        }
+
+        const getParams = new URLSearchParams({
           text: texInput,
           command: 'pdflatex',
           force: 'true',
           download: filename,
         });
-
-        let response = await fetchWithTimeout(LATEX_TO_PDF_API_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: params.toString(),
-        }, PDF_COMPILE_TIMEOUT_MS);
-
-        if (!response.ok && (response.status === 404 || response.status === 405 || response.status === 415)) {
-          response = await fetchWithTimeout(`${LATEX_TO_PDF_API_URL}?${params.toString()}`, {}, PDF_COMPILE_TIMEOUT_MS);
-        }
-
-        if (!response.ok) {
-          const details = await response.text().catch(() => 'LaTeX API request failed');
-          throw new Error(`LaTeX API error (${response.status}): ${details}`);
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
-        const pdf = Buffer.from(arrayBuffer);
-        if (!isPdfBuffer(pdf)) {
-          throw new Error(`LaTeX API returned non-PDF payload: ${safeUtf8Preview(pdf)}`);
-        }
-        return pdf;
+        const getResponse = await fetchWithTimeout(`${LATEX_TO_PDF_API_URL}?${getParams.toString()}`, {}, PDF_COMPILE_TIMEOUT_MS);
+        return parsePdfResponse(getResponse);
       };
 
       const tex = buildExamLatex({
