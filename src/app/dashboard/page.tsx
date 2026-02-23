@@ -5142,7 +5142,7 @@ export default function HSCGeneratorPage() {
             </div>
           </header>
           <div ref={mainContentScrollRef} className={`flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar z-10 relative ${viewMode === 'paper' && showPaperQuestionNavigator ? 'lg:pr-[22rem]' : ''}`}>
-          <div className={`${viewMode === 'paper' ? 'max-w-[68rem] mx-auto w-full space-y-8 lg:translate-x-3' : 'max-w-5xl mx-auto space-y-8'}`}>
+          <div className={`${viewMode === 'paper' ? 'max-w-[68rem] mx-auto w-full space-y-8 lg:translate-x-2' : 'max-w-5xl mx-auto space-y-8'}`}>
             {viewMode === 'dashboard' && (
               <DashboardView
                 setViewMode={setViewMode}
@@ -5806,7 +5806,7 @@ export default function HSCGeneratorPage() {
             {/* Question Card */}
             <div className="relative">
               {isPaperMode && (
-                <div className="absolute -left-14 top-8 z-20">
+                <div className="absolute right-4 top-4 z-20">
                   <div className="relative">
                     <button
                       type="button"
@@ -5823,7 +5823,7 @@ export default function HSCGeneratorPage() {
                     </button>
                     {showQuestionInfo && question && (
                       <div
-                        className="absolute left-14 top-0 z-30 w-72 rounded-xl border p-4 shadow-xl"
+                        className="absolute right-0 top-14 z-30 w-72 rounded-xl border p-4 shadow-xl"
                         style={{
                           backgroundColor: 'var(--clr-surface-a0)',
                           borderColor: 'var(--clr-surface-tonal-a20)',
