@@ -15,6 +15,29 @@ const escapeHtml = (value: string) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+const hasMathDelimiters = (value: string) => /\$\$|\$|\\\(|\\\)|\\\[|\\\]/.test(value);
+
+const looksLikeBareLatex = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return /^\\[a-zA-Z]+/.test(trimmed) || /\\[a-zA-Z]+\{/.test(trimmed);
+};
+
+const unwrapStandaloneTextCommand = (value: string) => {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^\\text\{([\s\S]*)\}$/);
+  if (!match) return value;
+  return match[1];
+};
+
+const normalizeLatexInput = (value: string) => {
+  if (hasMathDelimiters(value)) return value;
+  const withoutStandaloneText = unwrapStandaloneTextCommand(value);
+  if (withoutStandaloneText !== value) return withoutStandaloneText;
+  if (!looksLikeBareLatex(value)) return value;
+  return `\\(${value}\\)`;
+};
+
 const ensureKatex = () => {
   return new Promise<void>((resolve, reject) => {
     const loadScript = (id: string, src: string, onLoad: () => void) => {
@@ -75,7 +98,8 @@ export default function RenderLatexText({ text, className, style }: Props) {
     let cancelled = false;
 
     const render = async () => {
-      const html = escapeHtml(text).replace(/\n/g, '<br />');
+      const normalizedText = normalizeLatexInput(text);
+      const html = escapeHtml(normalizedText).replace(/\n/g, '<br />');
       container.innerHTML = html;
 
       try {

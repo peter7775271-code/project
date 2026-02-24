@@ -380,8 +380,8 @@ export default function SyllabusViewer({ isDevMode: _isDevMode = false }: Props)
                                 <div className="mt-1 w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                                 <RenderLatexText
                                   text={point.text}
-                                  className="text-sm leading-relaxed text-foreground font-medium"
-                                  style={{ margin: 0 }}
+                                  className="w-full min-w-0 overflow-x-auto text-sm leading-relaxed text-foreground font-medium"
+                                  style={{ margin: 0, maxWidth: '100%' }}
                                 />
                               </div>
                             ))}
