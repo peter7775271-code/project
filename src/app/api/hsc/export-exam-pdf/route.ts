@@ -285,6 +285,25 @@ const attachQuestionImageAssets = async (questions: ExportQuestion[], tempDir: s
   return enriched;
 };
 
+const getReferencedAssetFilenames = (questions: ExportQuestion[]) => {
+  const filenames = new Set<string>();
+  for (const question of questions) {
+    const candidates = [
+      question.graph_image_file,
+      question.sample_answer_image_file,
+      question.mcq_option_a_image_file,
+      question.mcq_option_b_image_file,
+      question.mcq_option_c_image_file,
+      question.mcq_option_d_image_file,
+    ];
+    for (const candidate of candidates) {
+      const name = String(candidate || '').trim();
+      if (name) filenames.add(name);
+    }
+  }
+  return Array.from(filenames);
+};
+
 const buildExamLatex = ({
   title,
   subtitle,
@@ -539,18 +558,27 @@ export async function POST(request: Request) {
       pdfBuffer = await readFile(pdfPath);
     } catch (localCompileError: any) {
       console.warn('[export-exam-pdf] Local pdflatex failed, falling back to LATEX_TO_PDF_API_URL when possible', localCompileError);
-      if (hasQuestionImages) {
+      const isYtoTechApi = LATEX_TO_PDF_API_MODE === 'ytotech' || LATEX_TO_PDF_API_URL.includes('latex.ytotech.com/builds/sync');
+      if (hasQuestionImages && !isYtoTechApi) {
         imagesOmittedInFallback = true;
-        console.warn('[export-exam-pdf] Embedded images are omitted in API fallback because local pdflatex is unavailable.');
+        console.warn('[export-exam-pdf] Embedded images are omitted in API fallback unless using YtoTech multipart endpoint.');
       }
-      const compileViaLatexApi = async (texInput: string) => {
+
+      let apiQuestions: ExportQuestion[] = questions;
+      if (hasQuestionImages && isYtoTechApi) {
+        if (!tempDir) {
+          tempDir = await mkdtemp(path.join(os.tmpdir(), 'export-exam-'));
+        }
+        apiQuestions = await attachQuestionImageAssets(questions, tempDir, includeSolutions);
+      }
+
+      const compileViaLatexApi = async (texInput: string, questionsWithAssets?: ExportQuestion[]) => {
         const queryParams = new URLSearchParams({
           command: 'pdflatex',
           force: 'true',
           download: filename,
         });
         const postUrlWithQuery = `${LATEX_TO_PDF_API_URL}${LATEX_TO_PDF_API_URL.includes('?') ? '&' : '?'}${queryParams.toString()}`;
-        const isYtoTechApi = LATEX_TO_PDF_API_MODE === 'ytotech' || LATEX_TO_PDF_API_URL.includes('latex.ytotech.com/builds/sync');
         const postUrl = isYtoTechApi ? LATEX_TO_PDF_API_URL : postUrlWithQuery;
 
         const parsePdfResponse = async (response: Response) => {
@@ -573,6 +601,21 @@ export async function POST(request: Request) {
           form.set('compiler', 'pdflatex');
           form.set('main', 'main.tex');
           form.append('resources[]', new Blob([texInput], { type: 'text/plain' }), 'main.tex');
+
+          if (questionsWithAssets && tempDir) {
+            const assetNames = getReferencedAssetFilenames(questionsWithAssets);
+            for (const assetName of assetNames) {
+              try {
+                const fullPath = path.join(tempDir, assetName);
+                const data = await readFile(fullPath);
+                const ext = detectImageExt(assetName);
+                const mime = ext === 'jpg' ? 'image/jpeg' : 'image/png';
+                form.append('resources[]', new Blob([data], { type: mime }), assetName);
+              } catch {
+                console.warn(`[export-exam-pdf] Could not attach fallback API image resource: ${assetName}`);
+              }
+            }
+          }
 
           postAttempts.push({
             name: 'multipart-ytotech',
@@ -646,21 +689,21 @@ export async function POST(request: Request) {
         title,
         subtitle,
         includeSolutions,
-        questions,
+        questions: apiQuestions,
       });
 
       try {
-        pdfBuffer = await compileViaLatexApi(tex);
+        pdfBuffer = await compileViaLatexApi(tex, apiQuestions);
       } catch (apiCompileError: any) {
         console.warn('[export-exam-pdf] API compile failed, retrying compile-safe mode', apiCompileError);
         const safeTex = buildExamLatex({
           title,
           subtitle,
           includeSolutions,
-          questions,
+          questions: apiQuestions,
           compileSafeMode: true,
         });
-        pdfBuffer = await compileViaLatexApi(safeTex);
+        pdfBuffer = await compileViaLatexApi(safeTex, apiQuestions);
       }
     }
 
