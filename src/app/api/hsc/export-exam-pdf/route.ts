@@ -335,7 +335,7 @@ const buildExamLatex = ({
       lines.push('');
       if (question.graph_image_file) {
         lines.push('\\begin{center}');
-        lines.push(`\\includegraphics[width=${imageWidthBySize(question.graph_image_size)}]{${question.graph_image_file}}`);
+        lines.push(`\\includegraphics[draft=false,width=${imageWidthBySize(question.graph_image_size)}]{${question.graph_image_file}}`);
         lines.push('\\end{center}');
         lines.push('');
       }
@@ -371,7 +371,7 @@ const buildExamLatex = ({
           }
           if (option.imageFile) {
             lines.push('\\begin{center}');
-            lines.push(`\\includegraphics[width=0.30\\textwidth]{${option.imageFile}}`);
+            lines.push(`\\includegraphics[draft=false,width=0.30\\textwidth]{${option.imageFile}}`);
             lines.push('\\end{center}');
           }
           if (!option.value && !option.imageFile) {
@@ -400,7 +400,7 @@ const buildExamLatex = ({
         }
         if (question.sample_answer_image_file) {
           lines.push('\\begin{center}');
-          lines.push(`\\includegraphics[width=${imageWidthBySize(question.sample_answer_image_size)}]{${question.sample_answer_image_file}}`);
+          lines.push(`\\includegraphics[draft=false,width=${imageWidthBySize(question.sample_answer_image_size)}]{${question.sample_answer_image_file}}`);
           lines.push('\\end{center}');
           lines.push('');
         }
@@ -418,10 +418,11 @@ const buildExamLatex = ({
 \\usepackage[utf8]{inputenc}
 \\usepackage[a4paper,margin=1in]{geometry}
 \\usepackage{amsmath,amssymb,mathtools}
-\\usepackage{graphicx}
+\\usepackage[final]{graphicx}
 \\usepackage{enumitem}
 \\usepackage{xcolor}
 \\usepackage[strings]{underscore}
+\\setkeys{Gin}{draft=false}
 \\DeclareUnicodeCharacter{2220}{\\ensuremath{\\angle}}
 \\DeclareUnicodeCharacter{2264}{\\ensuremath{\\leq}}
 \\DeclareUnicodeCharacter{2265}{\\ensuremath{\\geq}}
