@@ -167,7 +167,21 @@ const getTopicOptions = (grade: string, subject: string) => {
     return null;
   }
   const yearTopics = TOPIC_LISTS[yearKey] as Record<string, ReadonlyArray<string>>;
-  return yearTopics[subjectKey] || yearTopics.mathematics || TOPIC_LISTS['Year 12']['extension 1'];
+  const selectedTopics =
+    yearTopics[subjectKey] || yearTopics.mathematics || TOPIC_LISTS['Year 12']['extension 1'];
+
+  if (yearKey !== 'Year 12') {
+    return selectedTopics;
+  }
+
+  const year11Topics = TOPIC_LISTS['Year 11'] as Record<string, ReadonlyArray<string>>;
+  const matchingYear11Topics = year11Topics[subjectKey] || year11Topics.mathematics;
+
+  if (!matchingYear11Topics) {
+    return selectedTopics;
+  }
+
+  return Array.from(new Set([...selectedTopics, ...matchingYear11Topics]));
 };
 
 const buildPdfPrompt = (
@@ -591,6 +605,32 @@ const normalizeQuestionKey = (raw: string) => {
   return { base, part, subpart, key };
 };
 
+const buildAutoGroupMapByQuestionId = (
+  questions: Array<{ id: string; question_number: string | null }>,
+  context: { schoolName: string; year: number; paperNumber: number }
+) => {
+  const groupedByBase = new Map<string, string[]>();
+
+  questions.forEach((question) => {
+    const { base, part } = normalizeQuestionKey(String(question.question_number || ''));
+    if (!base || !part) return;
+    const existing = groupedByBase.get(base) || [];
+    existing.push(question.id);
+    groupedByBase.set(base, existing);
+  });
+
+  const map: Record<string, string> = {};
+  groupedByBase.forEach((ids, base) => {
+    if (ids.length < 2) return;
+    const label = `Auto ${context.schoolName} ${context.year} P${context.paperNumber} Q${base}`;
+    ids.forEach((id) => {
+      map[id] = label;
+    });
+  });
+
+  return map;
+};
+
 const parseCriteria = (content: string) => {
   const lines = content.split(/\r?\n/);
   const criteria: ParsedCriteria[] = [];
@@ -732,6 +772,7 @@ export async function POST(request: Request) {
     const subjectInput = formData.get('subject');
     const overwriteInput = formData.get('overwrite');
     const generateCriteriaInput = formData.get('generateMarkingCriteria');
+    const autoGroupSubpartsInput = formData.get('autoGroupSubparts');
     const schoolNameInput = formData.get('schoolName');
     const paperNumberInput = formData.get('paperNumber');
 
@@ -752,6 +793,7 @@ export async function POST(request: Request) {
     const subject = String(subjectInput).trim();
     const overwrite = String(overwriteInput || '').toLowerCase() === 'true';
     const generateMarkingCriteria = String(generateCriteriaInput || '').toLowerCase() === 'true';
+    const autoGroupSubparts = String(autoGroupSubpartsInput || '').toLowerCase() === 'true';
     const schoolName = String(schoolNameInput || '').trim();
     const schoolNameForDb = schoolName || 'HSC';
     const parsedPaperNumber = Number.parseInt(String(paperNumberInput || ''), 10);
@@ -1390,6 +1432,31 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
     const fromImages = imageResponseBodies.join('\n\n');
     const combinedModelOutput = [fromChunks, fromImages].filter(Boolean).join('\n\n') || null;
 
+    let autoGroupsByQuestionId: Record<string, string> = {};
+    if (autoGroupSubparts) {
+      const { data: paperQuestions, error: paperQuestionsError } = await supabaseAdmin
+        .from('hsc_questions')
+        .select('id, question_number')
+        .match({
+          grade,
+          year,
+          subject,
+          school_name: schoolNameForDb,
+          paper_number: paperNumber,
+        });
+
+      if (paperQuestionsError) {
+        console.error('Auto-group fetch error:', paperQuestionsError);
+      } else {
+        const rows = Array.isArray(paperQuestions) ? paperQuestions as Array<{ id: string; question_number: string | null }> : [];
+        autoGroupsByQuestionId = buildAutoGroupMapByQuestionId(rows, {
+          schoolName: schoolNameForDb,
+          year,
+          paperNumber,
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: `Created ${createdQuestions.length} questions. Updated ${updatedCriteriaCount} marking criteria.`,
@@ -1413,6 +1480,7 @@ If the extracted text contains OCR noise, do your best to reconstruct the intend
       missingCriteria,
       chunks: chunkResponses,
       refusals,
+      autoGroupsByQuestionId,
       chatgpt: combinedModelOutput,
       modelOutput: combinedModelOutput,
       rawInputs,

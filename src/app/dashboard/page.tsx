@@ -72,8 +72,9 @@ import {
   LatexText,
   QuestionTextWithDividers,
   formatPartDividerPlaceholder,
-  getRomanPart,
 } from './question-text-with-dividers';
+import InlineQuestionEditorModal from './InlineQuestionEditorModal';
+import EditQuestionModal from './EditQuestionModal';
 
 const Excalidraw = dynamic(
   async () => {
@@ -88,7 +89,7 @@ function stripOuterBraces(s: string): string {
   const t = s.trim();
   if (t.startsWith('{') && t.endsWith('}') && t.length >= 2) return t.slice(1, -1).trim();
   return s;
-}
+}                       
 type Subject = {
   id: string;
   name: string;
@@ -986,6 +987,7 @@ export default function HSCGeneratorPage() {
     grade: string;
     year: number;
     subject: string;
+    paper_number?: number | null;
     topic: string;
     subtopic?: string | null;
     syllabus_dot_point?: string | null;
@@ -1100,6 +1102,7 @@ export default function HSCGeneratorPage() {
   const [pdfSubject, setPdfSubject] = useState<string>('Mathematics Advanced');
   const [pdfOverwrite, setPdfOverwrite] = useState(false);
   const [pdfGenerateCriteria, setPdfGenerateCriteria] = useState(false);
+  const [pdfAutoGroupSubparts, setPdfAutoGroupSubparts] = useState(false);
   const [pdfSchoolName, setPdfSchoolName] = useState('');
   const [pdfPaperNumber, setPdfPaperNumber] = useState('');
   const [selectedSyllabusMappingPaper, setSelectedSyllabusMappingPaper] = useState('');
@@ -1116,6 +1119,11 @@ export default function HSCGeneratorPage() {
     parsedModelOutput: unknown;
     allowedContextSize: number;
   }>>([]);
+  const [syllabusWorkflowTestInput, setSyllabusWorkflowTestInput] = useState('');
+  const [isRunningSyllabusWorkflowTest, setIsRunningSyllabusWorkflowTest] = useState(false);
+  const [syllabusWorkflowTestStatus, setSyllabusWorkflowTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [syllabusWorkflowTestResult, setSyllabusWorkflowTestResult] = useState('');
+  const [syllabusWorkflowTestOutput, setSyllabusWorkflowTestOutput] = useState<Record<string, unknown> | null>(null);
   const [taxonomyGrouped, setTaxonomyGrouped] = useState<Record<string, Record<string, { id: string; text: string }[]>>>({});
   const [taxonomyLoading, setTaxonomyLoading] = useState(false);
   const [syllabusImportText, setSyllabusImportText] = useState('');
@@ -1190,6 +1198,19 @@ export default function HSCGeneratorPage() {
   const [manageFiltersApplied, setManageFiltersApplied] = useState(false);
   const [manageSortKey, setManageSortKey] = useState<'question_number' | 'year' | 'subject' | 'grade' | 'marks' | 'topic' | 'school'>('question_number');
   const [manageSortDirection, setManageSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [manageSubView, setManageSubView] = useState<'list' | 'image-map'>('list');
+  const [imageMapSelectedPaperKey, setImageMapSelectedPaperKey] = useState('');
+  const [imageMapQuestions, setImageMapQuestions] = useState<any[]>([]);
+  const [imageMapDraftById, setImageMapDraftById] = useState<Record<string, {
+    graph_image_data: string;
+    sample_answer_image: string;
+    mcq_option_a_image: string;
+    mcq_option_b_image: string;
+    mcq_option_c_image: string;
+    mcq_option_d_image: string;
+    mcq_correct_answer: 'A' | 'B' | 'C' | 'D';
+  }>>({});
+  const [imageMapSaving, setImageMapSaving] = useState(false);
   const [customExamGroupByQuestionId, setCustomExamGroupByQuestionId] = useState<Record<string, string>>({});
   const mainContentScrollRef = useRef<HTMLDivElement | null>(null);
   const manageDragSelectingRef = useRef(false);
@@ -1450,18 +1471,26 @@ export default function HSCGeneratorPage() {
     return raw;
   };
 
+  /** Parent display group: e.g. "11 (a)", "11 (b)", "11 (a)(i)" all yield "11". */
+  const getQuestionParentDisplayBase = (qNumber: string | null | undefined): string => {
+    const raw = String(qNumber ?? '').trim();
+    const numOnly = raw.match(/^(\d+)/);
+    if (numOnly) return numOnly[1];
+    return getQuestionDisplayBase(qNumber);
+  };
+
   /** Contiguous group of questions sharing the same display base that contains the given index. */
   const getDisplayGroupAt = (questions: Question[], index: number): { group: Question[]; startIndex: number; endIndex: number } => {
     if (index < 0 || index >= questions.length) {
       return { group: [], startIndex: index, endIndex: index };
     }
-    const base = getQuestionDisplayBase(questions[index].question_number);
+    const base = getQuestionParentDisplayBase(questions[index].question_number);
     let startIndex = index;
-    while (startIndex > 0 && getQuestionDisplayBase(questions[startIndex - 1].question_number) === base) {
+    while (startIndex > 0 && getQuestionParentDisplayBase(questions[startIndex - 1].question_number) === base) {
       startIndex--;
     }
     let endIndex = index + 1;
-    while (endIndex < questions.length && getQuestionDisplayBase(questions[endIndex].question_number) === base) {
+    while (endIndex < questions.length && getQuestionParentDisplayBase(questions[endIndex].question_number) === base) {
       endIndex++;
     }
     return {
@@ -1480,7 +1509,7 @@ export default function HSCGeneratorPage() {
       return group[0];
     }
     const first = group[0];
-    const displayBase = getQuestionDisplayBase(first.question_number);
+    const displayBase = getQuestionParentDisplayBase(first.question_number);
     // If any record in the DB already contains our PART_DIVIDER placeholders, it means someone
     // accidentally saved a merged display question back into the underlying sub-question.
     // In that case, re-merging would duplicate content/criteria/marks. Prefer the already-merged
@@ -1491,8 +1520,7 @@ export default function HSCGeneratorPage() {
       ? String(mergedCarrier.question_text || '')
       : group
         .map((q) => {
-          const roman = getRomanPart(q.question_number);
-          const label = roman || (q.question_number ?? 'Part');
+          const label = q.question_number ?? 'Part';
           return `${formatPartDividerPlaceholder(label)}\n\n${q.question_text}`;
         })
         .join('');
@@ -1866,6 +1894,7 @@ export default function HSCGeneratorPage() {
 
   useEffect(() => {
     if (viewMode === 'dev-questions' && devTab === 'manage') {
+      setManageSubView('list');
       setManageFiltersApplied(false);
       setAllQuestions([]);
       setSelectedManageQuestionId(null);
@@ -1873,6 +1902,9 @@ export default function HSCGeneratorPage() {
       setManageQuestionEditMode(false);
       setSelectedManageQuestionIds([]);
       setQuestionsFetchError(null);
+      setImageMapSelectedPaperKey('');
+      setImageMapQuestions([]);
+      setImageMapDraftById({});
     }
   }, [viewMode, devTab]);
 
@@ -1898,12 +1930,29 @@ export default function HSCGeneratorPage() {
       return;
     }
 
+    const hasMappingValue = (value: string | null | undefined) => String(value || '').trim().length > 0;
+    const examQuestions = allQuestions.filter((q) => (
+      String(q?.year || '') === selectedPaper.year
+      && String(q?.grade || '') === selectedPaper.grade
+      && String(q?.subject || '') === selectedPaper.subject
+      && String(q?.school_name || 'HSC') === selectedPaper.school
+    ));
+    const unmappedCount = examQuestions.filter((q) => !hasMappingValue(q?.subtopic) && !hasMappingValue(q?.syllabus_dot_point)).length;
+
+    if (examQuestions.length > 0 && unmappedCount === 0) {
+      setSyllabusMappingStatus('success');
+      setSyllabusMappingResult('All questions in this exam are already mapped.');
+      setSyllabusMappingProgress({ current: 0, total: 0 });
+      setSyllabusMappingDebugOutputs([]);
+      return;
+    }
+
     try {
       setIsMappingSyllabusDotPoints(true);
       setSyllabusMappingStatus('idle');
       setSyllabusMappingResult('');
       setSyllabusMappingDebugOutputs([]);
-      setSyllabusMappingProgress({ current: 0, total: selectedPaper.count });
+      setSyllabusMappingProgress({ current: 0, total: unmappedCount || selectedPaper.count });
 
       const response = await fetch('/api/hsc/map-syllabus-dot-points', {
         method: 'POST',
@@ -1913,6 +1962,7 @@ export default function HSCGeneratorPage() {
           grade: selectedPaper.grade,
           subject: selectedPaper.subject,
           school: selectedPaper.school,
+          only_unmapped: true,
           debug: true,
         }),
       });
@@ -1928,10 +1978,10 @@ export default function HSCGeneratorPage() {
 
       const totals = data?.totals || {};
       setSyllabusMappingDebugOutputs(Array.isArray(data?.debug_model_outputs) ? data.debug_model_outputs : []);
-      setSyllabusMappingProgress({ current: totals.questions || selectedPaper.count, total: totals.questions || selectedPaper.count });
+      setSyllabusMappingProgress({ current: totals.questions || 0, total: totals.questions || 0 });
       setSyllabusMappingStatus('success');
       setSyllabusMappingResult(
-        `Completed. Updated ${totals.updated || 0} of ${totals.questions || 0} questions (skipped ${totals.skipped || 0}, failed ${totals.failed || 0}).`
+        `Completed. Updated ${totals.updated || 0} of ${totals.questions || 0} unmapped questions (already mapped ${totals.alreadyMapped || 0}, skipped ${totals.skipped || 0}, failed ${totals.failed || 0}).`
       );
       fetchAllQuestions();
     } catch (err) {
@@ -1940,6 +1990,71 @@ export default function HSCGeneratorPage() {
       setSyllabusMappingResult(message);
     } finally {
       setIsMappingSyllabusDotPoints(false);
+    }
+  };
+
+  const runSyllabusWorkflowTest = async () => {
+    const input = syllabusWorkflowTestInput.trim();
+    if (!input) {
+      setSyllabusWorkflowTestStatus('error');
+      setSyllabusWorkflowTestResult('Enter a question first.');
+      setSyllabusWorkflowTestOutput(null);
+      return;
+    }
+
+    if (!selectedSyllabusMappingPaper) {
+      setSyllabusWorkflowTestStatus('error');
+      setSyllabusWorkflowTestResult('Select an exam first so grade/subject context is available.');
+      setSyllabusWorkflowTestOutput(null);
+      return;
+    }
+
+    const selectedPaper = availablePapers.find((paper) => getPaperKey(paper) === selectedSyllabusMappingPaper);
+    if (!selectedPaper) {
+      setSyllabusWorkflowTestStatus('error');
+      setSyllabusWorkflowTestResult('Selected exam is no longer available.');
+      setSyllabusWorkflowTestOutput(null);
+      return;
+    }
+
+    try {
+      setIsRunningSyllabusWorkflowTest(true);
+      setSyllabusWorkflowTestStatus('idle');
+      setSyllabusWorkflowTestResult('');
+      setSyllabusWorkflowTestOutput(null);
+
+      const response = await fetch('/api/hsc/map-syllabus-dot-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_test: true,
+          workflow_test_input: input,
+          year: selectedPaper.year,
+          grade: selectedPaper.grade,
+          subject: selectedPaper.subject,
+          school: selectedPaper.school,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = data?.error || `Workflow test failed (${response.status})`;
+        setSyllabusWorkflowTestStatus('error');
+        setSyllabusWorkflowTestResult(message);
+        setSyllabusWorkflowTestOutput(data && typeof data === 'object' ? (data as Record<string, unknown>) : null);
+        return;
+      }
+
+      setSyllabusWorkflowTestStatus('success');
+      setSyllabusWorkflowTestResult(`Completed test. Category: ${data?.classification || 'Unknown'}`);
+      setSyllabusWorkflowTestOutput(data && typeof data === 'object' ? (data as Record<string, unknown>) : null);
+    } catch (err) {
+      const message = getFetchErrorMessage(err, 'Failed to run workflow test');
+      setSyllabusWorkflowTestStatus('error');
+      setSyllabusWorkflowTestResult(message);
+      setSyllabusWorkflowTestOutput(null);
+    } finally {
+      setIsRunningSyllabusWorkflowTest(false);
     }
   };
 
@@ -2030,6 +2145,32 @@ export default function HSCGeneratorPage() {
     const availableIds = new Set(allQuestions.map((q) => q.id));
     setSelectedManageQuestionIds((prev) => prev.filter((id) => availableIds.has(id)));
   }, [allQuestions, selectedManageQuestionIds.length]);
+
+  useEffect(() => {
+    if (manageSubView !== 'image-map') return;
+    if (!allQuestions.length) return;
+
+    const hasSelected = imageMapSelectedPaperKey
+      ? availablePapers.some((paper) => getPaperKey(paper) === imageMapSelectedPaperKey)
+      : false;
+
+    const nextKey = hasSelected
+      ? imageMapSelectedPaperKey
+      : (availablePapers[0] ? getPaperKey(availablePapers[0]) : '');
+
+    if (!nextKey) {
+      setImageMapSelectedPaperKey('');
+      setImageMapQuestions([]);
+      setImageMapDraftById({});
+      return;
+    }
+
+    if (nextKey !== imageMapSelectedPaperKey) {
+      setImageMapSelectedPaperKey(nextKey);
+    }
+
+    loadImageMapExam(nextKey);
+  }, [manageSubView, allQuestions, availablePapers, imageMapSelectedPaperKey]);
 
   useEffect(() => {
     const handleMouseUp = () => endManageDragSelection();
@@ -2700,6 +2841,19 @@ export default function HSCGeneratorPage() {
       if (!response.ok) {
         throw new Error(data?.error || `Failed to upload ${label}`);
       }
+      const autoGroups = data?.autoGroupsByQuestionId;
+      if (autoGroups && typeof autoGroups === 'object' && !Array.isArray(autoGroups)) {
+        setCustomExamGroupByQuestionId((prev) => {
+          const next = { ...prev };
+          Object.entries(autoGroups as Record<string, unknown>).forEach(([questionId, groupLabel]) => {
+            const id = String(questionId || '').trim();
+            const label = String(groupLabel || '').trim();
+            if (!id || !label) return;
+            next[id] = label;
+          });
+          return next;
+        });
+      }
       const modelOutput = data?.modelOutput || data?.chatgpt;
       if (modelOutput) {
         setPdfChatGptResponse((prev) => (prev ? `${prev}\n\n${modelOutput}` : modelOutput));
@@ -2727,6 +2881,7 @@ export default function HSCGeneratorPage() {
         examData.append('subject', pdfSubject);
         examData.append('overwrite', pdfOverwrite ? 'true' : 'false');
         examData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
+        examData.append('autoGroupSubparts', pdfAutoGroupSubparts ? 'true' : 'false');
         examData.append('schoolName', pdfSchoolName.trim());
         if (pdfPaperNumber.trim()) {
           examData.append('paperNumber', pdfPaperNumber.trim());
@@ -2740,6 +2895,7 @@ export default function HSCGeneratorPage() {
         criteriaData.append('subject', pdfSubject);
         criteriaData.append('overwrite', pdfOverwrite ? 'true' : 'false');
         criteriaData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
+        criteriaData.append('autoGroupSubparts', pdfAutoGroupSubparts ? 'true' : 'false');
         criteriaData.append('schoolName', pdfSchoolName.trim());
         if (pdfPaperNumber.trim()) {
           criteriaData.append('paperNumber', pdfPaperNumber.trim());
@@ -2766,6 +2922,7 @@ export default function HSCGeneratorPage() {
       singleData.append('subject', pdfSubject);
       singleData.append('overwrite', pdfOverwrite ? 'true' : 'false');
       singleData.append('generateMarkingCriteria', pdfGenerateCriteria ? 'true' : 'false');
+      singleData.append('autoGroupSubparts', pdfAutoGroupSubparts ? 'true' : 'false');
       singleData.append('schoolName', pdfSchoolName.trim());
       if (pdfPaperNumber.trim()) {
         singleData.append('paperNumber', pdfPaperNumber.trim());
@@ -2907,25 +3064,49 @@ export default function HSCGeneratorPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleGraphPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handleClipboardImagePaste = (
+    e: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    onDataUrl: (dataUrl: string) => void
+  ) => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
     for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (!file) continue;
+      if (!item.type.startsWith('image/')) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
 
-        e.preventDefault();
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result as string;
-          setNewQuestion({ ...newQuestion, graphImageData: dataUrl });
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
+      e.preventDefault();
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result || '');
+        if (!dataUrl) return;
+        onDataUrl(dataUrl);
+      };
+      reader.readAsDataURL(file);
+      return;
     }
+  };
+
+  const handleEditModalImagePaste = (
+    field: string,
+    sizeField?: string
+  ) => (e: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    handleClipboardImagePaste(e, (dataUrl) => {
+      setEditQuestion((prev: any) => {
+        const next = { ...prev, [field]: dataUrl };
+        if (sizeField && !String(prev[sizeField] || '').trim()) {
+          next[sizeField] = 'medium';
+        }
+        return next;
+      });
+    });
+  };
+
+  const handleGraphPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    handleClipboardImagePaste(e, (dataUrl) => {
+      setNewQuestion({ ...newQuestion, graphImageData: dataUrl });
+    });
   };
 
   const handleEditGraphUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2941,24 +3122,9 @@ export default function HSCGeneratorPage() {
   };
 
   const handleEditGraphPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (!file) continue;
-
-        e.preventDefault();
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result as string;
-          setEditQuestion({ ...editQuestion, graphImageData: dataUrl });
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
-    }
+    handleClipboardImagePaste(e, (dataUrl) => {
+      setEditQuestion({ ...editQuestion, graphImageData: dataUrl });
+    });
   };
 
   const fetchAllQuestions = async () => {
@@ -3057,6 +3223,130 @@ export default function HSCGeneratorPage() {
     setManageQuestionDraft(null);
     setManageQuestionEditMode(false);
     setSelectedManageQuestionIds([]);
+  };
+
+  const openManageImageMap = async () => {
+    setManageSubView('image-map');
+    if (!allQuestions.length && !loadingQuestions) {
+      await fetchAllQuestions();
+    }
+  };
+
+  const loadImageMapExam = (paperKey: string) => {
+    const selectedPaper = availablePapers.find((paper) => getPaperKey(paper) === paperKey);
+    if (!selectedPaper) {
+      setImageMapQuestions([]);
+      setImageMapDraftById({});
+      return;
+    }
+
+    const nextQuestions = allQuestions
+      .filter((q) => (
+        String(q?.year || '') === selectedPaper.year
+        && String(q?.grade || '') === selectedPaper.grade
+        && String(q?.subject || '') === selectedPaper.subject
+        && String(q?.school_name || 'HSC') === selectedPaper.school
+      ))
+      .sort((a, b) => {
+        const left = parseQuestionNumberForSort(a.question_number);
+        const right = parseQuestionNumberForSort(b.question_number);
+        return left.number - right.number || left.part.localeCompare(right.part) || left.subpart - right.subpart || left.raw.localeCompare(right.raw);
+      });
+
+    const nextDrafts: Record<string, {
+      graph_image_data: string;
+      sample_answer_image: string;
+      mcq_option_a_image: string;
+      mcq_option_b_image: string;
+      mcq_option_c_image: string;
+      mcq_option_d_image: string;
+      mcq_correct_answer: 'A' | 'B' | 'C' | 'D';
+    }> = {};
+
+    nextQuestions.forEach((question) => {
+      nextDrafts[question.id] = {
+        graph_image_data: String(question.graph_image_data || ''),
+        sample_answer_image: String(question.sample_answer_image || ''),
+        mcq_option_a_image: String(question.mcq_option_a_image || ''),
+        mcq_option_b_image: String(question.mcq_option_b_image || ''),
+        mcq_option_c_image: String(question.mcq_option_c_image || ''),
+        mcq_option_d_image: String(question.mcq_option_d_image || ''),
+        mcq_correct_answer: (String(question.mcq_correct_answer || 'A').toUpperCase() as 'A' | 'B' | 'C' | 'D'),
+      };
+    });
+
+    setImageMapQuestions(nextQuestions);
+    setImageMapDraftById(nextDrafts);
+  };
+
+  const saveImageMapChanges = async () => {
+    if (!imageMapQuestions.length) return;
+
+    const changedQuestions = imageMapQuestions.filter((question) => {
+      const draft = imageMapDraftById[question.id];
+      if (!draft) return false;
+      return (
+        String(question.graph_image_data || '') !== draft.graph_image_data
+        || String(question.sample_answer_image || '') !== draft.sample_answer_image
+        || String(question.mcq_option_a_image || '') !== draft.mcq_option_a_image
+        || String(question.mcq_option_b_image || '') !== draft.mcq_option_b_image
+        || String(question.mcq_option_c_image || '') !== draft.mcq_option_c_image
+        || String(question.mcq_option_d_image || '') !== draft.mcq_option_d_image
+        || String(question.mcq_correct_answer || 'A').toUpperCase() !== draft.mcq_correct_answer
+      );
+    });
+
+    if (!changedQuestions.length) {
+      alert('No changes to save.');
+      return;
+    }
+
+    try {
+      setImageMapSaving(true);
+      const updatedById = new Map<string, any>();
+
+      for (const question of changedQuestions) {
+        const draft = imageMapDraftById[question.id];
+        const nextDraft = {
+          ...question,
+          graph_image_data: draft.graph_image_data,
+          sample_answer_image: draft.sample_answer_image,
+          mcq_option_a_image: draft.mcq_option_a_image,
+          mcq_option_b_image: draft.mcq_option_b_image,
+          mcq_option_c_image: draft.mcq_option_c_image,
+          mcq_option_d_image: draft.mcq_option_d_image,
+          mcq_correct_answer: draft.mcq_correct_answer,
+        };
+
+        const response = await fetch('/api/hsc/update-question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildUpdatePayload(nextDraft)),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result?.error || `Failed to update question ${question.question_number || question.id}`);
+        }
+
+        const updated = Array.isArray(result?.data) ? result.data[0] : result?.data;
+        if (updated?.id) {
+          updatedById.set(updated.id, updated);
+        }
+      }
+
+      if (updatedById.size > 0) {
+        setAllQuestions((prev) => prev.map((q) => updatedById.get(q.id) || q));
+        setImageMapQuestions((prev) => prev.map((q) => updatedById.get(q.id) || q));
+      }
+
+      alert(`Saved ${changedQuestions.length} question${changedQuestions.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      console.error('Error saving image map changes:', err);
+      alert(err instanceof Error ? err.message : 'Failed to save image updates');
+    } finally {
+      setImageMapSaving(false);
+    }
   };
 
   const deleteQuestion = async (questionId: string) => {
@@ -3267,14 +3557,75 @@ export default function HSCGeneratorPage() {
     });
   };
 
+  const autoGroupSubpartQuestions = () => {
+    const source = filteredManageQuestions.length ? filteredManageQuestions : allQuestions;
+    if (!source.length) return;
+
+    const grouped = new Map<string, string[]>();
+    source.forEach((question) => {
+      const parsed = parseQuestionNumberForSort(question.question_number);
+      if (!Number.isFinite(parsed.number) || !parsed.part) return;
+
+      const key = [
+        String(question.grade || ''),
+        String(question.subject || ''),
+        String(question.year || ''),
+        String(question.school_name || ''),
+        String(question.paper_number ?? ''),
+        String(parsed.number),
+      ].join('|');
+
+      const existing = grouped.get(key) || [];
+      existing.push(question.id);
+      grouped.set(key, existing);
+    });
+
+    const existingGroupNumbers = Object.values(customExamGroupByQuestionId)
+      .map((value) => Number.parseInt(String(value), 10))
+      .filter((value) => Number.isInteger(value) && value > 0);
+    let nextGroupNumber = existingGroupNumbers.length ? Math.max(...existingGroupNumbers) + 1 : 1;
+
+    let groupsCreated = 0;
+    let questionsAssigned = 0;
+
+    setCustomExamGroupByQuestionId((prev) => {
+      const next = { ...prev };
+
+      grouped.forEach((questionIds) => {
+        if (questionIds.length < 2) return;
+        const label = String(nextGroupNumber++);
+        groupsCreated += 1;
+
+        questionIds.forEach((questionId) => {
+          if (next[questionId] !== label) {
+            next[questionId] = label;
+            questionsAssigned += 1;
+          }
+        });
+      });
+
+      return next;
+    });
+
+    if (!groupsCreated) {
+      alert('No lettered subpart groups found in the current question set.');
+      return;
+    }
+
+    alert(`Auto-grouped ${questionsAssigned} questions across ${groupsCreated} subpart groups.`);
+  };
+
   const buildUpdatePayload = (draft: any) => ({
     questionId: draft.id,
     grade: draft.grade,
     year: draft.year,
+    schoolName: draft.school_name || draft.schoolName || draft.school || '',
     subject: draft.subject,
     topic: draft.topic,
     subtopic: draft.subtopic || null,
     syllabusDotPoint: draft.syllabus_dot_point || null,
+    paperNumber: draft.paper_number || null,
+    paperLabel: draft.paper_label || null,
     marks: draft.marks,
     questionNumber: draft.question_number,
     questionText: draft.question_text,
@@ -3295,6 +3646,47 @@ export default function HSCGeneratorPage() {
     mcqCorrectAnswer: draft.mcq_correct_answer,
     mcqExplanation: draft.mcq_explanation,
   });
+
+  const openInlineQuestionEditor = (rawQuestion: any) => {
+    const fallbackGrade = (String(rawQuestion?.grade || '').trim() || 'Year 12') as 'Year 7' | 'Year 8' | 'Year 9' | 'Year 10' | 'Year 11' | 'Year 12';
+    const subjectOptions = SUBJECTS_BY_YEAR[fallbackGrade] || SUBJECTS_BY_YEAR['Year 12'];
+    const fallbackSubject = String(rawQuestion?.subject || '').trim() || subjectOptions[0];
+    const topicOptions = getTopics(fallbackGrade, fallbackSubject);
+    const fallbackTopic = String(rawQuestion?.topic || '').trim() || topicOptions[0] || ALL_TOPICS[0] || 'Unspecified';
+
+    setInlineEditDraft({
+      ...rawQuestion,
+      grade: fallbackGrade,
+      year: String(rawQuestion?.year ?? new Date().getFullYear()),
+      subject: fallbackSubject,
+      school_name: String(rawQuestion?.school_name || 'HSC'),
+      paper_number: rawQuestion?.paper_number ?? null,
+      paper_label: String(rawQuestion?.paper_label || ''),
+      topic: fallbackTopic,
+      subtopic: String(rawQuestion?.subtopic || ''),
+      syllabus_dot_point: String(rawQuestion?.syllabus_dot_point || ''),
+      marks: Number.isFinite(Number(rawQuestion?.marks)) ? Number(rawQuestion.marks) : 0,
+      question_number: String(rawQuestion?.question_number || ''),
+      question_type: rawQuestion?.question_type || 'written',
+      question_text: String(rawQuestion?.question_text || ''),
+      marking_criteria: String(rawQuestion?.marking_criteria || ''),
+      sample_answer: String(rawQuestion?.sample_answer || ''),
+      sample_answer_image: String(rawQuestion?.sample_answer_image || ''),
+      sample_answer_image_size: String(rawQuestion?.sample_answer_image_size || 'medium'),
+      graph_image_data: String(rawQuestion?.graph_image_data || ''),
+      graph_image_size: String(rawQuestion?.graph_image_size || 'medium'),
+      mcq_option_a: String(rawQuestion?.mcq_option_a || ''),
+      mcq_option_b: String(rawQuestion?.mcq_option_b || ''),
+      mcq_option_c: String(rawQuestion?.mcq_option_c || ''),
+      mcq_option_d: String(rawQuestion?.mcq_option_d || ''),
+      mcq_option_a_image: String(rawQuestion?.mcq_option_a_image || ''),
+      mcq_option_b_image: String(rawQuestion?.mcq_option_b_image || ''),
+      mcq_option_c_image: String(rawQuestion?.mcq_option_c_image || ''),
+      mcq_option_d_image: String(rawQuestion?.mcq_option_d_image || ''),
+      mcq_correct_answer: String(rawQuestion?.mcq_correct_answer || 'A'),
+      mcq_explanation: String(rawQuestion?.mcq_explanation || ''),
+    });
+  };
 
   const saveManageQuestion = async () => {
     if (!manageQuestionDraft?.id) return;
@@ -4181,220 +4573,17 @@ export default function HSCGeneratorPage() {
         }
       `}</style>
 
-      {/* Inline edit question modal (dev): edit on the spot without leaving exam/review */}
-      {inlineEditDraft != null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0"
-            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-            onClick={() => !inlineEditSaving && setInlineEditDraft(null)}
-          />
-          <div
-            className="relative w-full max-w-2xl rounded-2xl border p-6 shadow-2xl overflow-y-auto max-h-[90vh]"
-            style={{
-              backgroundColor: 'var(--clr-surface-a10)',
-              borderColor: 'var(--clr-surface-tonal-a20)',
-              color: 'var(--clr-primary-a50)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Edit question (here)</h2>
-              <button
-                type="button"
-                onClick={() => !inlineEditSaving && setInlineEditDraft(null)}
-                className="p-2 rounded-lg cursor-pointer"
-                style={{ backgroundColor: 'var(--clr-surface-a20)' }}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Topic</label>
-                <select
-                  value={inlineEditDraft.topic || ''}
-                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, topic: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  {(() => {
-                    const current = inlineEditDraft.topic?.trim();
-                    const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
-                    return options.map((t) => <option key={t} value={t}>{t}</option>);
-                  })()}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Question (LaTeX)</label>
-                <textarea
-                  value={inlineEditDraft.question_text || ''}
-                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, question_text: e.target.value })}
-                  rows={6}
-                  className="w-full px-4 py-2 rounded-lg border font-mono text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Marking Criteria (LaTeX)</label>
-                <textarea
-                  value={inlineEditDraft.marking_criteria || ''}
-                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, marking_criteria: e.target.value })}
-                  rows={4}
-                  className="w-full px-4 py-2 rounded-lg border font-mono text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer (LaTeX)</label>
-                <textarea
-                  value={inlineEditDraft.sample_answer || ''}
-                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, sample_answer: e.target.value })}
-                  rows={4}
-                  className="w-full px-4 py-2 rounded-lg border font-mono text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image URL</label>
-                <input
-                  type="text"
-                  value={inlineEditDraft.sample_answer_image || ''}
-                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, sample_answer_image: e.target.value })}
-                  placeholder="https://... or data:image/png;base64,..."
-                  className="w-full px-4 py-2 rounded-lg border text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                />
-                <p className="text-xs mt-1" style={{ color: 'var(--clr-surface-a40)' }}>If provided, image will be shown instead of LaTeX text</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium mt-3 block" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image Size</label>
-                <select
-                  value={inlineEditDraft.sample_answer_image_size || 'medium'}
-                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, sample_answer_image_size: e.target.value })}
-                  className="mt-2 w-full px-4 py-2 rounded-lg border text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="large">Large</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image URL</label>
-                <input
-                  type="text"
-                  value={inlineEditDraft.graph_image_data || ''}
-                  onChange={(e) => {
-                    const nextUrl = e.target.value;
-                    setInlineEditDraft({
-                      ...inlineEditDraft,
-                      graph_image_data: nextUrl,
-                      graph_image_size: nextUrl ? (inlineEditDraft.graph_image_size || 'medium') : inlineEditDraft.graph_image_size,
-                    });
-                  }}
-                  placeholder="https://... or data:image/png;base64,..."
-                  className="w-full px-4 py-2 rounded-lg border text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Graph Image Size</label>
-                <select
-                  value={inlineEditDraft.graph_image_size || 'medium'}
-                  onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, graph_image_size: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border text-sm"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="large">Large</option>
-                  <option value="missing">Missing</option>
-                </select>
-              </div>
-              {inlineEditDraft.question_type === 'multiple_choice' && (
-                <div className="pt-4 border-t space-y-4" style={{ borderColor: 'var(--clr-surface-tonal-a20)' }}>
-                  <h5 className="text-sm font-bold" style={{ color: 'var(--clr-surface-a50)' }}>MCQ Options</h5>
-                  {[
-                    { key: 'A', text: 'mcq_option_a', image: 'mcq_option_a_image' },
-                    { key: 'B', text: 'mcq_option_b', image: 'mcq_option_b_image' },
-                    { key: 'C', text: 'mcq_option_c', image: 'mcq_option_c_image' },
-                    { key: 'D', text: 'mcq_option_d', image: 'mcq_option_d_image' },
-                  ].map(({ key, text, image }) => (
-                    <div key={key} className="p-3 rounded border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                      <label className="block text-xs font-medium mb-1">Option {key}</label>
-                      <input type="text" placeholder="Text (LaTeX)" value={inlineEditDraft[text] || ''} onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, [text]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                      <input type="url" placeholder="Or image URL" value={inlineEditDraft[image] || ''} onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, [image]: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                    </div>
-                  ))}
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Correct Answer</label>
-                    <select value={inlineEditDraft.mcq_correct_answer || 'A'} onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, mcq_correct_answer: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}>
-                      <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Explanation (LaTeX)</label>
-                    <textarea value={inlineEditDraft.mcq_explanation || ''} onChange={(e) => setInlineEditDraft({ ...inlineEditDraft, mcq_explanation: e.target.value })} rows={3} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                type="button"
-                onClick={saveInlineEdit}
-                disabled={inlineEditSaving}
-                className="flex-1 px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
-                style={{ backgroundColor: 'var(--clr-success-a0)', color: 'var(--clr-light-a0)' }}
-              >
-                {inlineEditSaving ? 'Saving…' : 'Save'}
-              </button>
-              <button
-                type="button"
-                onClick={() => !inlineEditSaving && setInlineEditDraft(null)}
-                disabled={inlineEditSaving}
-                className="flex-1 px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
-                style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <InlineQuestionEditorModal
+        isOpen={inlineEditDraft != null}
+        draft={inlineEditDraft}
+        saving={inlineEditSaving}
+        allTopics={ALL_TOPICS}
+        subjectsByYear={SUBJECTS_BY_YEAR as unknown as Record<string, readonly string[] | string[]>}
+        getTopics={getTopics}
+        onClose={() => !inlineEditSaving && setInlineEditDraft(null)}
+        onSave={saveInlineEdit}
+        setDraft={setInlineEditDraft}
+      />
 
       {/* Mobile Header */}
       <div className="lg:hidden flex items-center justify-between px-3 py-2 border-b border-neutral-100 sticky top-0 z-40 bg-white/80 backdrop-blur-md">
@@ -4707,7 +4896,7 @@ export default function HSCGeneratorPage() {
                                             allQuestions.find((q) => q?.id === revQuestion.id) ||
                                             paperQuestions.find((q) => q?.id === revQuestion.id) ||
                                             revQuestion;
-                                          setInlineEditDraft({ ...canonical });
+                                          openInlineQuestionEditor(canonical);
                                         }}
                                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
                                       >
@@ -5276,8 +5465,24 @@ export default function HSCGeneratorPage() {
                               <>
                                 {isPaperMode ? (
                                   <div className="mb-6">
-                                    <div className="exam-question-meta mb-5">
-                                      {question.marks} marks{question.topic ? ` • ${question.topic}` : ''}
+                                    <div className="exam-question-meta mb-5 flex items-center justify-between gap-3">
+                                      <span>{question.marks} marks{question.topic ? ` • ${question.topic}` : ''}</span>
+                                      {isDevMode && question.id && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const canonical =
+                                              allQuestions.find((q) => q?.id === question.id) ||
+                                              paperQuestions.find((q) => q?.id === question.id) ||
+                                              question;
+                                            openInlineQuestionEditor(canonical);
+                                          }}
+                                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                                        >
+                                          <Edit2 className="w-4 h-4" />
+                                          Edit question
+                                        </button>
+                                      )}
                                     </div>
                                     <div className="exam-question-body text-neutral-900">
                                       <QuestionTextWithDividers text={question.question_text} />
@@ -5301,7 +5506,7 @@ export default function HSCGeneratorPage() {
                                                   allQuestions.find((q) => q?.id === question.id) ||
                                                   paperQuestions.find((q) => q?.id === question.id) ||
                                                   question;
-                                                setInlineEditDraft({ ...canonical });
+                                                openInlineQuestionEditor(canonical);
                                               }}
                                               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
                                             >
@@ -6742,7 +6947,7 @@ export default function HSCGeneratorPage() {
                       >
                         <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--clr-primary-a50)' }}>Syllabus Dot Point Mapping</h2>
                         <p className="text-sm mb-4" style={{ color: 'var(--clr-surface-a40)' }}>
-                          Select an exam paper and map each question to a subtopic and syllabus dot point using gpt-5-mini.
+                          Select an exam paper and map each question using your custom classify → specialist ChatGPT syllabus workflow.
                         </p>
 
                         <div className="space-y-4">
@@ -6770,6 +6975,114 @@ export default function HSCGeneratorPage() {
                               )}
                             </select>
                           </div>
+
+                          <div>
+                            <label className="text-sm font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                              Manual Workflow Test Question (LaTeX)
+                            </label>
+                            <textarea
+                              value={syllabusWorkflowTestInput}
+                              onChange={(e) => setSyllabusWorkflowTestInput(e.target.value)}
+                              disabled={isRunningSyllabusWorkflowTest}
+                              rows={6}
+                              placeholder="Paste a question here to test classify → specialist workflow output..."
+                              className="mt-2 w-full px-4 py-3 rounded-lg border text-sm"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                                color: 'var(--clr-primary-a50)',
+                                resize: 'vertical',
+                              }}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={runSyllabusWorkflowTest}
+                              disabled={isRunningSyllabusWorkflowTest || !syllabusWorkflowTestInput.trim()}
+                              className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
+                              style={{
+                                backgroundColor: 'var(--clr-primary-a0)',
+                                color: 'var(--clr-dark-a0)',
+                              }}
+                            >
+                              {isRunningSyllabusWorkflowTest ? 'Testing...' : 'Run Workflow Test'}
+                            </button>
+                            {syllabusWorkflowTestResult && (
+                              <span
+                                className="text-sm"
+                                style={{
+                                  color:
+                                    syllabusWorkflowTestStatus === 'error'
+                                      ? 'var(--clr-danger-a10)'
+                                      : syllabusWorkflowTestStatus === 'success'
+                                        ? 'var(--clr-success-a10)'
+                                        : 'var(--clr-surface-a50)',
+                                }}
+                              >
+                                {syllabusWorkflowTestResult}
+                              </span>
+                            )}
+                          </div>
+
+                          {syllabusWorkflowTestOutput && (
+                            <div
+                              className="rounded-xl border p-4"
+                              style={{
+                                backgroundColor: 'var(--clr-surface-a0)',
+                                borderColor: 'var(--clr-surface-tonal-a20)',
+                              }}
+                            >
+                              <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--clr-primary-a50)' }}>
+                                Workflow Test Output
+                              </h3>
+                              <div className="space-y-3 mb-3">
+                                <div>
+                                  <label className="text-xs font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                                    Classifier ChatGPT Output
+                                  </label>
+                                  <textarea
+                                    readOnly
+                                    rows={4}
+                                    value={String(syllabusWorkflowTestOutput.classifier_raw_output || '')}
+                                    className="mt-1 w-full px-3 py-2 rounded-md border text-xs"
+                                    style={{
+                                      backgroundColor: 'var(--clr-dark-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-light-a0)',
+                                      resize: 'vertical',
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs font-medium" style={{ color: 'var(--clr-surface-a50)' }}>
+                                    Specialist ChatGPT Output
+                                  </label>
+                                  <textarea
+                                    readOnly
+                                    rows={6}
+                                    value={String(syllabusWorkflowTestOutput.specialist_raw_output || '')}
+                                    className="mt-1 w-full px-3 py-2 rounded-md border text-xs"
+                                    style={{
+                                      backgroundColor: 'var(--clr-dark-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-light-a0)',
+                                      resize: 'vertical',
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <pre
+                                className="text-xs whitespace-pre-wrap break-words rounded-md p-3"
+                                style={{
+                                  backgroundColor: 'var(--clr-dark-a0)',
+                                  color: 'var(--clr-light-a0)',
+                                }}
+                              >
+                                {JSON.stringify(syllabusWorkflowTestOutput, null, 2)}
+                              </pre>
+                            </div>
+                          )}
 
                           <div className="flex items-center gap-3">
                             <button
@@ -6827,7 +7140,7 @@ export default function HSCGeneratorPage() {
                               }}
                             >
                               <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--clr-primary-a50)' }}>
-                                GPT Mapping Debug Output
+                                Workflow Mapping Debug Output
                               </h3>
                               <div className="space-y-3">
                                 {syllabusMappingDebugOutputs.map((entry, index) => {
@@ -7200,6 +7513,15 @@ POINT_1 ...`}
                                 onChange={(e) => setPdfGenerateCriteria(e.target.checked)}
                               />
                               Generate marking criteria from mark count
+                            </label>
+
+                            <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
+                              <input
+                                type="checkbox"
+                                checked={pdfAutoGroupSubparts}
+                                onChange={(e) => setPdfAutoGroupSubparts(e.target.checked)}
+                              />
+                              Auto-group lettered subparts (e.g. 11(a), 11(b), 11(c)) for Custom Exam
                             </label>
 
                             <div className="flex items-center gap-3">
@@ -7703,6 +8025,33 @@ POINT_1 ...`}
                           <h2 className="text-lg font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>Manage Questions</h2>
                         </div>
 
+                        <div className="flex items-center gap-2 mb-6">
+                          <button
+                            type="button"
+                            onClick={() => setManageSubView('list')}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                            style={{
+                              backgroundColor: manageSubView === 'list' ? 'var(--clr-primary-a0)' : 'var(--clr-surface-a20)',
+                              color: manageSubView === 'list' ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            Questions
+                          </button>
+                          <button
+                            type="button"
+                            onClick={openManageImageMap}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                            style={{
+                              backgroundColor: manageSubView === 'image-map' ? 'var(--clr-primary-a0)' : 'var(--clr-surface-a20)',
+                              color: manageSubView === 'image-map' ? 'var(--clr-dark-a0)' : 'var(--clr-primary-a50)',
+                            }}
+                          >
+                            Exam Image Mapping
+                          </button>
+                        </div>
+
+                        {manageSubView === 'list' ? (
+                          <div>
                         <div className="flex flex-wrap items-center gap-3 mb-4">
                           <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--clr-surface-a50)' }}>
                             <input
@@ -7750,6 +8099,14 @@ POINT_1 ...`}
                             style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
                           >
                             Clear Group
+                          </button>
+                          <button
+                            onClick={autoGroupSubpartQuestions}
+                            disabled={allQuestions.length === 0 || bulkActionLoading}
+                            className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                            style={{ backgroundColor: 'var(--clr-primary-a0)', color: 'var(--clr-dark-a0)' }}
+                          >
+                            Auto-Group Subparts
                           </button>
                           <button
                             onClick={() => setManageMissingImagesOnly((prev) => !prev)}
@@ -8440,6 +8797,176 @@ POINT_1 ...`}
                             )}
                           </div>
                         )}
+                          </div>
+                        ) : (
+                          <div className="space-y-6">
+                            <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
+                                <div>
+                                  <label className="block text-sm font-medium mb-2" style={{ color: 'var(--clr-surface-a50)' }}>Exam</label>
+                                  <select
+                                    value={imageMapSelectedPaperKey}
+                                    onChange={(e) => {
+                                      const nextKey = e.target.value;
+                                      setImageMapSelectedPaperKey(nextKey);
+                                      loadImageMapExam(nextKey);
+                                    }}
+                                    disabled={loadingQuestions || availablePapers.length === 0}
+                                    className="w-full px-3 py-2 rounded-lg border text-sm"
+                                    style={{
+                                      backgroundColor: 'var(--clr-surface-a0)',
+                                      borderColor: 'var(--clr-surface-tonal-a20)',
+                                      color: 'var(--clr-primary-a50)',
+                                    }}
+                                  >
+                                    {availablePapers.length === 0 ? (
+                                      <option value="">No exams loaded</option>
+                                    ) : (
+                                      availablePapers.map((paper) => (
+                                        <option key={getPaperKey(paper)} value={getPaperKey(paper)}>
+                                          {paper.year} • {paper.grade} • {paper.subject} • {paper.school} ({paper.count})
+                                        </option>
+                                      ))
+                                    )}
+                                  </select>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={fetchAllQuestions}
+                                  disabled={loadingQuestions}
+                                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                                  style={{ backgroundColor: 'var(--clr-surface-a20)', color: 'var(--clr-primary-a50)' }}
+                                >
+                                  {loadingQuestions ? 'Loading…' : 'Reload Exams'}
+                                </button>
+                              </div>
+                            </div>
+
+                            {loadingQuestions ? (
+                              <div className="py-10 text-center" style={{ color: 'var(--clr-surface-a40)' }}>Loading exam questions...</div>
+                            ) : imageMapQuestions.length === 0 ? (
+                              <div className="py-10 text-center rounded-xl border" style={{ color: 'var(--clr-surface-a40)', borderColor: 'var(--clr-surface-tonal-a20)' }}>
+                                Select an exam to edit image data.
+                              </div>
+                            ) : (
+                              <>
+                                <div className="space-y-4">
+                                  {imageMapQuestions.map((question) => {
+                                    const draft = imageMapDraftById[question.id] || {
+                                      graph_image_data: '',
+                                      sample_answer_image: '',
+                                      mcq_option_a_image: '',
+                                      mcq_option_b_image: '',
+                                      mcq_option_c_image: '',
+                                      mcq_option_d_image: '',
+                                      mcq_correct_answer: 'A' as 'A' | 'B' | 'C' | 'D',
+                                    };
+
+                                    const setDraftField = (field: keyof typeof draft, value: string) => {
+                                      setImageMapDraftById((prev) => ({
+                                        ...prev,
+                                        [question.id]: {
+                                          ...draft,
+                                          [field]: value,
+                                        },
+                                      }));
+                                    };
+
+                                    return (
+                                      <div
+                                        key={question.id}
+                                        className="rounded-xl border p-4 space-y-3"
+                                        style={{ backgroundColor: 'var(--clr-surface-a10)', borderColor: 'var(--clr-surface-tonal-a20)' }}
+                                      >
+                                        <div className="text-sm font-semibold" style={{ color: 'var(--clr-primary-a50)' }}>
+                                          Question {question.question_number || '?'}
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Question Image</label>
+                                          <textarea
+                                            value={draft.graph_image_data}
+                                            onChange={(e) => setDraftField('graph_image_data', e.target.value)}
+                                            onPaste={(e) => handleClipboardImagePaste(e, (dataUrl) => setDraftField('graph_image_data', dataUrl))}
+                                            rows={2}
+                                            placeholder="Paste image directly, or paste data:image/... / URL"
+                                            className="w-full px-3 py-2 rounded-lg border text-xs"
+                                            style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Sample Answer Image</label>
+                                          <textarea
+                                            value={draft.sample_answer_image}
+                                            onChange={(e) => setDraftField('sample_answer_image', e.target.value)}
+                                            onPaste={(e) => handleClipboardImagePaste(e, (dataUrl) => setDraftField('sample_answer_image', dataUrl))}
+                                            rows={2}
+                                            placeholder="Paste image directly, or paste data:image/... / URL"
+                                            className="w-full px-3 py-2 rounded-lg border text-xs"
+                                            style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}
+                                          />
+                                        </div>
+
+                                        {question.question_type === 'multiple_choice' && (
+                                          <div className="space-y-2 pt-1">
+                                            <div className="text-xs font-semibold" style={{ color: 'var(--clr-surface-a50)' }}>MCQ Option Images</div>
+                                            {([
+                                              ['A', 'mcq_option_a_image'],
+                                              ['B', 'mcq_option_b_image'],
+                                              ['C', 'mcq_option_c_image'],
+                                              ['D', 'mcq_option_d_image'],
+                                            ] as Array<['A' | 'B' | 'C' | 'D', 'mcq_option_a_image' | 'mcq_option_b_image' | 'mcq_option_c_image' | 'mcq_option_d_image']>).map(([label, field]) => (
+                                              <div key={field}>
+                                                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Option {label} Image</label>
+                                                <textarea
+                                                  value={draft[field]}
+                                                  onChange={(e) => setDraftField(field, e.target.value)}
+                                                  onPaste={(e) => handleClipboardImagePaste(e, (dataUrl) => setDraftField(field, dataUrl))}
+                                                  rows={2}
+                                                  placeholder="Paste image directly, or paste data:image/... / URL"
+                                                  className="w-full px-3 py-2 rounded-lg border text-xs"
+                                                  style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}
+                                                />
+                                              </div>
+                                            ))}
+
+                                            <div>
+                                              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a50)' }}>Correct MCQ Answer</label>
+                                              <select
+                                                value={draft.mcq_correct_answer}
+                                                onChange={(e) => setDraftField('mcq_correct_answer', e.target.value as 'A' | 'B' | 'C' | 'D')}
+                                                className="w-full px-3 py-2 rounded-lg border text-sm"
+                                                style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }}
+                                              >
+                                                <option value="A">A</option>
+                                                <option value="B">B</option>
+                                                <option value="C">C</option>
+                                                <option value="D">D</option>
+                                              </select>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                <div className="pt-2">
+                                  <button
+                                    type="button"
+                                    onClick={saveImageMapChanges}
+                                    disabled={imageMapSaving}
+                                    className="w-full px-4 py-3 rounded-lg font-semibold cursor-pointer disabled:opacity-50"
+                                    style={{ backgroundColor: 'var(--clr-success-a0)', color: 'var(--clr-light-a0)' }}
+                                  >
+                                    {imageMapSaving ? 'Saving...' : 'Save'}
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -8515,340 +9042,20 @@ POINT_1 ...`}
         </main>
       </div>
 
-      {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0"
-            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-            onClick={() => setShowEditModal(false)}
-          />
-          <div
-            className="relative w-full max-w-3xl rounded-2xl border p-6 shadow-2xl overflow-y-auto"
-            style={{
-              backgroundColor: 'var(--clr-surface-a10)',
-              borderColor: 'var(--clr-surface-tonal-a20)',
-              color: 'var(--clr-primary-a50)',
-              maxHeight: '85vh',
-            }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Edit Question</h2>
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="p-2 rounded-lg cursor-pointer"
-                style={{ backgroundColor: 'var(--clr-surface-a20)' }}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Grade</label>
-                <select
-                  value={editQuestion.grade}
-                  onChange={(e) => {
-                    const nextGrade = e.target.value as 'Year 11' | 'Year 12';
-                    const nextSubject = SUBJECTS_BY_YEAR[nextGrade][0];
-                    const nextTopic = getTopics(nextGrade, nextSubject)[0] || '';
-                    setEditQuestion({
-                      ...editQuestion,
-                      grade: nextGrade,
-                      subject: nextSubject,
-                      topic: nextTopic,
-                    });
-                  }}
-                  className="w-full px-4 py-2 rounded-lg border"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  <option>Year 11</option>
-                  <option>Year 12</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Year</label>
-                <input
-                  type="number"
-                  value={editQuestion.year}
-                  onChange={(e) => setEditQuestion({ ...editQuestion, year: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Subject</label>
-                <select
-                  value={editQuestion.subject}
-                  onChange={(e) => {
-                    const nextSubject = e.target.value;
-                    const nextTopics = getTopics(editQuestion.grade, nextSubject);
-                    setEditQuestion({
-                      ...editQuestion,
-                      subject: nextSubject,
-                      topic: nextTopics[0] || '',
-                    });
-                  }}
-                  className="w-full px-4 py-2 rounded-lg border"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  {SUBJECTS_BY_YEAR[editQuestion.grade as 'Year 11' | 'Year 12']?.map((subject) => (
-                    <option key={subject} value={subject}>{subject}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Topic</label>
-                <select
-                  value={editQuestion.topic}
-                  onChange={(e) => setEditQuestion({ ...editQuestion, topic: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  {(() => {
-                    const current = editQuestion.topic?.trim();
-                    const options = current && !ALL_TOPICS.includes(current) ? [current, ...ALL_TOPICS] : ALL_TOPICS;
-                    return options.map((topic) => <option key={topic} value={topic}>{topic}</option>);
-                  })()}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Marks</label>
-                <input
-                  type="number"
-                  value={editQuestion.marks}
-                  onChange={(e) => setEditQuestion({ ...editQuestion, marks: parseInt(e.target.value) })}
-                  className="w-full px-4 py-2 rounded-lg border"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Question Type</label>
-                <select
-                  value={editQuestion.questionType}
-                  onChange={(e) => setEditQuestion({ ...editQuestion, questionType: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  <option value="written">Written Response</option>
-                  <option value="multiple_choice">Multiple Choice</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-sm font-medium mb-2">Question Text</label>
-              <textarea
-                value={editQuestion.questionText}
-                onChange={(e) => setEditQuestion({ ...editQuestion, questionText: e.target.value })}
-                rows={4}
-                className="w-full px-4 py-2 rounded-lg border"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a0)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                  color: 'var(--clr-primary-a50)',
-                }}
-              />
-            </div>
-
-            {editQuestion.questionType === 'multiple_choice' ? (
-              <>
-                <div className="mt-4 space-y-4">
-                  <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                    <label className="block text-sm font-medium mb-1">Option A</label>
-                    <input type="text" placeholder="Text (LaTeX)" value={editQuestion.mcqOptionA} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionA: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL (shows image instead of text)</label>
-                    <input type="url" placeholder="https://... or data:image/..." value={editQuestion.mcqOptionAImage} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionAImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                  </div>
-                  <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                    <label className="block text-sm font-medium mb-1">Option B</label>
-                    <input type="text" placeholder="Text (LaTeX)" value={editQuestion.mcqOptionB} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionB: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
-                    <input type="url" placeholder="https://... or data:image/..." value={editQuestion.mcqOptionBImage} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionBImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                  </div>
-                  <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                    <label className="block text-sm font-medium mb-1">Option C</label>
-                    <input type="text" placeholder="Text (LaTeX)" value={editQuestion.mcqOptionC} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionC: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
-                    <input type="url" placeholder="https://... or data:image/..." value={editQuestion.mcqOptionCImage} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionCImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                  </div>
-                  <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--clr-surface-tonal-a20)', backgroundColor: 'var(--clr-surface-a05)' }}>
-                    <label className="block text-sm font-medium mb-1">Option D</label>
-                    <input type="text" placeholder="Text (LaTeX)" value={editQuestion.mcqOptionD} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionD: e.target.value })} className="w-full px-3 py-2 rounded border text-sm mb-2" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--clr-surface-a40)' }}>Or image URL</label>
-                    <input type="url" placeholder="https://... or data:image/..." value={editQuestion.mcqOptionDImage} onChange={(e) => setEditQuestion({ ...editQuestion, mcqOptionDImage: e.target.value })} className="w-full px-3 py-2 rounded border text-sm" style={{ backgroundColor: 'var(--clr-surface-a0)', borderColor: 'var(--clr-surface-tonal-a20)', color: 'var(--clr-primary-a50)' }} />
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Correct Answer</label>
-                    <select
-                      value={editQuestion.mcqCorrectAnswer}
-                      onChange={(e) => setEditQuestion({ ...editQuestion, mcqCorrectAnswer: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border"
-                      style={{
-                        backgroundColor: 'var(--clr-surface-a0)',
-                        borderColor: 'var(--clr-surface-tonal-a20)',
-                        color: 'var(--clr-primary-a50)',
-                      }}
-                    >
-                      <option value="A">A</option>
-                      <option value="B">B</option>
-                      <option value="C">C</option>
-                      <option value="D">D</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <label className="block text-sm font-medium mb-2">Answer Explanation</label>
-                  <textarea
-                    value={editQuestion.mcqExplanation}
-                    onChange={(e) => setEditQuestion({ ...editQuestion, mcqExplanation: e.target.value })}
-                    rows={4}
-                    className="w-full px-4 py-2 rounded-lg border"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="mt-4">
-                  <label className="block text-sm font-medium mb-2">Marking Criteria</label>
-                  <textarea
-                    value={editQuestion.markingCriteria}
-                    onChange={(e) => setEditQuestion({ ...editQuestion, markingCriteria: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-2 rounded-lg border"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  />
-                </div>
-
-                <div className="mt-4">
-                  <label className="block text-sm font-medium mb-2">Sample Answer</label>
-                  <textarea
-                    value={editQuestion.sampleAnswer}
-                    onChange={(e) => setEditQuestion({ ...editQuestion, sampleAnswer: e.target.value })}
-                    rows={4}
-                    className="w-full px-4 py-2 rounded-lg border"
-                    style={{
-                      backgroundColor: 'var(--clr-surface-a0)',
-                      borderColor: 'var(--clr-surface-tonal-a20)',
-                      color: 'var(--clr-primary-a50)',
-                    }}
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="mt-4">
-              <label className="block text-sm font-medium mb-2">Graph Image (data URL)</label>
-              <textarea
-                value={editQuestion.graphImageData}
-                onChange={(e) => setEditQuestion({ ...editQuestion, graphImageData: e.target.value })}
-                onPaste={handleEditGraphPaste}
-                rows={3}
-                className="w-full px-4 py-2 rounded-lg border"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a0)',
-                  borderColor: 'var(--clr-surface-tonal-a20)',
-                  color: 'var(--clr-primary-a50)',
-                }}
-              />
-              <div className="mt-3">
-                <label className="block text-sm font-medium mb-2">Graph Size</label>
-                <select
-                  value={editQuestion.graphImageSize}
-                  onChange={(e) => setEditQuestion({ ...editQuestion, graphImageSize: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg border"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a0)',
-                    borderColor: 'var(--clr-surface-tonal-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="large">Large</option>
-                </select>
-              </div>
-              <div className="mt-3 flex items-center gap-3">
-                <label
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--clr-surface-a20)',
-                    color: 'var(--clr-primary-a50)',
-                  }}
-                >
-                  Upload PNG
-                  <input type="file" accept="image/png" hidden onChange={handleEditGraphUpload} />
-                </label>
-                {editQuestion.graphImageData && (
-                  <span className="text-xs" style={{ color: 'var(--clr-surface-a40)' }}>
-                    Image loaded
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 rounded-lg font-medium cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--clr-surface-a20)',
-                  color: 'var(--clr-primary-a50)',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={updateQuestionInDatabase}
-                disabled={isUpdatingQuestion}
-                className="px-4 py-2 rounded-lg font-medium cursor-pointer disabled:opacity-50"
-                style={{
-                  backgroundColor: 'var(--clr-success-a0)',
-                  color: 'var(--clr-light-a0)',
-                }}
-              >
-                {isUpdatingQuestion ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <EditQuestionModal
+        isOpen={showEditModal}
+        editQuestion={editQuestion}
+        setEditQuestion={setEditQuestion}
+        allTopics={ALL_TOPICS}
+        subjectsByYear={SUBJECTS_BY_YEAR as unknown as Record<string, readonly string[] | string[]>}
+        getTopics={getTopics}
+        handleEditGraphPaste={handleEditGraphPaste}
+        handleEditGraphUpload={handleEditGraphUpload}
+        handleEditModalImagePaste={handleEditModalImagePaste}
+        isUpdatingQuestion={isUpdatingQuestion}
+        onClose={() => setShowEditModal(false)}
+        onSave={updateQuestionInDatabase}
+      />
 
       {showLatexModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

@@ -20,6 +20,8 @@ export async function POST(request: Request) {
       schoolName,
       school,
       school_name,
+      paperNumber,
+      paperLabel,
       subject,
       topic,
       subtopic,
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
     }
 
     const parsedMarks = Number.parseInt(String(marks), 10);
+    const parsedPaperNumber = Number.parseInt(String(paperNumber ?? ''), 10);
 
     if (!grade || !year || !subject || !topic || !questionText) {
       return Response.json(
@@ -143,6 +146,8 @@ export async function POST(request: Request) {
       mcq_explanation: resolvedQuestionType === 'multiple_choice' ? mcqExplanation : null,
       graph_image_data: graphImageData || null,
       graph_image_size: graphImageSize || 'medium',
+      paper_number: Number.isInteger(parsedPaperNumber) && parsedPaperNumber > 0 ? parsedPaperNumber : null,
+      paper_label: paperLabel || null,
     };
 
     const payload: Record<string, unknown> = { ...basePayload };

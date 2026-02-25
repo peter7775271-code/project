@@ -59,13 +59,16 @@ const stripInvalidControlChars = (value: string) =>
 const normalizeLatexBody = (value: string) =>
   stripInvalidControlChars(value)
     .replace(/\[\[PART_DIVIDER:([^\]]+)\]\]/g, (_match, label) => `\\paragraph{(${label})}`)
+    .replace(/\\begin\{figure\}[\s\S]*?\\end\{figure\}/gi, '')
+    .replace(/\\includegraphics(?:\[[^\]]*\])?\{[^}]+\}/gi, '')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/\\graphicspath\{[^}]*\}/gi, '')
     .replace(/\[\s*beginaligned/gi, '')
     .replace(/\[\s*endaligned\s*\]/gi, '')
     .replace(/\bbeginaligned\b/gi, '')
     .replace(/\bendaligned\b/gi, '')
     .replace(/\bMARKS_(\d+)\b/g, 'MARKS\\_$1')
     .replace(/\bQUESTION_(\d+)\b/g, 'QUESTION\\_$1')
-    .replace(/&/g, '\\&')
     .replace(/(^|\s)([0-9]*[A-Za-z]+)\^\(([^)]+)\)/g, (_match, prefix, base, powerExpr) => `${prefix}\\ensuremath{${base}^{(${powerExpr})}}`)
     .replace(/(^|\s)([0-9]*[A-Za-z]+)\^([A-Za-z])(?![A-Za-z0-9{])/g, (_match, prefix, base, power) => `${prefix}\\ensuremath{${base}^{${power}}}`)
     .replace(/(^|\s)([0-9]*[A-Za-z]+)\^([0-9]+)(?=\b)/g, (_match, prefix, base, power) => `${prefix}\\ensuremath{${base}^{${power}}}`)
@@ -98,6 +101,10 @@ const normalizeLatexBody = (value: string) =>
 const normalizePlainBody = (value: string) =>
   stripInvalidControlChars(value)
     .replace(/\[\[PART_DIVIDER:([^\]]+)\]\]/g, (_match, label) => `(${label})`)
+    .replace(/\\begin\{figure\}[\s\S]*?\\end\{figure\}/gi, '')
+    .replace(/\\includegraphics(?:\[[^\]]*\])?\{[^}]+\}/gi, '')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/\\graphicspath\{[^}]*\}/gi, '')
     .replace(/\[\s*beginaligned/gi, '')
     .replace(/\[\s*endaligned\s*\]/gi, '')
     .replace(/\bbeginaligned\b/gi, '')
@@ -417,6 +424,8 @@ const buildExamLatex = ({
 \\usepackage[T1]{fontenc}
 \\usepackage[utf8]{inputenc}
 \\usepackage[a4paper,margin=1in]{geometry}
+\\usepackage{lmodern}
+\\usepackage{microtype}
 \\usepackage{amsmath,amssymb,mathtools}
 \\usepackage[final]{graphicx}
 \\usepackage{enumitem}

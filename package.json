@@ -11,6 +11,7 @@
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
     "@excalidraw/excalidraw": "^0.18.0",
+    "@openai/agents": "^0.5.1",
     "@supabase/supabase-js": "^2.91.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
@@ -32,7 +33,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sharp": "^0.34.5",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
