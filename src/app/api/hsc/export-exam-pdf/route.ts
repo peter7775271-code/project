@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 const PDFLATEX_PATH = process.env.PDFLATEX_PATH ?? '/usr/bin/pdflatex';
 const LATEX_TO_PDF_API_URL = process.env.LATEX_TO_PDF_API_URL ?? 'https://latex.ytotech.com/builds/sync';
 const LATEX_TO_PDF_API_MODE = (process.env.LATEX_TO_PDF_API_MODE ?? 'auto').toLowerCase();
+const IS_VERCEL_RUNTIME = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
 const IMAGE_FETCH_TIMEOUT_MS = Number(process.env.IMAGE_FETCH_TIMEOUT_MS ?? 15000);
 const PDF_COMPILE_TIMEOUT_MS = Number(process.env.PDF_COMPILE_TIMEOUT_MS ?? 45000);
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES ?? 10 * 1024 * 1024);
@@ -507,7 +508,20 @@ export async function POST(request: Request) {
     let pdfBuffer: Buffer;
     let imagesOmittedInFallback = false;
     try {
-      await access(PDFLATEX_PATH, constants.X_OK);
+      try {
+        await access(PDFLATEX_PATH, constants.X_OK);
+      } catch (missingPdflatexError) {
+        if (IS_VERCEL_RUNTIME) {
+          console.warn(
+            `[export-exam-pdf] Local pdflatex not found on Vercel at "${PDFLATEX_PATH}"; using API fallback via LATEX_TO_PDF_API_URL.`
+          );
+        } else {
+          console.warn(
+            `[export-exam-pdf] Local pdflatex not found at "${PDFLATEX_PATH}"; using API fallback via LATEX_TO_PDF_API_URL.`
+          );
+        }
+        throw missingPdflatexError;
+      }
 
       tempDir = await mkdtemp(path.join(os.tmpdir(), 'export-exam-'));
       const texPath = path.join(tempDir, LOCAL_TEX_FILENAME);
