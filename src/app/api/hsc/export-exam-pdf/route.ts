@@ -639,12 +639,13 @@ export async function POST(request: Request) {
         const postAttempts: Array<{ name: string; init: RequestInit }> = [];
 
         if (isYtoTechApi) {
-          const form = new FormData();
-          form.set('compiler', 'pdflatex');
-          form.set('main', 'main.tex');
-          const mainFile = new File([texInput], 'main.tex', { type: 'application/x-tex' });
-          form.append('resources[]', mainFile);
-          form.append('resources', mainFile);
+          const resources: Array<Record<string, unknown>> = [
+            {
+              main: true,
+              path: 'main.tex',
+              content: texInput,
+            },
+          ];
 
           if (questionsWithAssets && tempDir) {
             const assetNames = getReferencedAssetFilenames(questionsWithAssets);
@@ -657,8 +658,10 @@ export async function POST(request: Request) {
                 const ext = detectImageExt(assetName);
                 const mime = ext === 'jpg' ? 'image/jpeg' : 'image/png';
                 const file = new File([data], assetName, { type: mime });
-                form.append('resources[]', file);
-                form.append('resources', file);
+                resources.push({
+                  path: assetName,
+                  file: data.toString('base64'),
+                });
                 fallbackImageStats.attached += 1;
               } catch {
                 missingAssets.push(assetName);
@@ -666,6 +669,51 @@ export async function POST(request: Request) {
             }
             if (missingAssets.length) {
               throw new Error(`Failed to attach ${missingAssets.length} image resource(s) for API fallback: ${missingAssets.join(', ')}`);
+            }
+          }
+
+          postAttempts.push({
+            name: 'ytotech-json-resources',
+            init: {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                compiler: 'pdflatex',
+                resources,
+                options: {
+                  compiler: {
+                    halt_on_error: true,
+                    silent: false,
+                  },
+                  response: {
+                    log_files_on_failure: true,
+                  },
+                },
+              }),
+            },
+          });
+
+          const form = new FormData();
+          form.set('compiler', 'pdflatex');
+          form.set('main', 'main.tex');
+          const mainFile = new File([texInput], 'main.tex', { type: 'application/x-tex' });
+          form.append('resources[]', mainFile);
+          form.append('resources', mainFile);
+
+          if (questionsWithAssets && tempDir) {
+            const assetNames = getReferencedAssetFilenames(questionsWithAssets);
+            for (const assetName of assetNames) {
+              try {
+                const fullPath = path.join(tempDir, assetName);
+                const data = await readFile(fullPath);
+                const ext = detectImageExt(assetName);
+                const mime = ext === 'jpg' ? 'image/jpeg' : 'image/png';
+                const file = new File([data], assetName, { type: mime });
+                form.append('resources[]', file);
+                form.append('resources', file);
+              } catch {
+                // json-resources path above is authoritative; multipart is best-effort fallback
+              }
             }
           }
 
