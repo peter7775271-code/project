@@ -17,6 +17,7 @@ const PDF_COMPILE_TIMEOUT_MS = Number(process.env.PDF_COMPILE_TIMEOUT_MS ?? 4500
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES ?? 10 * 1024 * 1024);
 const MAX_GET_TEX_LENGTH = Number(process.env.MAX_GET_TEX_LENGTH ?? 1800);
 const LOCAL_TEX_FILENAME = 'exam.tex';
+const LOCAL_PDFLATEX_MISSING_SENTINEL = 'LOCAL_PDFLATEX_MISSING';
 
 type ExportQuestion = {
   question_number?: string | null;
@@ -507,6 +508,7 @@ export async function POST(request: Request) {
 
     let pdfBuffer: Buffer;
     let imagesOmittedInFallback = false;
+    let usedApiFallback = false;
     try {
       try {
         await access(PDFLATEX_PATH, constants.X_OK);
@@ -520,7 +522,9 @@ export async function POST(request: Request) {
             `[export-exam-pdf] Local pdflatex not found at "${PDFLATEX_PATH}"; using API fallback via LATEX_TO_PDF_API_URL.`
           );
         }
-        throw missingPdflatexError;
+        const sentinel = new Error(LOCAL_PDFLATEX_MISSING_SENTINEL);
+        (sentinel as Error & { cause?: unknown }).cause = missingPdflatexError;
+        throw sentinel;
       }
 
       tempDir = await mkdtemp(path.join(os.tmpdir(), 'export-exam-'));
@@ -582,7 +586,13 @@ export async function POST(request: Request) {
 
       pdfBuffer = await readFile(pdfPath);
     } catch (localCompileError: any) {
-      console.warn('[export-exam-pdf] Local pdflatex failed, falling back to LATEX_TO_PDF_API_URL when possible', localCompileError);
+      usedApiFallback = true;
+      const localCompileMessage = String(localCompileError?.message || '');
+      if (localCompileMessage === LOCAL_PDFLATEX_MISSING_SENTINEL) {
+        console.warn('[export-exam-pdf] Skipping local compile because pdflatex is unavailable; proceeding with LATEX_TO_PDF_API_URL fallback.');
+      } else {
+        console.warn('[export-exam-pdf] Local pdflatex failed, falling back to LATEX_TO_PDF_API_URL when possible', localCompileError);
+      }
       const isYtoTechApi = LATEX_TO_PDF_API_MODE === 'ytotech' || LATEX_TO_PDF_API_URL.includes('latex.ytotech.com/builds/sync');
       if (hasQuestionImages && !isYtoTechApi) {
         imagesOmittedInFallback = true;
@@ -625,22 +635,28 @@ export async function POST(request: Request) {
           const form = new FormData();
           form.set('compiler', 'pdflatex');
           form.set('main', 'main.tex');
-          form.append('resources[]', new Blob([texInput], { type: 'text/plain' }), 'main.tex');
-          form.append('resources', new Blob([texInput], { type: 'text/plain' }), 'main.tex');
+          const mainFile = new File([texInput], 'main.tex', { type: 'application/x-tex' });
+          form.append('resources[]', mainFile);
+          form.append('resources', mainFile);
 
           if (questionsWithAssets && tempDir) {
             const assetNames = getReferencedAssetFilenames(questionsWithAssets);
+            const missingAssets: string[] = [];
             for (const assetName of assetNames) {
               try {
                 const fullPath = path.join(tempDir, assetName);
                 const data = await readFile(fullPath);
                 const ext = detectImageExt(assetName);
                 const mime = ext === 'jpg' ? 'image/jpeg' : 'image/png';
-                form.append('resources[]', new Blob([data], { type: mime }), assetName);
-                form.append('resources', new Blob([data], { type: mime }), assetName);
+                const file = new File([data], assetName, { type: mime });
+                form.append('resources[]', file);
+                form.append('resources', file);
               } catch {
-                console.warn(`[export-exam-pdf] Could not attach fallback API image resource: ${assetName}`);
+                missingAssets.push(assetName);
               }
+            }
+            if (missingAssets.length) {
+              throw new Error(`Failed to attach ${missingAssets.length} image resource(s) for API fallback: ${missingAssets.join(', ')}`);
             }
           }
 
@@ -742,6 +758,7 @@ export async function POST(request: Request) {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-store',
+        ...(usedApiFallback ? { 'X-PDF-Compile-Mode': 'api-fallback' } : {}),
         ...(imagesOmittedInFallback ? { 'X-PDF-Warning': 'Images omitted: local pdflatex unavailable on host runtime' } : {}),
       },
     });
