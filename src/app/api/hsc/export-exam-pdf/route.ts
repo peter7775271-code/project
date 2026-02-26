@@ -509,6 +509,7 @@ export async function POST(request: Request) {
     let pdfBuffer: Buffer;
     let imagesOmittedInFallback = false;
     let usedApiFallback = false;
+    let apiFallbackImageStats: { mode: 'ytotech' | 'generic'; referenced: number; attached: number } | null = null;
     try {
       try {
         await access(PDFLATEX_PATH, constants.X_OK);
@@ -594,6 +595,12 @@ export async function POST(request: Request) {
         console.warn('[export-exam-pdf] Local pdflatex failed, falling back to LATEX_TO_PDF_API_URL when possible', localCompileError);
       }
       const isYtoTechApi = LATEX_TO_PDF_API_MODE === 'ytotech' || LATEX_TO_PDF_API_URL.includes('latex.ytotech.com/builds/sync');
+      const fallbackImageStats: { mode: 'ytotech' | 'generic'; referenced: number; attached: number } = {
+        mode: isYtoTechApi ? 'ytotech' : 'generic',
+        referenced: 0,
+        attached: 0,
+      };
+      apiFallbackImageStats = fallbackImageStats;
       if (hasQuestionImages && !isYtoTechApi) {
         imagesOmittedInFallback = true;
         console.warn('[export-exam-pdf] Embedded images are omitted in API fallback unless using YtoTech multipart endpoint.');
@@ -641,6 +648,7 @@ export async function POST(request: Request) {
 
           if (questionsWithAssets && tempDir) {
             const assetNames = getReferencedAssetFilenames(questionsWithAssets);
+            fallbackImageStats.referenced = assetNames.length;
             const missingAssets: string[] = [];
             for (const assetName of assetNames) {
               try {
@@ -651,6 +659,7 @@ export async function POST(request: Request) {
                 const file = new File([data], assetName, { type: mime });
                 form.append('resources[]', file);
                 form.append('resources', file);
+                fallbackImageStats.attached += 1;
               } catch {
                 missingAssets.push(assetName);
               }
@@ -737,6 +746,11 @@ export async function POST(request: Request) {
 
       try {
         pdfBuffer = await compileViaLatexApi(tex, apiQuestions);
+        if (apiFallbackImageStats) {
+          console.warn(
+            `[export-exam-pdf] API fallback compile mode=${apiFallbackImageStats.mode}; image resources attached ${apiFallbackImageStats.attached}/${apiFallbackImageStats.referenced}.`
+          );
+        }
       } catch (apiCompileError: any) {
         console.warn('[export-exam-pdf] API compile failed, retrying compile-safe mode', apiCompileError);
         const safeTex = buildExamLatex({
@@ -747,6 +761,11 @@ export async function POST(request: Request) {
           compileSafeMode: true,
         });
         pdfBuffer = await compileViaLatexApi(safeTex, apiQuestions);
+        if (apiFallbackImageStats) {
+          console.warn(
+            `[export-exam-pdf] API fallback compile-safe mode=${apiFallbackImageStats.mode}; image resources attached ${apiFallbackImageStats.attached}/${apiFallbackImageStats.referenced}.`
+          );
+        }
       }
     }
 
