@@ -1012,6 +1012,7 @@ export default function HSCGeneratorPage() {
     mcq_option_d_image?: string | null;
     mcq_correct_answer?: 'A' | 'B' | 'C' | 'D' | null;
     mcq_explanation?: string | null;
+    _display_group_key?: string | null;
   };
 
   const getFetchErrorMessage = (err: unknown, fallback: string) => {
@@ -1212,6 +1213,7 @@ export default function HSCGeneratorPage() {
   }>>({});
   const [imageMapSaving, setImageMapSaving] = useState(false);
   const [customExamGroupByQuestionId, setCustomExamGroupByQuestionId] = useState<Record<string, string>>({});
+  const [customExamGroupsHydrated, setCustomExamGroupsHydrated] = useState(false);
   const mainContentScrollRef = useRef<HTMLDivElement | null>(null);
   const manageDragSelectingRef = useRef(false);
   const manageDragSelectValueRef = useRef(true);
@@ -1341,11 +1343,15 @@ export default function HSCGeneratorPage() {
       if (groupLabel) {
         if (seenGroupLabels.has(groupLabel)) return;
         seenGroupLabels.add(groupLabel);
+        const manualGroupKey = `manual:${groupLabel}`;
         const groupedQuestions = groups.get(groupLabel) || [question];
         groupedQuestions.forEach((groupedQuestion) => {
           if (seenIds.has(groupedQuestion.id)) return;
           seenIds.add(groupedQuestion.id);
-          expanded.push(groupedQuestion);
+          expanded.push({
+            ...groupedQuestion,
+            _display_group_key: manualGroupKey,
+          });
         });
         return;
       }
@@ -1401,11 +1407,15 @@ export default function HSCGeneratorPage() {
       if (groupKey) {
         if (!seenGroupKeys.has(groupKey)) {
           seenGroupKeys.add(groupKey);
+          const romanGroupKey = `roman:${groupKey}`;
           const siblings = romanGroups.get(groupKey) || [question];
           siblings.forEach((sibling) => {
             if (seenIds.has(sibling.id)) return;
             seenIds.add(sibling.id);
-            expanded.push(sibling);
+            expanded.push({
+              ...sibling,
+              _display_group_key: sibling._display_group_key || romanGroupKey,
+            });
           });
         }
         return;
@@ -1471,12 +1481,26 @@ export default function HSCGeneratorPage() {
     return raw;
   };
 
-  /** Parent display group: e.g. "11 (a)", "11 (b)", "11 (a)(i)" all yield "11". */
+  /** Display group key used for merging contiguous display questions. */
   const getQuestionParentDisplayBase = (qNumber: string | null | undefined): string => {
-    const raw = String(qNumber ?? '').trim();
-    const numOnly = raw.match(/^(\d+)/);
-    if (numOnly) return numOnly[1];
     return getQuestionDisplayBase(qNumber);
+  };
+
+  const getQuestionDisplayGroupKey = (question: Question): string => {
+    const explicitGroupKey = String(question._display_group_key || '').trim();
+    if (explicitGroupKey) return explicitGroupKey;
+    return getQuestionParentDisplayBase(question.question_number);
+  };
+
+  const parseQuestionNumberParts = (qNumber: string | null | undefined) => {
+    const raw = String(qNumber ?? '').trim();
+    const match = raw.match(/^(\d+)\s*\(?([a-z])\)?(?:\s*\(?((?:ix|iv|v?i{0,3}|x))\)?)?$/i);
+    return {
+      raw,
+      number: match?.[1] ? Number.parseInt(match[1], 10) : null,
+      letter: match?.[2] ? match[2].toLowerCase() : '',
+      roman: match?.[3] ? match[3].toLowerCase() : '',
+    };
   };
 
   /** Contiguous group of questions sharing the same display base that contains the given index. */
@@ -1484,13 +1508,13 @@ export default function HSCGeneratorPage() {
     if (index < 0 || index >= questions.length) {
       return { group: [], startIndex: index, endIndex: index };
     }
-    const base = getQuestionParentDisplayBase(questions[index].question_number);
+    const base = getQuestionDisplayGroupKey(questions[index]);
     let startIndex = index;
-    while (startIndex > 0 && getQuestionParentDisplayBase(questions[startIndex - 1].question_number) === base) {
+    while (startIndex > 0 && getQuestionDisplayGroupKey(questions[startIndex - 1]) === base) {
       startIndex--;
     }
     let endIndex = index + 1;
-    while (endIndex < questions.length && getQuestionParentDisplayBase(questions[endIndex].question_number) === base) {
+    while (endIndex < questions.length && getQuestionDisplayGroupKey(questions[endIndex]) === base) {
       endIndex++;
     }
     return {
@@ -1509,7 +1533,22 @@ export default function HSCGeneratorPage() {
       return group[0];
     }
     const first = group[0];
-    const displayBase = getQuestionParentDisplayBase(first.question_number);
+    const parsedEntries = group.map((q) => ({ q, parts: parseQuestionNumberParts(q.question_number) }));
+    const numericParts = parsedEntries
+      .map((entry) => entry.parts.number)
+      .filter((value): value is number => Number.isFinite(value as number));
+    const allSameNumber = numericParts.length === parsedEntries.length && new Set(numericParts).size === 1;
+    const allHaveLetter = parsedEntries.every((entry) => Boolean(entry.parts.letter));
+    const allHaveRoman = parsedEntries.every((entry) => Boolean(entry.parts.roman));
+    const letterSetSize = new Set(parsedEntries.map((entry) => entry.parts.letter || '__')).size;
+    const sameLetter = letterSetSize === 1 && allHaveLetter;
+
+    const useRomanOnlyLabels = allSameNumber && sameLetter && allHaveRoman;
+    const useLetterOnlyLabels = allSameNumber && allHaveLetter && !useRomanOnlyLabels;
+
+    const displayBase = useLetterOnlyLabels
+      ? String(parsedEntries[0]?.parts.number ?? getQuestionParentDisplayBase(first.question_number))
+      : getQuestionParentDisplayBase(first.question_number);
     // If any record in the DB already contains our PART_DIVIDER placeholders, it means someone
     // accidentally saved a merged display question back into the underlying sub-question.
     // In that case, re-merging would duplicate content/criteria/marks. Prefer the already-merged
@@ -1520,7 +1559,12 @@ export default function HSCGeneratorPage() {
       ? String(mergedCarrier.question_text || '')
       : group
         .map((q) => {
-          const label = q.question_number ?? 'Part';
+          const parts = parseQuestionNumberParts(q.question_number);
+          const label = useRomanOnlyLabels && parts.roman
+            ? `(${parts.roman})`
+            : useLetterOnlyLabels && parts.letter
+              ? `(${parts.letter})`
+              : q.question_number ?? 'Part';
           return `${formatPartDividerPlaceholder(label)}\n\n${q.question_text}`;
         })
         .join('');
@@ -3604,6 +3648,14 @@ export default function HSCGeneratorPage() {
         });
       });
 
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('customExamQuestionGroups', JSON.stringify(next));
+        } catch (err) {
+          console.error('Error saving custom exam groups:', err);
+        }
+      }
+
       return next;
     });
 
@@ -4436,17 +4488,20 @@ export default function HSCGeneratorPage() {
       }
     } catch (err) {
       console.error('Error loading custom exam groups:', err);
+    } finally {
+      setCustomExamGroupsHydrated(true);
     }
   }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!customExamGroupsHydrated) return;
     try {
       localStorage.setItem('customExamQuestionGroups', JSON.stringify(customExamGroupByQuestionId));
     } catch (err) {
       console.error('Error saving custom exam groups:', err);
     }
-  }, [customExamGroupByQuestionId]);
+  }, [customExamGroupByQuestionId, customExamGroupsHydrated]);
 
   useEffect(() => {
     if (typeof navigator === 'undefined') return;

@@ -15,6 +15,7 @@ const IMAGE_FETCH_TIMEOUT_MS = Number(process.env.IMAGE_FETCH_TIMEOUT_MS ?? 1500
 const PDF_COMPILE_TIMEOUT_MS = Number(process.env.PDF_COMPILE_TIMEOUT_MS ?? 45000);
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES ?? 10 * 1024 * 1024);
 const MAX_GET_TEX_LENGTH = Number(process.env.MAX_GET_TEX_LENGTH ?? 1800);
+const LOCAL_TEX_FILENAME = 'exam.tex';
 
 type ExportQuestion = {
   question_number?: string | null;
@@ -60,7 +61,7 @@ const normalizeLatexBody = (value: string) =>
   stripInvalidControlChars(value)
     .replace(/\[\[PART_DIVIDER:([^\]]+)\]\]/g, (_match, label) => `\\paragraph{(${label})}`)
     .replace(/\\begin\{figure\}[\s\S]*?\\end\{figure\}/gi, '')
-    .replace(/\\includegraphics(?:\[[^\]]*\])?\{[^}]+\}/gi, '')
+    .replace(/\\includegraphics\*?\s*(?:\[[^\]]*\])?\s*\{[^}]+\}/gi, '')
     .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
     .replace(/\\graphicspath\{[^}]*\}/gi, '')
     .replace(/\[\s*beginaligned/gi, '')
@@ -102,7 +103,7 @@ const normalizePlainBody = (value: string) =>
   stripInvalidControlChars(value)
     .replace(/\[\[PART_DIVIDER:([^\]]+)\]\]/g, (_match, label) => `(${label})`)
     .replace(/\\begin\{figure\}[\s\S]*?\\end\{figure\}/gi, '')
-    .replace(/\\includegraphics(?:\[[^\]]*\])?\{[^}]+\}/gi, '')
+    .replace(/\\includegraphics\*?\s*(?:\[[^\]]*\])?\s*\{[^}]+\}/gi, '')
     .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
     .replace(/\\graphicspath\{[^}]*\}/gi, '')
     .replace(/\[\s*beginaligned/gi, '')
@@ -509,7 +510,7 @@ export async function POST(request: Request) {
       await access(PDFLATEX_PATH, constants.X_OK);
 
       tempDir = await mkdtemp(path.join(os.tmpdir(), 'export-exam-'));
-      const texPath = path.join(tempDir, 'exam.tex');
+      const texPath = path.join(tempDir, LOCAL_TEX_FILENAME);
       const pdfPath = path.join(tempDir, 'exam.pdf');
 
       const questionsWithAssets = await attachQuestionImageAssets(questions, tempDir, includeSolutions);
@@ -528,8 +529,8 @@ export async function POST(request: Request) {
           '-halt-on-error',
           '-output-directory',
           tempDir,
-          texPath,
-        ]);
+          LOCAL_TEX_FILENAME,
+        ], { cwd: tempDir });
       } catch (compileError: any) {
         // Retry once with compile-safe text mode to handle malformed OCR/LaTeX fragments
         const safeTex = buildExamLatex({
@@ -546,8 +547,8 @@ export async function POST(request: Request) {
             '-halt-on-error',
             '-output-directory',
             tempDir,
-            texPath,
-          ]);
+            LOCAL_TEX_FILENAME,
+          ], { cwd: tempDir });
         } catch {
         const stderr = String(compileError?.stderr || '').trim();
         const stdout = String(compileError?.stdout || '').trim();
@@ -611,6 +612,7 @@ export async function POST(request: Request) {
           form.set('compiler', 'pdflatex');
           form.set('main', 'main.tex');
           form.append('resources[]', new Blob([texInput], { type: 'text/plain' }), 'main.tex');
+          form.append('resources', new Blob([texInput], { type: 'text/plain' }), 'main.tex');
 
           if (questionsWithAssets && tempDir) {
             const assetNames = getReferencedAssetFilenames(questionsWithAssets);
@@ -621,6 +623,7 @@ export async function POST(request: Request) {
                 const ext = detectImageExt(assetName);
                 const mime = ext === 'jpg' ? 'image/jpeg' : 'image/png';
                 form.append('resources[]', new Blob([data], { type: mime }), assetName);
+                form.append('resources', new Blob([data], { type: mime }), assetName);
               } catch {
                 console.warn(`[export-exam-pdf] Could not attach fallback API image resource: ${assetName}`);
               }
