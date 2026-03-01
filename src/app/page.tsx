@@ -105,6 +105,14 @@ const styles = `
 export default function Home() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [questionCount, setQuestionCount] = useState<number | null>(null);
+  const [displayedQuestionCount, setDisplayedQuestionCount] = useState<number | null>(null);
+
+  const formattedQuestionCount = displayedQuestionCount !== null
+    ? new Intl.NumberFormat("en-AU").format(displayedQuestionCount)
+    : null;
+
+  const questionCountLabel = displayedQuestionCount === 1 ? "exam style question" : "exam style questions";
 
   useEffect(() => {
     const handleScroll = () => {
@@ -125,6 +133,64 @@ export default function Home() {
     handleScroll();
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadQuestionCount = async () => {
+      try {
+        const response = await fetch("/api/hsc/question-count", { cache: "no-store" });
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const parsedCount = typeof data?.count === "number" ? data.count : Number(data?.count);
+
+        if (isMounted && Number.isFinite(parsedCount) && parsedCount >= 0) {
+          setQuestionCount(parsedCount);
+        }
+      } catch {
+      }
+    };
+
+    loadQuestionCount();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (questionCount === null) return;
+
+    const reduceMotion = typeof window !== "undefined"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduceMotion) {
+      setDisplayedQuestionCount(questionCount);
+      return;
+    }
+
+    const durationMs = 1200;
+    const startTime = performance.now();
+    let animationFrameId = 0;
+
+    const animate = (now: number) => {
+      const progress = Math.min((now - startTime) / durationMs, 1);
+      const nextValue = Math.floor(progress * questionCount);
+      setDisplayedQuestionCount(nextValue);
+
+      if (progress < 1) {
+        animationFrameId = window.requestAnimationFrame(animate);
+      }
+    };
+
+    setDisplayedQuestionCount(0);
+    animationFrameId = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [questionCount]);
 
   const navItems = [
     { label: "Features", href: "#features" },
@@ -196,7 +262,7 @@ export default function Home() {
           <div className="space-y-8 reveal">
             <div className="inline-flex items-center space-x-2 px-4 py-2 bg-white border border-neutral-100 rounded-full shadow-sm">
               <Sparkles size={14} className="text-[#b5a45d]" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Thousands of Official Style Questions</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">{formattedQuestionCount ? `${formattedQuestionCount} ${questionCountLabel}` : "Exam style questions"}</span>
             </div>
 
             <h1 className="text-6xl md:text-8xl font-light leading-[1.1] tracking-tight">
@@ -229,7 +295,7 @@ export default function Home() {
                 <div className="flex justify-between items-center border-b border-neutral-100 pb-6">
                   <div className="space-y-1">
                     <div className="text-[10px] font-bold text-[#b5a45d] uppercase tracking-widest">Question Bank Archive</div>
-                    <div className="text-3xl font-bold">12,482+</div>
+                    <div className="text-3xl font-bold">{formattedQuestionCount ?? ""}</div>
                   </div>
                   <BookOpen size={32} className="text-neutral-900" />
                 </div>
@@ -267,7 +333,15 @@ export default function Home() {
                 </div>
                 <h4 className="text-4xl font-bold tracking-tight text-neutral-900">Massive Question Library</h4>
                 <p className="text-neutral-500 text-lg max-w-md leading-relaxed">
-                  Access over <span className="text-neutral-900 font-bold">12,000+ board-certified questions</span> designed to mimic the exact style and rigor of real national examinations.
+                  {formattedQuestionCount ? (
+                    <>
+                      Access over <span className="text-neutral-900 font-bold">{formattedQuestionCount} {questionCountLabel}</span> designed to mimic the exact style and rigor of real national examinations.
+                    </>
+                  ) : (
+                    <>
+                      Access a growing archive of exam style questions designed to mimic the exact style and rigor of real national examinations.
+                    </>
+                  )}
                 </p>
               </div>
               <div className="pt-12 relative z-10">
