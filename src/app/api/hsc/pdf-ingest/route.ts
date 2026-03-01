@@ -9,6 +9,18 @@ const MAX_PAPER_YEAR = new Date().getFullYear();
 
 const TOPIC_LISTS = {
   'Year 12': {
+    standard: [
+      'Algebraic relationships',
+      'Investment and loans',
+      'Annuities',
+      'Trigonometry',
+      'Ratios and rates',
+      'Network flow',
+      'Critical path analysis',
+      'Bivariate data analysis',
+      'Relative frequency and probability',
+      'The normal distribution',
+    ],
     advanced: [
       'Further graph transformations',
       'Sequences and series',
@@ -35,6 +47,18 @@ const TOPIC_LISTS = {
     ],
   },
   'Year 11': {
+    standard: [
+      'Algebraic relationships',
+      'Investment and loans',
+      'Annuities',
+      'Trigonometry',
+      'Ratios and rates',
+      'Network flow',
+      'Critical path analysis',
+      'Bivariate data analysis',
+      'Relative frequency and probability',
+      'The normal distribution',
+    ],
     advanced: [
       'Working with functions',
       'Trigonometry and measure of angles',
@@ -153,6 +177,7 @@ const normalizeYearKey = (grade: string) => {
 
 const normalizeSubjectKey = (subject: string) => {
   const value = String(subject || '').toLowerCase();
+  if (value.includes('standard')) return 'standard';
   if (value.includes('extension 2') || value.includes('ext 2')) return 'extension 2';
   if (value.includes('extension 1') || value.includes('ext 1')) return 'extension 1';
   if (value.includes('advanced')) return 'advanced';
@@ -200,6 +225,11 @@ Important question splitting rule:
 - Treat each lettered subpart as its own separate question. For example, 11 (a) is one question and 11 (b) is a separate question.
 - Do NOT split deeper subparts. Parts such as 11 (a) (i), 11 (a) (ii), and 11 (a) (iii) must remain grouped together under Question 11 (a) and must not be treated as separate questions.
 - Split only by letters (a), (b), (c), not by roman numerals (i), (ii), (iii).
+
+Shared stem rule for multi-part questions (critical):
+- If a question has a shared stem/context before parts (a), (b), (c), include that shared stem only once in QUESTION_CONTENT for part (a).
+- For parts (b), (c), etc., include only the text unique to that part. Do NOT repeat the shared stem/context.
+- If a later part explicitly references the earlier stem (e.g. "Using the information above"), keep the reference text but do not duplicate the full stem.
 
 Image flag rule: If a question explicitly refers to or depends on an image/graph/diagram (e.g. "Use the diagram above"), set HAS_IMAGE to TRUE. Otherwise set HAS_IMAGE to FALSE. Do NOT output LaTeX for diagrams, crop images, or describe figures; images will be added manually later.
 
@@ -275,6 +305,11 @@ CRITICAL — Question splitting (follow exactly):
 - Lettered parts: (a), (b), (c), (d), etc. — e.g. 11 (a), 11 (b) are separate questions.
 - Roman numeral subparts: (i), (ii), (iii), (iv), (v), (vi), (vii), (viii), (ix), (x) — e.g. 11 (a) (i) and 11 (a) (ii) are two separate questions. Use QUESTION_NUMBER like "11 (a)(i)" and "11 (a)(ii)".
 - So "Question 11 (a)" with parts (i) and (ii) becomes two blocks: QUESTION_NUMBER 11 (a)(i) and QUESTION_NUMBER 11 (a)(ii), each with its own QUESTION_CONTENT and SAMPLE_ANSWER.
+
+Shared stem rule for multi-part questions (critical):
+- If a question has a common stem/context before (a)/(b)/(c), include that shared stem only once for the first extracted subpart in that chain (usually 11 (a) or 11 (a)(i)).
+- For later subparts in the same chain (e.g. 11 (b), 11 (c), 11 (a)(ii), 11 (a)(iii)), include only the text specific to that subpart.
+- Do NOT copy-paste shared stem/context into later subparts.
 
 Image flag rule: If a question visibly includes or depends on an image/graph/diagram on the page, set HAS_IMAGE to TRUE. Do NOT crop, describe, or output LaTeX for diagrams; images will be added manually. Just set the flag.
 

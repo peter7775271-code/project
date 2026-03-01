@@ -2,12 +2,59 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_FETCH_TIMEOUT_MS = Number(process.env.SUPABASE_FETCH_TIMEOUT_MS ?? 20000);
+const SUPABASE_FETCH_RETRIES = Number(process.env.SUPABASE_FETCH_RETRIES ?? 3);
+const SUPABASE_FETCH_RETRY_DELAY_MS = Number(process.env.SUPABASE_FETCH_RETRY_DELAY_MS ?? 350);
+const RETRYABLE_SUPABASE_FETCH_ERROR = /(fetch failed|connect timeout|timeout|timed out|UND_ERR_CONNECT_TIMEOUT|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up)/i;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableFetchError = (error: unknown) => {
+  if (!error) return false;
+  if (error instanceof Error) return RETRYABLE_SUPABASE_FETCH_ERROR.test(error.message);
+  return RETRYABLE_SUPABASE_FETCH_ERROR.test(String(error));
+};
+
+const fetchWithTimeout = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SUPABASE_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const resilientSupabaseFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= SUPABASE_FETCH_RETRIES; attempt += 1) {
+    try {
+      return await fetchWithTimeout(input, init);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableFetchError(error) || attempt === SUPABASE_FETCH_RETRIES) {
+        throw error;
+      }
+      await sleep(SUPABASE_FETCH_RETRY_DELAY_MS * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'Unknown fetch error'));
+};
 
 // Initialize database connection only if credentials are available
 let supabaseAdminInstance: any = null;
 
 if (supabaseUrl && supabaseServiceKey) {
-  supabaseAdminInstance = createClient(supabaseUrl, supabaseServiceKey);
+  supabaseAdminInstance = createClient(supabaseUrl, supabaseServiceKey, {
+    global: {
+      fetch: resilientSupabaseFetch,
+    },
+  });
 }
 
 // When credentials are missing, return an awaitable that resolves with empty/error so API routes don't throw

@@ -9,6 +9,7 @@ export type PaperKeyInput = {
 
 export const BROWSE_SUBJECTS: { label: string; value: string }[] = [
   { label: 'Maths 7-10', value: 'Mathematics' },
+  { label: 'Mathematics Standard', value: 'Mathematics Standard' },
   { label: 'Mathematics Advanced', value: 'Mathematics Advanced' },
   { label: 'Mathematics Extension 1', value: 'Mathematics Extension 1' },
   { label: 'Mathematics Extension 2', value: 'Mathematics Extension 2' },
@@ -28,8 +29,8 @@ export const SUBJECTS_BY_YEAR: Record<YearLevel, string[]> = {
   'Year 8': ['Mathematics'],
   'Year 9': ['Mathematics'],
   'Year 10': ['Mathematics'],
-  'Year 11': ['Mathematics Advanced', 'Mathematics Extension 1'],
-  'Year 12': ['Mathematics Advanced', 'Mathematics Extension 1', 'Mathematics Extension 2'],
+  'Year 11': ['Mathematics Standard', 'Mathematics Advanced', 'Mathematics Extension 1'],
+  'Year 12': ['Mathematics Standard', 'Mathematics Advanced', 'Mathematics Extension 1', 'Mathematics Extension 2'],
 };
 
 export const TOPICS_BY_YEAR_SUBJECT: Record<YearLevel, Record<string, string[]>> = {
@@ -120,6 +121,18 @@ export const TOPICS_BY_YEAR_SUBJECT: Record<YearLevel, Record<string, string[]>>
     ],
   },
   'Year 12': {
+    'Mathematics Standard': [
+      'Algebraic relationships',
+      'Investment and loans',
+      'Annuities',
+      'Trigonometry',
+      'Ratios and rates',
+      'Network flow',
+      'Critical path analysis',
+      'Bivariate data analysis',
+      'Relative frequency and probability',
+      'The normal distribution',
+    ],
     'Mathematics Advanced': [
       'Further graph transformations',
       'Sequences and series',
@@ -146,6 +159,18 @@ export const TOPICS_BY_YEAR_SUBJECT: Record<YearLevel, Record<string, string[]>>
     ],
   },
   'Year 11': {
+    'Mathematics Standard': [
+      'Algebraic relationships',
+      'Investment and loans',
+      'Annuities',
+      'Trigonometry',
+      'Ratios and rates',
+      'Network flow',
+      'Critical path analysis',
+      'Bivariate data analysis',
+      'Relative frequency and probability',
+      'The normal distribution',
+    ],
     'Mathematics Advanced': [
       'Working with functions',
       'Trigonometry and measure of angles',
